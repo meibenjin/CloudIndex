@@ -67,9 +67,9 @@ int accept_connection(int socketfd) {
 int process_request(int socketfd) {
 	//char buffer[SOCKET_BUF_SIZE];
 	//bzero(buffer, sizeof(SOCKET_BUF_SIZE));
-
-    message msg;
-    memset(&msg, 0, sizeof(message));
+	
+	message msg;
+	memset(&msg, 0, sizeof(message));
 
 	ssize_t recv_len = -1;
 
