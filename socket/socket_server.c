@@ -65,25 +65,25 @@ int accept_connection(int socketfd) {
 }
 
 int process_request(int socketfd) {
-	//char buffer[SOCKET_BUF_SIZE];
-	//bzero(buffer, sizeof(SOCKET_BUF_SIZE));
-
+    //char buffer[SOCKET_BUF_SIZE];
+    //bzero(buffer, sizeof(SOCKET_BUF_SIZE));
+    
     message msg;
     memset(&msg, 0, sizeof(message));
-
-	ssize_t recv_len = -1;
-
-	recv_len = recv(socketfd, (void *)&msg, sizeof(message), 0);
-
-	if (recv_len < 0) {
-		fprintf(stderr, "%s: recv()\n", strerror(errno));
-		return FAILED;
-	}
-
-	if (recv_len > 0) {
-		print_message(msg);
-	}
-	return SUCESS;
+    
+    ssize_t recv_len = -1;
+    recv_len = recv(socketfd, (void *)&msg, sizeof(message), 0);
+    
+    if (recv_len < 0) {
+        fprintf(stderr, "%s: recv()\n", strerror(errno));
+        return FAILED;
+    }
+    
+    if (recv_len > 0) {
+        print_message(msg);
+    }
+    
+    return SUCESS;
 }
 
 int start_server_socket(int server_socket) {
