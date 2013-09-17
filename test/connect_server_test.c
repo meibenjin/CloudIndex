@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
 
 
     message msg;
-    msg.OP = HELLO;
+    msg.op = HELLO;
     strncpy(msg.src, "192.168.11.134", MAX_IP_ADDR_LENGTH);
     strncpy(msg.dst, "192.168.11.133", MAX_IP_ADDR_LENGTH);
 

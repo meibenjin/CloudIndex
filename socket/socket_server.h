@@ -23,7 +23,7 @@ int accept_connection(int socketfd);
 int process_request(int socketfd);
 
 // start a server socket
-int start_server_socket(int server_socket);
+int start_server_socket();
 
 void print_message(message msg);
 

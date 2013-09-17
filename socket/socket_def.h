@@ -12,15 +12,14 @@
 //socket API
 #include<netinet/in.h>
 #include<arpa/inet.h>
-#include<sys/types.h>
-#include<ifaddrs.h>
+//#include<sys/types.h>
 
 #define LISTEN_PORT 10086
 #define LISTEN_QUEUE_LENGTH 20
 #define SOCKET_BUF_SIZE 8192
 
 typedef struct message{
-	int OP;
+	uint8_t op;
 	char src[MAX_IP_ADDR_LENGTH];
 	char dst[MAX_IP_ADDR_LENGTH];
 }message;

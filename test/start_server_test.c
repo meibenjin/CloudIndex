@@ -10,10 +10,6 @@
 
 int main(int argc, char **argv){
 	int server_socket;
-	server_socket = new_server_socket();
-	if(server_socket == FAILED){
-		return 0;
-	}
-    start_server_socket(server_socket);
+    server_socket = start_server_socket();
 	return 0;
 }

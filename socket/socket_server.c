@@ -67,13 +67,13 @@ int accept_connection(int socketfd) {
 int process_request(int socketfd) {
 	//char buffer[SOCKET_BUF_SIZE];
 	//bzero(buffer, sizeof(SOCKET_BUF_SIZE));
-	
+
 	message msg;
 	memset(&msg, 0, sizeof(message));
 
 	ssize_t recv_len = -1;
 
-	recv_len = recv(socketfd, (void *)&msg, sizeof(message), 0);
+	recv_len = recv(socketfd, (void *) &msg, sizeof(message), 0);
 
 	if (recv_len < 0) {
 		fprintf(stderr, "%s: recv()\n", strerror(errno));
@@ -86,7 +86,14 @@ int process_request(int socketfd) {
 	return SUCESS;
 }
 
-int start_server_socket(int server_socket) {
+int start_server_socket() {
+
+	int server_socket;
+	server_socket = new_server_socket();
+	if (server_socket == FAILED) {
+		return FAILED;
+	}
+
 	// listen connections from client
 	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0) {
 		fprintf(stderr, "%s: bind()\n", strerror(errno));
@@ -103,14 +110,14 @@ int start_server_socket(int server_socket) {
 			// TODO: handle accept connection failed
 			continue;
 		}
-
 		process_request(conn_socket);
+
+		close(conn_socket);
 	}
-	return SUCESS;
 }
 
 void print_message(message msg) {
-	printf("op:%d\n", msg.OP);
+	printf("op:%d\n", msg.op);
 	printf("src:%s\n", msg.src);
 	printf("dst:%s\n", msg.dst);
 }
