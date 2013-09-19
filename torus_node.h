@@ -8,34 +8,31 @@
 #ifndef TORUS_NODE_H_
 #define TORUS_NODE_H_
 
-#include"head.h"
-
-#define MAX_NEIGHBORS 6
-#define MAX_NODES_NUM 10 * 10 * 10
+#include"utils.h"
+#include"socket/socket_def.h"
 
 // torus partitions on 3-dimension
-typedef struct torus_partitions{
+typedef struct torus_partitions
+{
 	int p_x;
 	int p_y;
 	int p_z;
 }torus_partitions;
 
-// coordinate of a torus node
-typedef struct coordinate{
-	int x;
-	int y;
-	int z;
-}coordinate;
-
-typedef struct torus_node{
+typedef struct torus_node
+{
 	// torus node ip address
 	char node_ip[MAX_IP_ADDR_LENGTH];
 
 	// torus node coordinate
 	struct coordinate node_id;
 
-	// neighbors of a torus node
+    // number of neighbors
+    int neighbors_num;
+
+	// torus node's neighbors 
 	struct torus_node *neighbors[MAX_NEIGHBORS];
+
 
 }torus_node;
 
@@ -70,11 +67,10 @@ int create_torus();
 
 void print_torus();
 
-
-
-
-
-
+// dispatch all nodes and theirs neighbors info via socket
+int dispatch_torus_nodes();
 
 
 #endif /* TORUS_NODE_H_ */
+
+
