@@ -12,7 +12,8 @@
 
 #include"socket_server.h"
 
-int init_server_addr(struct sockaddr_in *server_addr) {
+int init_server_addr(struct sockaddr_in *server_addr)
+{
 	bzero(server_addr, sizeof(server_addr));
 	server_addr->sin_family = AF_INET;
 	server_addr->sin_addr.s_addr = htons(INADDR_ANY);
@@ -21,7 +22,8 @@ int init_server_addr(struct sockaddr_in *server_addr) {
 	return SUCESS;
 }
 
-int new_server_socket() {
+int new_server_socket()
+{
 	struct sockaddr_in server_addr;
 
 	//init server address
@@ -29,7 +31,8 @@ int new_server_socket() {
 
 	//create server socket. type: TCP stream protocol
 	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (server_socket < 0) {
+	if (server_socket < 0)
+    {
 		fprintf(stderr, "%s: socket()\n", strerror(errno));
 		return FAILED;
 	}
@@ -38,7 +41,8 @@ int new_server_socket() {
 	int ret = bind(server_socket, (struct sockaddr*) &server_addr,
 			sizeof(struct sockaddr));
 
-	if (ret < 0) {
+	if (ret < 0)
+    {
 		fprintf(stderr, "%s: bind()\n", strerror(errno));
 		return FAILED;
 	}
@@ -46,7 +50,8 @@ int new_server_socket() {
 	return server_socket;
 }
 
-int accept_connection(int socketfd) {
+int accept_connection(int socketfd)
+{
 	struct sockaddr_in client_addr;
 	socklen_t length = sizeof(client_addr);
 	int conn_socket;
@@ -54,7 +59,8 @@ int accept_connection(int socketfd) {
 	// accept a socket connection from client
 	conn_socket = accept(socketfd, (struct sockaddr*) &client_addr, &length);
 
-	if (conn_socket < 0) {
+	if (conn_socket < 0)
+    {
 		fprintf(stderr, "%s: accept()\n", strerror(errno));
 		return FAILED;
 	}
@@ -64,7 +70,8 @@ int accept_connection(int socketfd) {
 	return conn_socket;
 }
 
-int process_request(int socketfd) {
+int process_request(int socketfd)
+{
 	//char buffer[SOCKET_BUF_SIZE];
 	//bzero(buffer, sizeof(SOCKET_BUF_SIZE));
 
@@ -75,27 +82,32 @@ int process_request(int socketfd) {
 
 	recv_len = recv(socketfd, (void *) &msg, sizeof(message), 0);
 
-	if (recv_len < 0) {
+	if (recv_len < 0)
+    {
 		fprintf(stderr, "%s: recv()\n", strerror(errno));
 		return FAILED;
 	}
 
-	if (recv_len > 0) {
+	if (recv_len > 0)
+    {
 		print_message(msg);
 	}
 	return SUCESS;
 }
 
-int start_server_socket() {
+int start_server_socket()
+{
 
 	int server_socket;
 	server_socket = new_server_socket();
-	if (server_socket == FAILED) {
+	if (server_socket == FAILED)
+    {
 		return FAILED;
 	}
 
 	// listen connections from client
-	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0) {
+	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0)
+    {
 		fprintf(stderr, "%s: bind()\n", strerror(errno));
 		return FAILED;
 	}
@@ -103,10 +115,12 @@ int start_server_socket() {
 	printf("start server!\n");
 
 	int is_run = 1;
-	while (is_run) {
+	while (is_run)
+    {
 		int conn_socket;
 		conn_socket = accept_connection(server_socket);
-		if (conn_socket == FAILED) {
+		if (conn_socket == FAILED)
+        {
 			// TODO: handle accept connection failed
 			continue;
 		}
@@ -116,7 +130,8 @@ int start_server_socket() {
 	}
 }
 
-void print_message(message msg) {
+void print_message(message msg)
+{
 	printf("op:%d\n", msg.op);
 	printf("src:%s\n", msg.src);
 	printf("dst:%s\n", msg.dst);
