@@ -27,16 +27,16 @@ function copy_it()
 }
 
 if [ $# = 0 ]; then
-    $(clean_remote_dir)
-    $(copy_it)
+    clean_remote_dir
+    copy_it
 fi
 
 COMMAND=$1
 
 if [ "$COMMAND" = "clean" ]; then
-    $(clean_remote_dir)
+    clean_remote_dir
 elif [ "$COMMAND" = "copy" ]; then
-    $(copy_it)
+    copy_it
 fi
 
 
