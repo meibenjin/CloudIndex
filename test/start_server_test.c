@@ -8,7 +8,8 @@
 #include<stdio.h>
 #include"../socket/socket_server.h"
 
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
 	int server_socket;
     server_socket = start_server_socket();
 	return 0;

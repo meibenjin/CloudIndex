@@ -20,16 +20,20 @@
 
 #define COMMAND_LENGTH 10000
 
-void show_bytes(char* start, int len){
+void show_bytes(char* start, int len)
+{
     int i;
-    for (i = 0; i < len; i++){
+    for (i = 0; i < len; i++)
+    {
         printf(" %.2x", start[i]);
     }
     printf("\n");
 }
 
-int main(int argc, char **argv) {
-	if (argc != 3) {
+int main(int argc, char **argv)
+{
+	if (argc != 3)
+    {
 		printf("usage: ./%s serverip \n", argv[0]);
 		exit(1);
 	}
@@ -40,14 +44,16 @@ int main(int argc, char **argv) {
 
 	bzero(&server_addr, sizeof(struct sockaddr_in));
 	server_addr.sin_family = AF_INET;
-	if (inet_aton(argv[1], &server_addr.sin_addr) == 0) {
+	if (inet_aton(argv[1], &server_addr.sin_addr) == 0)
+    {
 		printf("convert server ip failed!\n");
 		exit(1);
 	}
 	server_addr.sin_port = htons(LISTEN_PORT);
 
-	if (connect(socketfd, (struct sockaddr *) &server_addr,
-			sizeof(struct sockaddr)) < 0) {
+	if (connect(socketfd, (struct sockaddr *)&server_addr,
+			sizeof(struct sockaddr)) < 0)
+    {
 		printf("connect server failed!\n");
 		exit(1);
 	}
