@@ -1,26 +1,31 @@
 # this is makefile of torus
 
 SOCKETDIR=./socket
+TORUSDIR=./torus_node
+CONTROLDIR=./control_node
 TESTDIR=./test
 BIN=./bin
 
-all: torus start_server connect_server test1
+all: control start_node test1
 
-torus:
-	gcc -g -o $(BIN)/$@ torus_node.c
+control: control.o torus_node.o 
+	gcc -g -o $(BIN)/$@ $(BIN)/control.o $(BIN)/torus_node.o
 
-start_server: start_server.o socket_server.o 
-	gcc -o $(BIN)/$@ $(BIN)/start_server.o $(BIN)/socket_server.o 
+control.o:
+	gcc -o $(BIN)/$@ -c $(CONTROLDIR)/control.c
+
+torus_node.o:
+	gcc -o $(BIN)/$@ -c $(TORUSDIR)/torus_node.c
+
+start_node: start_node.o socket_server.o torus_node.o
+	gcc -o $(BIN)/$@ $(BIN)/start_node.o $(BIN)/socket_server.o $(BIN)/torus_node.o 
+
+start_node.o:
+	gcc -o $(BIN)/$@ -c $(TORUSDIR)/start_node.c
+
 socket_server.o:
-	gcc -o $(BIN)/$@ -c $(SOCKETDIR)/socket_server.c 
-start_server.o:
-	gcc -o $(BIN)/$@ -c $(TESTDIR)/start_server_test.c
+	gcc -o $(BIN)/$@ -c $(SOCKETDIR)/socket_server.c
 
-connect_server: connect_server.o 
-	gcc -o $(BIN)/$@ $(BIN)/connect_server.o 
-connect_server.o: 
-	gcc -o $(BIN)/$@ -c $(TESTDIR)/connect_server_test.c
-	
 test1:
 	gcc -o $(BIN)/$@ test.c
 	
