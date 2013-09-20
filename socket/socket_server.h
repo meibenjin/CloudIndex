@@ -8,7 +8,13 @@
 #ifndef SOCKET_SERVER_H_
 #define SOCKET_SERVER_H_
 
-#include"socket_def.h"
+
+//socket API
+#include<netinet/in.h>
+#include<arpa/inet.h>
+
+#include"../utils.h"
+#include"../torus_node/torus_node.h"
 
 // init server address
 int init_server_addr(struct sockaddr_in *server_addr);
