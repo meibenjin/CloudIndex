@@ -70,35 +70,46 @@ int accept_connection(int socketfd)
 	return conn_socket;
 }
 
-int update_torus(struct message msg)
+int do_update_torus(struct message msg)
 {
-    set_node_ip(&local_torus_node, msg.dst_ip);
-    // TODO create torus (need controll send node info)
-    //memcpy(&neighbors_num, (void*)&msg.data, sizeof(int));
+    int i;
+    int nodes_num = 0;
+
+    memcpy(&nodes_num, msg.data, sizeof(int));
+    if( nodes_num <= 0)
+    {
+        printf("do_update_torus: torus nodes num is wrong\n");
+        return FALSE; 
+    }
+
+    struct node_info nodes[nodes_num];
+
+    for(i = 0; i < nodes_num; ++i)
+    {
+        memcpy(&nodes[i], (void*)msg.data + sizeof(int) + sizeof(struct node_info) * i, sizeof(struct node_info));
+    }
+    // TODO create torus
+    return TRUE;
 }
 
 int process_message(struct message msg)
 {
-    int ret;
+    int reply_code;
     switch(msg.op)
     {
         case UPDATE_TORUS:
-            update_torus(msg);
-            ret = SUCCESS;
-        case READ:
-            ret = SUCCESS;
-        case WRITE:
-            ret = SUCCESS;
+            if (TRUE == do_update_torus(msg))
+                reply_code= SUCCESS;
+            else
+                reply_code= FAILED;
         default:
-            ret = WRONG_OP;
+            reply_code= WRONG_OP;
     }
-    return ret;
+    return reply_code;
 }
 
 int process_request(int socketfd)
 {
-	//char buffer[SOCKET_BUF_SIZE];
-	//bzero(buffer, sizeof(SOCKET_BUF_SIZE));
 
 	struct message msg;
 	memset(&msg, 0, sizeof(struct message));
@@ -114,7 +125,8 @@ int process_request(int socketfd)
 	}
     else
     {
-        process_message(msg);
+        int reply_code = process_message(msg);
+        // TODO reply the client
     }
 
 	return TRUE;
@@ -149,6 +161,7 @@ int start_server_socket()
 			// TODO: handle accept connection failed
 			continue;
 		}
+
 		process_request(conn_socket);
 
 		close(conn_socket);

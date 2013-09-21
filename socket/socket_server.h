@@ -25,6 +25,16 @@ int new_server_socket();
 // accept a connection from client
 int accept_connection(int socketfd);
 
+// handle the update torus request from client
+int do_update_torus(struct message msg);
+
+/* resolve the message sended by client
+ *
+ * return: the reply code( SUCCESS, FAILED, WRONG_OP)
+ *
+ */
+int process_message(struct message msg);
+
 // process a request from client 
 int process_request(int socketfd);
 
