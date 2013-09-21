@@ -34,7 +34,7 @@ int assign_node_ip(torus_node *node_ptr)
 		printf("assign_node_ip: node_ptr is null pointer\n");
 		return FALSE;
 	}
-	strncpy(node_ptr->node_ip, "0.0.0.0", MAX_IP_ADDR_LENGTH);
+	strncpy(node_ptr->info.ip, "0.0.0.0", MAX_IP_ADDR_LENGTH);
 	return TRUE;
 }
 
@@ -98,7 +98,7 @@ int set_neighbors(torus_node *node_ptr, int x, int y, int z)
 		node_ptr->neighbors[i++] = &torus_node_list[zli];
 	}
 
-    node_ptr->neighbors_num = i;
+    set_neighbors_num(node_ptr, i);
 
 	return TRUE;
 }
@@ -106,7 +106,7 @@ int set_neighbors(torus_node *node_ptr, int x, int y, int z)
 void print_neighbors(torus_node node)
 {
 	int i;
-	for (i = 0; i < node.neighbors_num; ++i)
+	for (i = 0; i < node.info.neighbors_num; ++i)
     {
 		if (node.neighbors[i])
         {
@@ -205,7 +205,7 @@ int send_torus_nodes(char* dst_ip, int nodes_num, struct node_info *nodes)
     // TODO automatically get local ip
     strncpy(msg.src_ip, "10.77.30.100", MAX_IP_ADDR_LENGTH);
     strncpy(msg.dst_ip, dst_ip, MAX_IP_ADDR_LENGTH);
-    memcpy(msg.data, (void *)&nodes_num, sizeof(int)); 
+    memcpy(msg.data, &nodes_num, sizeof(int));
     for(i = 0; i < nodes_num; i++)
     {
         memcpy(msg.data + sizeof(int) + sizeof(struct node_info) * i, (void *)&nodes[i], sizeof(struct node_info));
@@ -233,8 +233,14 @@ int send_torus_nodes(char* dst_ip, int nodes_num, struct node_info *nodes)
             printf("receive reply from %s failed\n", dst_ip);
     }
 
-    return reply;
+    if( SUCCESS != reply)
+    {
+        return FAILED;
+    }
+
+    return SUCCESS;
 }
+
 
 int update_torus()
 {
@@ -247,26 +253,30 @@ int update_torus()
 
     for(i = 0; i < torus_node_num; ++i)
     { 
-        struct torus_node *node_ptr = NULL;
-        node_ptr = &torus_node_list[i];
 
-        int neighbors_num = node_ptr->neighbors_num;
+        int neighbors_num = get_neighbors_num(torus_node_list[i]);
 
         // the nodes array includes dst nodes and its' neighbors
         struct node_info nodes[neighbors_num + 1];
-        // TODO add dst node itself
 
+        // add dst node itself
+        nodes[0] = torus_node_list[i].info;
+
+        struct torus_node *node_ptr = NULL;
+        node_ptr = &torus_node_list[i];
         for(j = 0; j < neighbors_num; ++j)
         {
             if(node_ptr && node_ptr->neighbors[j])
             {
-                strncpy(nodes[j].ip, node_ptr->neighbors[j]->node_ip, MAX_IP_ADDR_LENGTH);
-                nodes[j].id = node_ptr->neighbors[j]->node_id;
+                nodes[j+1] = node_ptr->neighbors[j]->info;
                 index++;
             }
         }
-        char *dst_ip = node_ptr->node_ip;
-        // TODO send to dst_ip
+
+        char dst_ip[MAX_IP_ADDR_LENGTH];
+        get_node_ip(*node_ptr, dst_ip);
+
+        // send to dst_ip
         send_torus_nodes(dst_ip, neighbors_num + 1, nodes);
     }
 }
