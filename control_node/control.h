@@ -12,20 +12,17 @@
 #include<stdlib.h>
 #include<string.h>
 
-//socket API
-#include<netinet/in.h>
-#include<arpa/inet.h>
 
 #include"../utils.h"
 #include"../torus_node/torus_node.h"
+#include"../socket/socket.h"
 
 // torus partitions on 3-dimension
-typedef struct torus_partitions
-{
+typedef struct torus_partitions {
 	int p_x;
 	int p_y;
 	int p_z;
-}torus_partitions;
+} torus_partitions;
 
 // torus node list
 torus_node *torus_node_list;
@@ -44,8 +41,6 @@ int get_node_index(int x, int y, int z);
 
 int set_neighbors(torus_node *node_ptr, int x, int y, int z);
 
-void print_neighbors(torus_node node);
-
 // create a new torus
 int create_torus();
 
@@ -57,7 +52,5 @@ int send_torus_nodes(char* dst_ip, int nodes_num, struct node_info *nodes);
 // update all nodes and theirs neighbors info via socket
 int update_torus();
 
-
 #endif /* CONTROL_H_ */
-
 
