@@ -105,6 +105,27 @@ void print_node_info(node_info node) {
 	printf("(%d, %d, %d)\t%s\n", node.id.x, node.id.y, node.id.z, node.ip);
 }
 
+void init_request_list() {
+    // TODO init _request_list
+    ;
+}
+
+int find_request(const char *req_stamp) {
+    // TODO init _request_list
+    return TRUE;
+}
+
+
+int insert_request(const char *req_stamp) {
+    // TODO init _request_list
+    return TRUE;
+}
+
+int remove_request(const char *req_stamp) {
+    // TODO init _request_list
+    return TRUE;
+}
+
 int traverse_torus_node(struct message msg) {
     char stamp[STAMP_SIZE];
     memset(stamp, 0, STAMP_SIZE);
@@ -150,7 +171,6 @@ int process_message(int socketfd, struct message msg) {
 
 	case UPDATE_TORUS:
 		printf("request: update torus.\n");
-        printf("request stamp: %s\n", msg.req_stamp);
 		if (TRUE == update_torus_node(msg))
 			reply_code = SUCCESS;
 		else
