@@ -10,36 +10,45 @@
 
 
 //socket API
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
 
 #include"../utils.h"
-#include"../torus_node/torus_node.h"
 
-// init server address
-int init_server_addr(struct sockaddr_in *server_addr);
+// initial a socket address
+void init_socket_addr(struct sockaddr_in *socket_addr);
 
-// create a new server socket
+/* create a new client socket
+ *
+ * return: socket file descriptor
+ *
+ */
+
+int new_client_socket();
+
+/* create a new server socket
+ *
+ * return: socket file descriptor
+ *
+ */
 int new_server_socket();
 
 // accept a connection from client
 int accept_connection(int socketfd);
 
-// handle the update torus request from client
-int do_update_torus(struct message msg);
+// reply to client
+int reply(int socketfd, int reply_code);
 
-/* resolve the message sended by client
- *
- * return: the reply code( SUCCESS, FAILED, WRONG_OP)
- *
- */
-int process_message(struct message msg);
+// receive message
+int send_message(int socketfd, const struct message msg);
 
-// process a request from client 
-int process_request(int socketfd);
+// receive message
+int receive_message(int socketfd, struct message *msg);
 
-// start a server socket
-int start_server_socket();
+int get_local_ip(char *ip);
 
 void print_message(message msg);
 
