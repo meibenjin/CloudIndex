@@ -52,6 +52,14 @@ void print_coordinate(torus_node node);
 
 void init_torus_node(torus_node *node_ptr);
 
+/* create torus from several nodes
+ *
+ * notes: the nodes includes a torus node info
+ * and its' neighbor torus nodes info 
+ * 
+ */
+int create_torus_node(torus_node *torus, node_info *nodes);
+
 
 #endif /* TORUS_NODE_H_ */
 

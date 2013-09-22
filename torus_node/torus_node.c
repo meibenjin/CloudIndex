@@ -79,5 +79,31 @@ void init_torus_node(torus_node *node_ptr)
 	}
 }
 
+int create_torus_node(torus_node *torus, node_info *nodes)
+{
+    if(torus == NULL)
+    {
+        printf("create_torus_node: torus is null pointer\n");
+        return FALSE;
+    }
+    if( nodes == NULL)
+    {
+        printf("create_torus_node: nodes info is null pointer\n");
+        return FALSE;
+    }
+    torus->info = nodes[0];
+    int neighbors_num = nodes[0].neighbors_num;
+    int i;
+    for(i = 0; i < neighbors_num; ++i)
+    {
+        torus_node *new_node = (torus_node *) malloc(sizeof(torus_node));
+
+        init_torus_node(new_node);
+        new_node->info = nodes[i+1];
+        torus->neighbors[i] = new_node; 
+    }
+    return TRUE;
+}
+
 
 
