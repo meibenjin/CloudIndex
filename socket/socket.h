@@ -43,13 +43,16 @@ int accept_connection(int socketfd);
 int reply(int socketfd, int reply_code);
 
 // receive message
-int send_message(int socketfd, const struct message msg);
+int send_message(int socketfd, struct message msg);
 
 // receive message
 int receive_message(int socketfd, struct message *msg);
 
+// get local ip address based on if_name(eth0, eth1...)
 int get_local_ip(char *ip);
 
-void print_message(message msg);
+void print_message(struct message msg);
+
+int gen_request_stamp(char *stamp);
 
 #endif /* SOCKET_SERVER_H_ */

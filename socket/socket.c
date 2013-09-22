@@ -43,6 +43,10 @@ int new_client_socket(char *ip) {
 
 
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if(client_socket < 0){
+		fprintf(stderr, "%s: socket()\n", strerror(errno));
+        return FALSE;
+    }
 
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
 			sizeof(struct sockaddr)) < 0) {
@@ -134,7 +138,7 @@ int receive_reply(int socketfd) {
 	return TRUE;
 }
 
-int send_message(int socketfd, const struct message msg) {
+int send_message(int socketfd, struct message msg) {
 	if (SOCKET_ERROR
 			== send(socketfd, (void *) &msg, sizeof(struct message), 0)) {
 		// TODO do something if send failed
@@ -160,6 +164,7 @@ int receive_message(int socketfd, struct message *msg) {
 	return TRUE;
 }
 
+// TODO get local ip without ifr_name
 int get_local_ip(char *ip) {
 	if (ip == NULL) {
 		printf("get_local_ip: ip is null pointer.\n");
@@ -167,36 +172,46 @@ int get_local_ip(char *ip) {
 	}
 
 	int socketfd;
-	struct ifconf conf;
-	struct ifreq *ifr;
-	char buff[BUFSIZ];
-	int num = 0;
-
-	socketfd = socket(PF_INET, SOCK_DGRAM, 0);
-	conf.ifc_len = BUFSIZ;
-	conf.ifc_buf = buff;
-
-	ioctl(socketfd, SIOCGIFCONF, &conf);
-	num = conf.ifc_len / sizeof(struct ifreq);
-	ifr = conf.ifc_req;
-
-	if (num > 0) {
-		struct sockaddr_in *sin = (struct sockaddr_in *) (&ifr->ifr_addr);
-		ioctl(socketfd, SIOCGIFFLAGS, ifr);
-		if (((ifr->ifr_flags & IFF_LOOPBACK) == 0)
-				&& (ifr->ifr_flags & IFF_UP)) {
-			strncpy(ip, inet_ntoa(sin->sin_addr), IP_ADDR_LENGTH);
-		}
-	} else {
-		printf("get_local_ip: get local ip failed.\n");
+	struct ifreq ifr;
+	socketfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(socketfd < 0){
+		fprintf(stderr, "%s: socket()\n", strerror(errno));
 		return FALSE;
-	}
-	return TRUE;
+    }
+
+    int ret = FALSE;
+    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
+    if(ioctl(socketfd, SIOCGIFADDR, &ifr) >= 0){
+        strncpy(ip, inet_ntoa(((struct sockaddr_in*)&(ifr.ifr_addr))->sin_addr), IP_ADDR_LENGTH);
+        ret = TRUE;
+    } else {
+        printf("get_local_ip: get local ip failed.\n");
+        ret =FALSE;
+    }
+    close(socketfd);
+	ret = TRUE;
 }
 
-void print_message(message msg) {
+void print_message(struct message msg) {
 	printf("op:%d\n", msg.op);
 	printf("src:%s\n", msg.src_ip);
 	printf("dst:%s\n", msg.dst_ip);
 }
+
+int gen_request_stamp(char *stamp) {
+    if(stamp == NULL) {
+        printf("gen_request_stamp: stamp is null pointer.\n");
+        return FALSE;
+    }
+    // TODO automatic generate number stamp
+    static long number_stamp = 1;
+    char ip_stamp[IP_ADDR_LENGTH];
+    if(FALSE == get_local_ip(ip_stamp)){
+        return FALSE;
+    }
+    snprintf(stamp, STAMP_SIZE, "%s_%ld", ip_stamp, number_stamp++); 
+    return TRUE;
+}
+
+
 
