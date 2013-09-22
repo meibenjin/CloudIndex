@@ -106,7 +106,7 @@ void print_node_info(node_info node) {
 }
 
 void init_request_list() {
-    // TODO init _request_list
+    // TODO init request_list
     ;
 }
 
