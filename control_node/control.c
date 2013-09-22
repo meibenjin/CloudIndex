@@ -146,7 +146,7 @@ void print_torus() {
 	}
 }
 
-int send_torus_nodes(char *dst_ip, int nodes_num, struct node_info *nodes) {
+int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes) {
 	int i;
 	int socketfd;
 
@@ -157,7 +157,8 @@ int send_torus_nodes(char *dst_ip, int nodes_num, struct node_info *nodes) {
 
 	// get local ip address
 	char local_ip[IP_ADDR_LENGTH];
-	if (FAILED == get_local_ip(local_ip)) {
+    memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
 		return FALSE;
 	}
 
@@ -216,6 +217,7 @@ int update_torus() {
 		}
 
 		char dst_ip[IP_ADDR_LENGTH];
+        memset(dst_ip, 0, IP_ADDR_LENGTH);
 		get_node_ip(*node_ptr, dst_ip);
 
 		// send to dst_ip

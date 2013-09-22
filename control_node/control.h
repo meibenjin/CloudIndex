@@ -47,7 +47,7 @@ int create_torus();
 void print_torus();
 
 // send torus nodes info to dst_ip
-int send_torus_nodes(char* dst_ip, int nodes_num, struct node_info *nodes);
+int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes);
 
 // update all nodes and theirs neighbors info via socket
 int update_torus();
