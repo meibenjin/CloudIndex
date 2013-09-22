@@ -86,9 +86,14 @@ int do_update_torus(struct message msg)
 
     for(i = 0; i < nodes_num; ++i)
     {
-        memcpy(&nodes[i], (void*)msg.data + sizeof(int) + sizeof(struct node_info) * i, sizeof(struct node_info));
+        memcpy(&nodes[i], (void*)(msg.data + sizeof(int) + sizeof(struct node_info) * i), sizeof(struct node_info));
     }
-    // TODO create torus
+
+    // create torus node from serval nodes
+    if(FALSE == create_torus_node(&local_torus_node, nodes))
+    {
+        return FALSE;
+    }
     return TRUE;
 }
 
@@ -127,6 +132,14 @@ int process_request(int socketfd)
     {
         int reply_code = process_message(msg);
         // TODO reply the client
+        char send_buf[MAX_REPLY_SIZE];
+        memcpy(send_buf, (void *)&reply_code, MAX_REPLY_SIZE);
+        if(SOCKET_ERROR == send(socketfd, (void *)send_buf, sizeof(MAX_REPLY_SIZE), 0))
+        {
+            // TODO do something if send failed
+            printf("send reply failed\n");
+            return FALSE;
+        }
     }
 
 	return TRUE;
