@@ -111,18 +111,18 @@ void init_request_list() {
 }
 
 int find_request(const char *req_stamp) {
-    // TODO init _request_list
+    // TODO find request in request_list
     return TRUE;
 }
 
 
 int insert_request(const char *req_stamp) {
-    // TODO init _request_list
+    // TODO insert request_list
     return TRUE;
 }
 
 int remove_request(const char *req_stamp) {
-    // TODO init _request_list
+    // TODO remove request_list
     return TRUE;
 }
 
@@ -136,7 +136,9 @@ int traverse_torus_node(struct message msg) {
     } else {
         strncpy(stamp, msg.data, STAMP_SIZE);
     }
-    request_list(stamp);
+
+    // TODO manage request list and forward message
+    insert_request(stamp);
     forward_message(msg.src_ip, msg);
 }
 
