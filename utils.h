@@ -13,12 +13,19 @@
 #define IP_ADDR_LENGTH 20
 #define LISTEN_PORT 10086
 #define LISTEN_QUEUE_LENGTH 20
+#define REQUEST_LIST_LENGTH 20
 #define SOCKET_BUF_SIZE 1024 
 #define DATA_SIZE 1000
 #define REPLY_SIZE sizeof(int)
 #define SOCKET_ERROR -1
+#define STAMP_SIZE 40 
 
-// message for communication among torus nodes
+/* message for transport among torus nodes
+ * op:  operation code
+ * src_ip: source ip address
+ * dst_ip: destination ip address
+ * data: transport data stream from src_ip to dst_ip
+ */
 typedef struct message
 {
 	int op;
@@ -31,7 +38,6 @@ typedef struct message
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 10 * 10 * 10
 
-
 // 3-dimension coordinate
 typedef struct coordinate
 {
@@ -43,7 +49,8 @@ typedef struct coordinate
 // return value of functions
 enum status
 {
-	TRUE = 0, FALSE = -1
+	TRUE = 0, 
+    FALSE = -1
 };
 
 // reply code for the client request
@@ -55,13 +62,6 @@ enum reply
     WRONG_OP
 };
 
-// torus node status
-enum torus_node_status
-{
-	BUSY = 1,
-	FREE = 0
-};
-    
 //operations for torus nodes in communication 
 enum OP
 {
