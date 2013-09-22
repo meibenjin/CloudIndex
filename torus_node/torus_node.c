@@ -105,6 +105,20 @@ void print_node_info(node_info node) {
 	printf("(%d, %d, %d)\t%s\n", node.id.x, node.id.y, node.id.z, node.ip);
 }
 
+int traverse_torus_node(struct message msg) {
+    char stamp[STAMP_SIZE];
+    memset(stamp, 0, STAMP_SIZE);
+    if(strcmp(msg.data, "") == 0) {
+        if(FALSE == gen_request_stamp(stamp)){
+            return FALSE;
+        }
+    } else {
+        strncpy(stamp, msg.data, STAMP_SIZE);
+    }
+    request_list(stamp);
+    forward_message(msg.src_ip, msg);
+}
+
 int update_torus_node(struct message msg) {
 	int i;
 	int nodes_num = 0;
@@ -133,16 +147,29 @@ int update_torus_node(struct message msg) {
 int process_message(int socketfd, struct message msg) {
 	int reply_code;
 	switch (msg.op) {
+
 	case UPDATE_TORUS:
 		printf("request: update torus.\n");
+        printf("request stamp: %s\n", msg.req_stamp);
 		if (TRUE == update_torus_node(msg))
 			reply_code = SUCCESS;
 		else
 			reply_code = FAILED;
 		break;
+
+    case TRAVERSE:
+        printf("request: traverse torus.\n");
+		if (TRUE == traverse_torus_node(msg))
+			reply_code = SUCCESS;
+		else
+			reply_code = FAILED;
+		break;
+
 	default:
 		reply_code = WRONG_OP;
+
 	}
+
 	if (FALSE == send_reply(socketfd, reply_code)) {
 		return FALSE;
 	}
