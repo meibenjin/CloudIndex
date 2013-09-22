@@ -29,12 +29,17 @@ int set_partitions(int p_x, int p_y, int p_z)
 
 int assign_node_ip(torus_node *node_ptr)
 {
+    char ip[8][20] = {"10.77.30.101", "10.77.30.199", \
+        "10.77.30.200", "10.77.30.201", \
+            "10.77.30.202", "10.77.30.203", \
+            "10.77.30.204", "10.77.30.205"};
+    static int i = 0;
 	if(!node_ptr)
     {
 		printf("assign_node_ip: node_ptr is null pointer\n");
 		return FALSE;
 	}
-	strncpy(node_ptr->info.ip, "0.0.0.0", MAX_IP_ADDR_LENGTH);
+	strncpy(node_ptr->info.ip, ip[i++], MAX_IP_ADDR_LENGTH);
 	return TRUE;
 }
 
@@ -227,18 +232,22 @@ int send_torus_nodes(char* dst_ip, int nodes_num, struct node_info *nodes)
     if( len > 0)
     {
         memcpy((void *)&reply, recv_buf, MAX_REPLY_SIZE);
-        if(TRUE == reply)
+        if(SUCCESS == reply)
+        {
             printf("finish send torus nodes\n");
+            return TRUE;
+        }
         else
-            printf("receive reply from %s failed\n", dst_ip);
+        {
+            printf("send torus nodes to %s failed\n", dst_ip);
+            return FALSE;
+        }
     }
-
-    if( SUCCESS != reply)
+    else
     {
-        return FAILED;
+        printf("receive reply from %s failed\n", dst_ip);
+        return FALSE;
     }
-
-    return SUCCESS;
 }
 
 
