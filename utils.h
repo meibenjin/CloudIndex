@@ -24,6 +24,7 @@
  * op:  operation code
  * src_ip: source ip address
  * dst_ip: destination ip address
+ * stamp: unique request stamp for global system
  * data: transport data stream from src_ip to dst_ip
  */
 typedef struct message
@@ -31,6 +32,7 @@ typedef struct message
 	int op;
 	char src_ip[IP_ADDR_LENGTH];
 	char dst_ip[IP_ADDR_LENGTH];
+	char stamp[STAMP_SIZE];
     char data[DATA_SIZE];
 }message;
 
@@ -58,6 +60,7 @@ enum reply
 {
     SUCCESS = 1,
     FAILED,
+    VISITED,
     // incorrect operations 
     WRONG_OP
 };

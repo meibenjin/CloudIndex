@@ -99,7 +99,7 @@ int accept_connection(int socketfd) {
 		return FALSE;
 	}
 
-	printf("accept a connection:%s\n", inet_ntoa(client_addr.sin_addr));
+	//printf("accept a connection:%s\n", inet_ntoa(client_addr.sin_addr));
 
 	return conn_socket;
 }
@@ -125,17 +125,12 @@ int receive_reply(int socketfd) {
 	recv_len = recv(socketfd, reply_buf, REPLY_SIZE, 0);
 	if (recv_len <= 0) {
 		fprintf(stderr, "%s: recv()\n", strerror(errno));
-		return FALSE;
+		return FAILED;
 	}
 
 	int reply = FAILED;
 	memcpy((void *) &reply, reply_buf, REPLY_SIZE);
-	if (SUCCESS == reply) {
-		return TRUE;
-	} else {
-		return FALSE;
-	}
-	return TRUE;
+	return reply;
 }
 
 int send_message(int socketfd, struct message msg) {
@@ -189,7 +184,7 @@ int get_local_ip(char *ip) {
         ret =FALSE;
     }
     close(socketfd);
-	ret = TRUE;
+	return ret;
 }
 
 void print_message(struct message msg) {

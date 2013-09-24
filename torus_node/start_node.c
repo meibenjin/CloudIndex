@@ -14,7 +14,15 @@
 int main(int argc, char **argv) {
 	int server_socket;
 	should_run = 1;
+	is_visited = FALSE;
 	init_torus_node(&local_torus_node);
+
+	req_list = (struct request *) malloc(sizeof(struct request));
+	if(req_list == NULL){
+		printf("malloc request list failed.\n");
+		exit(1);
+	}
+	init_request_list();
 
 	server_socket = new_server_socket();
 	if (server_socket == FALSE) {

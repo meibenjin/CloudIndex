@@ -157,7 +157,7 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 
 	// get local ip address
 	char local_ip[IP_ADDR_LENGTH];
-    memset(local_ip, 0, IP_ADDR_LENGTH);
+	memset(local_ip, 0, IP_ADDR_LENGTH);
 	if (FALSE == get_local_ip(local_ip)) {
 		return FALSE;
 	}
@@ -166,6 +166,7 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 	msg.op = UPDATE_TORUS;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
 	memcpy(msg.data, &nodes_num, sizeof(int));
 	for (i = 0; i < nodes_num; i++) {
 		memcpy(msg.data + sizeof(int) + sizeof(struct node_info) * i,
@@ -174,7 +175,7 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 
 	int ret;
 	if (TRUE == send_message(socketfd, msg)) {
-		if (TRUE == receive_reply(socketfd)) {
+		if (SUCCESS == receive_reply(socketfd)) {
 			printf("%s: send torus nodes ...... finish.\n", dst_ip);
 			ret = TRUE;
 		} else {
@@ -217,7 +218,7 @@ int update_torus() {
 		}
 
 		char dst_ip[IP_ADDR_LENGTH];
-        memset(dst_ip, 0, IP_ADDR_LENGTH);
+		memset(dst_ip, 0, IP_ADDR_LENGTH);
 		get_node_ip(*node_ptr, dst_ip);
 
 		// send to dst_ip
@@ -225,6 +226,32 @@ int update_torus() {
 			return FALSE;
 		}
 	}
+	return TRUE;
+}
+
+int traverse_torus(const char *entry_ip) {
+	int socketfd;
+
+	socketfd = new_client_socket(entry_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+	struct message msg;
+	msg.op = TRAVERSE;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+	memcpy(msg.data, "hello,", DATA_SIZE);
+
+	send_message(socketfd, msg);
+	close(socketfd);
 	return TRUE;
 }
 
@@ -246,9 +273,16 @@ int main(int argc, char **argv) {
 		;
 	}
 
-	print_torus();
+	//print_torus();
 
 	update_torus();
+
+	while (1) {
+		char entry_ip[IP_ADDR_LENGTH];
+		printf("input entry ip:");
+		scanf("%s", entry_ip);
+		traverse_torus(entry_ip);
+	}
 
 	return 0;
 }

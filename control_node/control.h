@@ -52,5 +52,7 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 // update all nodes and theirs neighbors info via socket
 int update_torus();
 
+int traverse_torus(const char *entry_ip);
+
 #endif /* CONTROL_H_ */
 

@@ -36,6 +36,8 @@ typedef struct torus_node {
 
 struct torus_node local_torus_node;
 
+int is_visited;
+
 // mark torus node is active or not 
 int should_run;
 
@@ -77,9 +79,9 @@ void print_node_info(node_info node);
 typedef struct request{
     char stamp[STAMP_SIZE];
     struct request *next;
-}request, *req_link_list;
+}request;
 
-req_link_list req_list;
+struct request *req_list;
 
 void init_request_list();
 
@@ -90,7 +92,9 @@ int insert_request(const char *req_stamp);
 int remove_request(const char *req_stamp);
 
 // handle the traverse torus request from client
-int traverse_torus_node(struct message msg); 
+int traverse_torus_node(int socketfd, struct message msg); 
+
+int forward_message(struct message msg);
 
 // handle the update torus request from client
 int update_torus_node(struct message msg);
