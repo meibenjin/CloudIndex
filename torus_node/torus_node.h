@@ -9,9 +9,6 @@
 #define TORUS_NODE_H_
 
 #include"../utils.h"
-#include"../socket/socket.h"
-
-/*++++++++++++++++++++++++++ begin torus +++++++++++++++++++++++++++++++++++++*/
 
 // torus node info 
 typedef struct node_info {
@@ -35,8 +32,6 @@ typedef struct torus_node {
 } torus_node;
 
 struct torus_node local_torus_node;
-
-int is_visited;
 
 // mark torus node is active or not 
 int should_run;
@@ -69,44 +64,6 @@ int create_torus_node(torus_node *torus, node_info *nodes);
 void print_torus_node(torus_node torus);
 
 void print_node_info(node_info node);
-
-/*++++++++++++++++++++++++++ end torus +++++++++++++++++++++++++++++++++++++++*/
-
-
-/*++++++++++++++++++++++++++ request processor +++++++++++++++++++++++++++++++*/
-
-// request list 
-typedef struct request{
-    char stamp[STAMP_SIZE];
-    struct request *next;
-}request;
-
-struct request *req_list;
-
-void init_request_list();
-
-int find_request(const char *req_stamp);
-
-int insert_request(const char *req_stamp);
-
-int remove_request(const char *req_stamp);
-
-// handle the traverse torus request from client
-int traverse_torus_node(int socketfd, struct message msg); 
-
-int forward_message(struct message msg);
-
-// handle the update torus request from client
-int update_torus_node(struct message msg);
-
-/* resolve the message sent from client
- * send reply code to client after all.
- *
- */
-int process_message(int socketfd, struct message msg);
-
-
-/*++++++++++++++++++++++++++ end processor +++++++++++++++++++++++++++++++++++*/
 
 
 #endif /* TORUS_NODE_H_ */
