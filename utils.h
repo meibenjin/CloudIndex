@@ -36,6 +36,18 @@ typedef struct message
     char data[DATA_SIZE];
 }message;
 
+/* reply message for transport among torus nodes
+ * op: operation code
+ * stamp unique request stamp for global system
+ * reply_code: message process result
+ */
+typedef struct reply_message{
+	int op;
+	char stamp[STAMP_SIZE];
+	int reply_code;
+}reply_message;
+
+
 // limits for torus
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 10 * 10 * 10
