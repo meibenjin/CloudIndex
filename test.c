@@ -7,10 +7,13 @@
 
 #include<stdio.h>
 #include<stdlib.h>
+#include<string.h>
 
 
 
 int main(void) {
-	return 0;
+	char test[40];
+	memset(test, 0, 40);
+	printf("%d\n", strcmp(test, ""));
 }
 
