@@ -44,6 +44,8 @@ void get_node_ip(torus_node node, char *ip);
 // set the coordinate of a torus node
 void set_coordinate(torus_node *node_ptr, int x, int y, int z);
 
+struct coordinate get_coordinate(torus_node node);
+
 // set the neighbors num of a torus node
 void set_neighbors_num(torus_node *node_ptr, int neighbors_num);
 

@@ -37,6 +37,10 @@ void set_coordinate(torus_node *node_ptr, int x, int y, int z) {
 	node_ptr->info.id.z = z;
 }
 
+struct coordinate get_coordinate(torus_node node){
+    return node.info.id;
+}
+
 void set_neighbors_num(torus_node *node_ptr, int neighbors_num) {
 	if (!node_ptr) {
 		printf("set_neighbors_num: node_ptr is null pointer.\n");
