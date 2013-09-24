@@ -37,16 +37,15 @@ int new_client_socket(char *ip) {
 
 	//initial client address
 	init_socket_addr(&client_addr);
-	if(FALSE == set_server_ip(&client_addr, ip)) {
-        return FALSE;
-    }
-
+	if (FALSE == set_server_ip(&client_addr, ip)) {
+		return FALSE;
+	}
 
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if(client_socket < 0){
+	if (client_socket < 0) {
 		fprintf(stderr, "%s: socket()\n", strerror(errno));
-        return FALSE;
-    }
+		return FALSE;
+	}
 
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
 			sizeof(struct sockaddr)) < 0) {
@@ -104,33 +103,29 @@ int accept_connection(int socketfd) {
 	return conn_socket;
 }
 
-int send_reply(int socketfd, int reply_code) {
-	char reply_buf[REPLY_SIZE];
-	memcpy(reply_buf, (void *) &reply_code, REPLY_SIZE);
-	if (SOCKET_ERROR == send(socketfd, (void *) reply_buf, REPLY_SIZE, 0)) {
+int send_reply(int socketfd, struct reply_message reply_msg) {
+	if (SOCKET_ERROR == send(socketfd, (void *) &reply_msg, sizeof(struct reply_message), 0)) {
 		// TODO do something if send failed
-		printf("reply: send reply failed.\n");
+		printf("send_reply: send reply failed.\n");
 		return FALSE;
 	}
 	return TRUE;
 }
 
-int receive_reply(int socketfd) {
-	char reply_buf[REPLY_SIZE];
-	memset(reply_buf, 0, REPLY_SIZE);
-
-	// receive reply after send torus nodes
-	ssize_t recv_len = -1;
-
-	recv_len = recv(socketfd, reply_buf, REPLY_SIZE, 0);
-	if (recv_len <= 0) {
-		fprintf(stderr, "%s: recv()\n", strerror(errno));
-		return FAILED;
+int receive_reply(int socketfd, struct reply_message *reply_msg) {
+	if (reply_msg == NULL) {
+		printf("receive_reply: reply_msg is null pointer.\n");
+		return FALSE;
 	}
 
-	int reply = FAILED;
-	memcpy((void *) &reply, reply_buf, REPLY_SIZE);
-	return reply;
+	ssize_t recv_len = -1;
+	recv_len = recv(socketfd, reply_msg, sizeof(struct reply_message), 0);
+	if (recv_len <= 0) {
+		fprintf(stderr, "%s: recv()\n", strerror(errno));
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 int send_message(int socketfd, struct message msg) {
@@ -138,7 +133,6 @@ int send_message(int socketfd, struct message msg) {
 			== send(socketfd, (void *) &msg, sizeof(struct message), 0)) {
 		// TODO do something if send failed
 		printf("%s: send torus nodes failed.\n", msg.dst_ip);
-		close(socketfd);
 		return FALSE;
 	}
 	return TRUE;
@@ -149,13 +143,14 @@ int receive_message(int socketfd, struct message *msg) {
 		printf("receive_message: msg is null pointer.\n");
 		return FALSE;
 	}
+
 	ssize_t recv_len = -1;
 	recv_len = recv(socketfd, (void *) msg, sizeof(struct message), 0);
-
 	if (recv_len <= 0) {
 		fprintf(stderr, "%s: recv()\n", strerror(errno));
 		return FALSE;
 	}
+
 	return TRUE;
 }
 
@@ -169,21 +164,23 @@ int get_local_ip(char *ip) {
 	int socketfd;
 	struct ifreq ifr;
 	socketfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if(socketfd < 0){
+	if (socketfd < 0) {
 		fprintf(stderr, "%s: socket()\n", strerror(errno));
 		return FALSE;
-    }
+	}
 
-    int ret = FALSE;
-    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
-    if(ioctl(socketfd, SIOCGIFADDR, &ifr) >= 0){
-        strncpy(ip, inet_ntoa(((struct sockaddr_in*)&(ifr.ifr_addr))->sin_addr), IP_ADDR_LENGTH);
-        ret = TRUE;
-    } else {
-        printf("get_local_ip: get local ip failed.\n");
-        ret =FALSE;
-    }
-    close(socketfd);
+	int ret = FALSE;
+	strncpy(ifr.ifr_name, "eth0", IFNAMSIZ);
+	if (ioctl(socketfd, SIOCGIFADDR, &ifr) >= 0) {
+		strncpy(ip,
+				inet_ntoa(((struct sockaddr_in*) &(ifr.ifr_addr))->sin_addr),
+				IP_ADDR_LENGTH);
+		ret = TRUE;
+	} else {
+		printf("get_local_ip: get local ip failed.\n");
+		ret = FALSE;
+	}
+	close(socketfd);
 	return ret;
 }
 
@@ -194,19 +191,17 @@ void print_message(struct message msg) {
 }
 
 int gen_request_stamp(char *stamp) {
-    if(stamp == NULL) {
-        printf("gen_request_stamp: stamp is null pointer.\n");
-        return FALSE;
-    }
-    // TODO automatic generate number stamp
-    static long number_stamp = 1;
-    char ip_stamp[IP_ADDR_LENGTH];
-    if(FALSE == get_local_ip(ip_stamp)){
-        return FALSE;
-    }
-    snprintf(stamp, STAMP_SIZE, "%s_%ld", ip_stamp, number_stamp++); 
-    return TRUE;
+	if (stamp == NULL) {
+		printf("gen_request_stamp: stamp is null pointer.\n");
+		return FALSE;
+	}
+	// TODO automatic generate number stamp
+	static long number_stamp = 1;
+	char ip_stamp[IP_ADDR_LENGTH];
+	if (FALSE == get_local_ip(ip_stamp)) {
+		return FALSE;
+	}
+	snprintf(stamp, STAMP_SIZE, "%s_%ld", ip_stamp, number_stamp++);
+	return TRUE;
 }
-
-
 
