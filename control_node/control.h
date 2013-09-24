@@ -26,6 +26,7 @@ typedef struct torus_partitions {
 
 // torus node list
 torus_node *torus_node_list;
+
 int torus_node_num;
 
 // partitions on 3-dimension
@@ -43,6 +44,9 @@ int set_neighbors(torus_node *node_ptr, int x, int y, int z);
 
 // create a new torus
 int create_torus();
+
+// append a extra new torus
+int append_torus();
 
 void print_torus();
 

@@ -139,6 +139,11 @@ int create_torus() {
 	return TRUE;
 }
 
+int append_torus() {
+
+	return TRUE;
+}
+
 void print_torus() {
 	int i;
 	for (i = 0; i < torus_node_num; ++i) {
@@ -174,12 +179,17 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 	}
 
 	int ret;
+	struct reply_message reply_msg;
 	if (TRUE == send_message(socketfd, msg)) {
-		if (SUCCESS == receive_reply(socketfd)) {
-			printf("%s: send torus nodes ...... finish.\n", dst_ip);
-			ret = TRUE;
+		if (TRUE == receive_reply(socketfd, &reply_msg)) {
+			if (SUCCESS == reply_msg.reply_code) {
+				printf("%s: send torus nodes ...... finish.\n", dst_ip);
+				ret = TRUE;
+			} else {
+				printf("%s: send torus nodes ...... error occurred.\n", dst_ip);
+				ret = FALSE;
+			}
 		} else {
-			printf("%s: can't resolve message content.\n", dst_ip);
 			ret = FALSE;
 		}
 	} else {
@@ -199,7 +209,6 @@ int update_torus() {
 	}
 
 	for (i = 0; i < torus_node_num; ++i) {
-
 		int neighbors_num = get_neighbors_num(torus_node_list[i]);
 
 		// the nodes array includes dst nodes and its' neighbors
@@ -247,8 +256,8 @@ int traverse_torus(const char *entry_ip) {
 	msg.op = TRAVERSE;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, "hello,", DATA_SIZE);
+	memset(msg.stamp, 0, STAMP_SIZE);
+	memset(msg.data, 0, DATA_SIZE);
 
 	send_message(socketfd, msg);
 	close(socketfd);
@@ -267,21 +276,24 @@ int main(int argc, char **argv) {
 	}
 
 	// create a new torus
-	if (create_torus() == FALSE) {
+	if (TRUE == create_torus()) {
+		//print_torus();
+		;
+	} else {
 		// TODO free torus when create failed
 		// free_torus
 		;
 	}
 
-	//print_torus();
+	append_torus();
 
-	update_torus();
-
-	while (1) {
-		char entry_ip[IP_ADDR_LENGTH];
-		printf("input entry ip:");
-		scanf("%s", entry_ip);
-		traverse_torus(entry_ip);
+	if (TRUE == update_torus()) {
+		while (1) {
+			char entry_ip[IP_ADDR_LENGTH];
+			printf("input entry ip:");
+			scanf("%s", entry_ip);
+			traverse_torus(entry_ip);
+		}
 	}
 
 	return 0;
