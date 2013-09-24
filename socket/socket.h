@@ -26,7 +26,6 @@ void init_socket_addr(struct sockaddr_in *socket_addr);
  * return: socket file descriptor
  *
  */
-
 int new_client_socket();
 
 /* create a new server socket
@@ -39,13 +38,12 @@ int new_server_socket();
 // accept a connection from client
 int accept_connection(int socketfd);
 
-// reply to client
-int reply(int socketfd, int reply_code);
+int send_reply(int socketfd, struct reply_message reply_msg);
 
-// receive message
+int receive_reply(int socketfd, struct reply_message *reply_msg);
+
 int send_message(int socketfd, struct message msg);
 
-// receive message
 int receive_message(int socketfd, struct message *msg);
 
 // get local ip address based on if_name(eth0, eth1...)
