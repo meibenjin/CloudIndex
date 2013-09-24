@@ -27,12 +27,17 @@ typedef struct torus_partitions {
 // torus node list
 torus_node *torus_node_list;
 
-int torus_node_num;
-
 // partitions on 3-dimension
 torus_partitions torus_p;
 
 int set_partitions(int p_x, int p_y, int p_z);
+
+int update_partitions(int direction, struct torus_partitions t_p);
+
+// calcate the total torus nodes number 
+int get_nodes_num(struct torus_partitions t_p);
+
+int translate_coordinates(int direction, struct torus_partitions t_p, struct torus_node *node_list);
 
 // assign torus node ip address
 int assign_node_ip(torus_node *node_ptr);
@@ -40,13 +45,24 @@ int assign_node_ip(torus_node *node_ptr);
 // return the index of torus node in torus node list
 int get_node_index(int x, int y, int z);
 
-int set_neighbors(torus_node *node_ptr, int x, int y, int z);
+int set_neighbors(torus_node *node_ptr);
 
 // create a new torus
-int create_torus();
+int new_torus(struct torus_partitions new_torus_p, struct torus_node *new_list);
+
+/* construct a new created torus
+ * construct steps:
+ *      set global variable torus_node_list
+ *      set neighbors for every torus node
+ */
+int construct_torus();
 
 // append a extra new torus
-int append_torus();
+int append_torus(int direction);
+
+/* merge appent_list into torus_node_list
+ */ 
+int merge_torus(int direction, struct torus_partitions append_torus_p, struct torus_node *append_list);
 
 void print_torus();
 

@@ -24,6 +24,55 @@ int set_partitions(int p_x, int p_y, int p_z) {
 	return TRUE;
 }
 
+int update_partitions(int direction, struct torus_partitions t_p) {
+    switch(direction) {
+        case X_R:
+        case X_L:
+            torus_p.p_x += t_p.p_x;
+            break;
+        case Y_R:
+        case Y_L:
+            torus_p.p_y += t_p.p_x;
+            break;
+        case Z_R:
+        case Z_L:
+            torus_p.p_x += t_p.p_x;
+            break;
+    }
+    
+}
+
+int get_nodes_num(struct torus_partitions t_p) {
+    return t_p.p_x * t_p.p_z * t_p.p_z;
+}
+
+int translate_coordinates(int direction, struct torus_partitions t_p, struct torus_node *node_list) {
+    if(node_list == NULL) {
+        printf("translate_coordinates: node_list is null pointer.\n");
+        return FALSE;
+    }
+    int nodes_num = get_nodes_num(t_p); 
+    int i, x, y, z;
+    for(i = 0; i < nodes_num; ++i){
+        struct coordinate c = get_coordinate(node_list[i]);
+        switch(direction) {
+            case X_R:
+            case X_L:
+                set_coordinate(&node_list[i], t_p.p_x + c.x, c.y, c.z);
+                break;
+            case Y_R:
+            case Y_L:
+                set_coordinate(&node_list[i], c.x, t_p.p_y + c.y, c.z);
+                break;
+            case Z_R:
+            case Z_L:
+                set_coordinate(&node_list[i], c.x, c.y, t_p.p_z + c.z);
+                break;
+        }
+    }
+    return TRUE;
+}
+
 int assign_node_ip(torus_node *node_ptr) {
 	char ip[8][20] = { "10.77.30.101", "10.77.30.199", "10.77.30.200",
 			"10.77.30.201", "10.77.30.202", "10.77.30.203", "10.77.30.204",
@@ -42,11 +91,15 @@ int get_node_index(int x, int y, int z) {
 	return x * torus_p.p_y * torus_p.p_z + y * torus_p.p_z + z;
 }
 
-int set_neighbors(torus_node *node_ptr, int x, int y, int z) {
+int set_neighbors(torus_node *node_ptr) {
 	if (!node_ptr) {
 		printf("set_neighbors: node_ptr is null pointer.\n");
 		return FALSE;
 	}
+    int x, y, z;
+    x = node_ptr->info.id.x;
+    y = node_ptr->info.id.y;
+    z = node_ptr->info.id.z;
 
 	// x-coordinate of the right neighbor of node_ptr on x-axis
 	int xrc = (x + torus_p.p_x + 1) % torus_p.p_x;
@@ -97,40 +150,29 @@ int set_neighbors(torus_node *node_ptr, int x, int y, int z) {
 	return TRUE;
 }
 
-int create_torus() {
-	int i, j, k, index = 0;
-	torus_node_num = torus_p.p_x * torus_p.p_y * torus_p.p_z;
+int new_torus(struct torus_partitions new_torus_p, struct torus_node *new_list) {
+    if( new_list == NULL) {
+        printf("create_torus: new_list is null pointer.\n");
+        return FALSE;
+    }
 
-	torus_node_list = (torus_node *) malloc(
-			sizeof(torus_node) * torus_node_num);
-	if (!torus_node_list) {
-		printf("malloc torus node list failed.\n");
-		return FALSE;
-	}
+	int i, j, k, index, new_nodes_num;
+    new_nodes_num = get_nodes_num(new_torus_p); 
 
-	for (i = 0; i < torus_p.p_x; ++i) {
-		for (j = 0; j < torus_p.p_y; ++j) {
-			for (k = 0; k < torus_p.p_z; ++k) {
-				torus_node *new_node = (torus_node *) malloc(
-						sizeof(torus_node));
-				new_node = &torus_node_list[index];
+    index = 0;
+	for (i = 0; i < new_torus_p.p_x; ++i) {
+		for (j = 0; j < new_torus_p.p_y; ++j) {
+			for (k = 0; k < new_torus_p.p_z; ++k) {
+                if(index >= new_nodes_num) {
+                    return FALSE;
+                }
+				torus_node *new_node = &new_list[index];
 
 				init_torus_node(new_node);
 				if (assign_node_ip(new_node) == FALSE) {
 					return FALSE;
 				}
 				set_coordinate(new_node, i, j, k);
-
-				index++;
-			}
-		}
-	}
-
-	index = 0;
-	for (i = 0; i < torus_p.p_x; ++i) {
-		for (j = 0; j < torus_p.p_y; ++j) {
-			for (k = 0; k < torus_p.p_z; ++k) {
-				set_neighbors(&torus_node_list[index], i, j, k);
 				index++;
 			}
 		}
@@ -139,14 +181,127 @@ int create_torus() {
 	return TRUE;
 }
 
-int append_torus() {
+int construct_torus(){
+    int i;
+    int nodes_num = get_nodes_num(torus_p);
 
-	return TRUE;
+	torus_node_list = (torus_node *) malloc(
+			sizeof(torus_node) * nodes_num);
+	if (!torus_node_list) {
+		printf("malloc torus node list failed.\n");
+		return FALSE;
+	}
+	// create a new torus
+	if (FALSE == new_torus(torus_p, torus_node_list)) {
+        printf("construct_torus: create a new torus failed.\n");
+        free(torus_node_list);
+        return FALSE;
+	}
+
+    for(i = 0; i < nodes_num; ++i) {
+        set_neighbors(&torus_node_list[i]);
+    }
+
+}
+
+int append_torus(int direction) {
+    // TODO append_torus_p can specified by user
+    struct torus_partitions append_torus_p;
+    append_torus_p = torus_p;
+
+    int append_nodes_num = get_nodes_num(append_torus_p); 
+    struct torus_node *append_list;
+	append_list = (torus_node *) malloc(sizeof(torus_node) * append_nodes_num);
+
+	if (FALSE == new_torus(append_torus_p, append_list)) {
+        printf("append_torus: append torus failed.\n");
+        if(!append_list) {
+            free(append_list);
+        }
+        return FALSE;
+    }
+
+    if(FALSE == merge_torus(direction, append_torus_p, append_list)) {
+        printf("append_torus: append torus nodes failed\n");
+        if(!append_list) {
+            free(append_list);
+        }
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+int merge_torus(int direction, struct torus_partitions append_torus_p, struct torus_node *append_list){
+    if(append_list == NULL){
+        printf("merge_torus: src_list is null pointer.\n");
+        return FALSE;
+    }
+
+    switch(direction) {
+        case X_R:
+        case Y_R:
+        case Z_R:
+            translate_coordinates(direction, append_torus_p, append_list);
+            break;
+        case X_L:
+        case Y_L:
+        case Z_L:
+            translate_coordinates(direction, torus_p, torus_node_list);
+            break;
+    }
+    
+    int i, index, ori_num, append_num, merged_num;
+    struct coordinate c;
+    struct torus_node *new_list;
+
+    ori_num = get_nodes_num(torus_p);
+    append_num = get_nodes_num(append_torus_p);
+
+	new_list = (torus_node *) malloc(sizeof(torus_node) * (ori_num + append_num));
+	if (!new_list) {
+		printf("malloc torus node list failed.\n");
+        // TODO do something when append torus nodes failed
+		return FALSE;
+	}
+
+    // important: update torus_p
+    update_partitions(direction, append_torus_p);
+
+    for(i = 0; i < ori_num; ++i) {
+        c = get_coordinate(torus_node_list[i]);
+        index = get_node_index(c.x, c.y, c.z);
+        new_list[index] = torus_node_list[i];
+    }
+
+    for(i = 0; i < append_num; ++i) {
+        c = get_coordinate(append_list[i]);
+        index = get_node_index(c.x, c.y, c.z);
+        new_list[index] = append_list[i];
+    }
+
+    // free origin torus_node_list and append_list
+    if(!torus_node_list) {
+        free(torus_node_list);
+    }
+    if(!append_list) {
+        free(append_list);
+    }
+
+    // point torus_node_list to merged new_list
+    torus_node_list = new_list;
+    merged_num = get_nodes_num(torus_p);
+    for(i = 0; i < merged_num; ++i) {
+        set_neighbors(&torus_node_list[i]);
+    }
+    
+    return TRUE;
 }
 
 void print_torus() {
-	int i;
-	for (i = 0; i < torus_node_num; ++i) {
+	int i, nodes_num;
+    nodes_num = get_nodes_num(torus_p);
+	for (i = 0; i < nodes_num; ++i) {
 		print_torus_node(torus_node_list[i]);
 	}
 }
@@ -202,13 +357,14 @@ int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes)
 }
 
 int update_torus() {
-	int i, j, index;
+	int i, j, index, nodes_num;
 	if (torus_node_list == NULL) {
 		printf("update_torus: torus_node_list is null.\n");
 		return FALSE;
 	}
 
-	for (i = 0; i < torus_node_num; ++i) {
+    nodes_num = get_nodes_num(torus_p);
+	for (i = 0; i < nodes_num; ++i) {
 		int neighbors_num = get_neighbors_num(torus_node_list[i]);
 
 		// the nodes array includes dst nodes and its' neighbors
@@ -275,26 +431,25 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	// create a new torus
-	if (TRUE == create_torus()) {
-		//print_torus();
-		;
-	} else {
-		// TODO free torus when create failed
-		// free_torus
-		;
-	}
+    if(FALSE == construct_torus()) {
+        exit(1);
+    }
 
-	append_torus();
+    int direction = X_R;
+	if( FALSE == append_torus(direction)) {
+        // re-construct the original torus when append torus failed
+        construct_torus();
+    }
+    print_torus();
 
-	if (TRUE == update_torus()) {
+	/*if (TRUE == update_torus()) {
 		while (1) {
 			char entry_ip[IP_ADDR_LENGTH];
 			printf("input entry ip:");
 			scanf("%s", entry_ip);
 			traverse_torus(entry_ip);
 		}
-	}
+	}*/
 
 	return 0;
 }
