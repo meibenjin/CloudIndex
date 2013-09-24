@@ -60,6 +60,16 @@ typedef struct coordinate
 	int z;
 }coordinate;
 
+// directions code in 3-dimension
+enum direction
+{
+    X_R = 0,
+    X_L,
+    Y_R,
+    Y_L,
+    Z_R,
+    Z_L,
+};
 // return value of functions
 enum status
 {
