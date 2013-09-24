@@ -10,11 +10,11 @@
 #include<string.h>
 
 #include"torus_node.h"
+#include"server.h"
 
 int main(int argc, char **argv) {
 	int server_socket;
 	should_run = 1;
-	is_visited = FALSE;
 	init_torus_node(&local_torus_node);
 
 	req_list = (struct request *) malloc(sizeof(struct request));
@@ -22,9 +22,9 @@ int main(int argc, char **argv) {
 		printf("malloc request list failed.\n");
 		exit(1);
 	}
-	init_request_list();
+	init_request(req_list);
 
-	server_socket = new_server_socket();
+	server_socket = new_server();
 	if (server_socket == FALSE) {
 		exit(1);
 	}
