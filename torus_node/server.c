@@ -72,6 +72,22 @@ int remove_request(const char *req_stamp) {
 	return FALSE;
 }
 
+int gen_request_stamp(char *stamp) {
+	if (stamp == NULL) {
+		printf("gen_request_stamp: stamp is null pointer.\n");
+		return FALSE;
+	}
+	// TODO automatic generate number stamp
+	static long number_stamp = 1;
+	char ip_stamp[IP_ADDR_LENGTH];
+	if (FALSE == get_local_ip(ip_stamp)) {
+		return FALSE;
+	}
+	snprintf(stamp, STAMP_SIZE, "%s_%ld", ip_stamp, number_stamp++);
+	return TRUE;
+}
+
+
 int do_traverse_torus(int socketfd, struct message msg) {
 	char stamp[STAMP_SIZE];
 	memset(stamp, 0, STAMP_SIZE);
@@ -166,7 +182,7 @@ int do_update_torus(struct message msg) {
 	}
 
 	// create torus node from several nodes
-	if (FALSE == create_torus_node(&local_torus_node, nodes)) {
+	if (FALSE == construct_torus_node(&local_torus_node, nodes)) {
 		return FALSE;
 	}
 	return TRUE;

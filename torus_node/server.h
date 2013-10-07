@@ -8,9 +8,9 @@
 #ifndef SERVER_H_
 #define SERVER_H_
 
-#include"../utils.h"
-#include"../torus_node/torus_node.h"
-#include"../socket/socket.h"
+#include"utils.h"
+#include"torus_node/torus_node.h"
+#include"socket/socket.h"
 
 
 // request info for torus node
@@ -20,7 +20,6 @@ typedef struct request {
 	char stamp[STAMP_SIZE];
 	struct request *next;
 } request;
-
 
 struct request *req_list;
 
@@ -33,6 +32,9 @@ int insert_request(const char *req_stamp);
 int get_request(const char *req_stamp, struct request *req_ptr);
 
 int remove_request(const char *req_stamp);
+
+// generate a unique request id for each client request
+int gen_request_stamp(char *stamp);
 
 // handle the traverse torus request from client
 int do_traverse_torus(int socketfd, struct message msg);
