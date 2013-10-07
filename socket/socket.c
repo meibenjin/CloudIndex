@@ -190,18 +190,3 @@ void print_message(struct message msg) {
 	printf("dst:%s\n", msg.dst_ip);
 }
 
-int gen_request_stamp(char *stamp) {
-	if (stamp == NULL) {
-		printf("gen_request_stamp: stamp is null pointer.\n");
-		return FALSE;
-	}
-	// TODO automatic generate number stamp
-	static long number_stamp = 1;
-	char ip_stamp[IP_ADDR_LENGTH];
-	if (FALSE == get_local_ip(ip_stamp)) {
-		return FALSE;
-	}
-	snprintf(stamp, STAMP_SIZE, "%s_%ld", ip_stamp, number_stamp++);
-	return TRUE;
-}
-

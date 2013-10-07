@@ -8,30 +8,53 @@
 #ifndef SOCKET_SERVER_H_
 #define SOCKET_SERVER_H_
 
-
 //socket API
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<sys/ioctl.h>
+#include<net/if.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
 
-#include"../utils.h"
+#include"utils.h"
+
+/* message for transport among torus nodes
+ * op:  operation code
+ * src_ip: source ip address
+ * dst_ip: destination ip address
+ * stamp: unique request stamp for global system
+ * data: transport data stream from src_ip to dst_ip
+ */
+typedef struct message
+{
+	int op;
+	char src_ip[IP_ADDR_LENGTH];
+	char dst_ip[IP_ADDR_LENGTH];
+	char stamp[STAMP_SIZE];
+    char data[DATA_SIZE];
+}message;
+
+/* reply message for transport among torus nodes
+ * op: operation code
+ * stamp unique request stamp for global system
+ * reply_code: message process result
+ */
+typedef struct reply_message{
+	OP op;
+	char stamp[STAMP_SIZE];
+	REPLY_CODE reply_code;
+}reply_message;
 
 // initial a socket address
 void init_socket_addr(struct sockaddr_in *socket_addr);
 
 /* create a new client socket
- *
  * return: socket file descriptor
- *
  */
 int new_client_socket();
 
 /* create a new server socket
- *
  * return: socket file descriptor
- *
  */
 int new_server_socket();
 
@@ -51,6 +74,6 @@ int get_local_ip(char *ip);
 
 void print_message(struct message msg);
 
-int gen_request_stamp(char *stamp);
-
 #endif /* SOCKET_SERVER_H_ */
+
+
