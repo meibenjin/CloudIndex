@@ -1,0 +1,48 @@
+#!/bin/bash
+# automatic create  new instance 
+# in openstack cloud platform
+
+export OS_TENANT_NAME=benjin
+export OS_USERNAME=benjin
+export OS_PASSWORD=benjin
+export OS_AUTH_URL="http://localhost:5000/v2.0/"
+export SERVICE_ENDPOINT="http://localhost:35357/v2.0"
+export SERVICE_TOKEN=benjin
+
+if [ $# = 0 ]; then
+    echo "need arguments"
+    exit
+fi
+
+COMMAND=$1
+IP_REG='\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}'
+
+if [ "$COMMAND" = "create" ]; then
+    # get instance num to be created
+    x='arg'
+    if [ "$x$2" = "$x" ]; then
+        num=1
+    else 
+        num=$2
+    fi
+
+    for((i=0;i<$num;++i))
+    do
+        cur_date=`date +%Y%m%d%H%M%S`
+        nova boot --flavor=2 --image=37d33b64-fa8d-45ff-989f-475f7e117171 $cur_date
+    done
+
+    # allocate floating ip for the first time
+    float_ip=`nova list | grep -o "$IP_REG, $IP_REG" `
+    if [ "$float_ip" = "" ]; then
+        sleep 3s
+        floating_ip=`nova floating-ip-list | grep -o "$IP_REG" `
+        nova add-floating-ip $cur_date $floating_ip 
+    fi
+
+elif [ "$COMMAND" = "list-ip" ]; then
+    nova list | grep -o "$IP_REG\(, $IP_REG\)\?"
+else
+    CMDS=$*
+    nova $CMDS
+fi
