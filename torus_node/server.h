@@ -23,7 +23,7 @@ typedef struct request {
 
 struct request *req_list;
 
-void init_request(struct request *req_ptr);
+int init_request_list();
 
 int find_request(const char *req_stamp);
 
@@ -39,7 +39,7 @@ int gen_request_stamp(char *stamp);
 // handle the traverse torus request from client
 int do_traverse_torus(int socketfd, struct message msg);
 
-int forward_message(struct message msg);
+int forward_to_neighbors(struct message msg);
 
 // handle the update torus request from client
 int do_update_torus(struct message msg);

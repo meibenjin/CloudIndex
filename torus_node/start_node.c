@@ -11,24 +11,37 @@
 
 #include"torus_node.h"
 #include"server.h"
+#include"utils.h"
+#include"skip_list/skip_list.h"
+#include"logs/log.h"
 
 int main(int argc, char **argv) {
+
+	//write log
+	char ip[IP_ADDR_LENGTH];
+	get_local_ip(ip);
+	sprintf(ip, "%s\n", ip);
+	write_log(TORUS_NODE_LOG, ip);
+
+	printf("start torus node.\n");
+	write_log(TORUS_NODE_LOG, "start torus node.\n");
+
 	int server_socket;
 	should_run = 1;
+
+	// initialize torus node
 	init_torus_node(&local_torus_node);
 
-	req_list = (struct request *) malloc(sizeof(struct request));
-	if(req_list == NULL){
-		printf("malloc request list failed.\n");
-		exit(1);
-	}
-	init_request(req_list);
+	init_request_list();
+
+	init_skip_list();
 
 	server_socket = new_server();
 	if (server_socket == FALSE) {
 		exit(1);
 	}
 	printf("start server.\n");
+	write_log(TORUS_NODE_LOG, "start server.\n");
 
 	while (should_run) {
 		int conn_socket;
@@ -42,9 +55,9 @@ int main(int argc, char **argv) {
 		memset(&msg, 0, sizeof(struct message));
 
 		// receive message through the conn_socket
-		if(TRUE == receive_message(conn_socket, &msg)){
+		if (TRUE == receive_message(conn_socket, &msg)) {
 			process_message(conn_socket, msg);
-		} else{
+		} else {
 			//  TODO: handle receive message failed
 			printf("receive message failed.\n");
 		}

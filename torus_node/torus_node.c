@@ -10,6 +10,7 @@
 #include<string.h>
 
 #include"torus_node.h"
+#include"logs/log.h"
 
 void set_node_ip(torus_node *node_ptr, const char *ip) {
 	if (!node_ptr) {
@@ -97,11 +98,11 @@ void init_torus_node(torus_node *node_ptr) {
 
 int construct_torus_node(torus_node *torus, node_info *nodes) {
 	if (torus == NULL) {
-		printf("create_torus_node: torus is null pointer.\n");
+		printf("construct_torus_node: torus is null pointer.\n");
 		return FALSE;
 	}
 	if (nodes == NULL) {
-		printf("create_torus_node: nodes info is null pointer.\n");
+		printf("construct_torus_node: nodes info is null pointer.\n");
 		return FALSE;
 	}
 	torus->info = nodes[0];
@@ -127,5 +128,11 @@ void print_node_info(torus_node node) {
 	coordinate c = get_node_id(node);
 	printf("%d\t(%d, %d, %d)\t%s\n", get_cluster_id(node), c.x, c.y, c.z,
 			node.info.ip);
+
+	char buf[1024];
+	memset(buf, 0, 1024);
+	sprintf(buf, "%d\t(%d, %d, %d)\t%s\n", get_cluster_id(node), c.x, c.y,
+			c.z, node.info.ip);
+	write_log(TORUS_NODE_LOG, buf);
 }
 

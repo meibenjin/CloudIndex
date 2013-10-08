@@ -10,12 +10,19 @@
 #include<string.h>
 
 #include"server.h"
+#include"logs/log.h"
 
-void init_request(struct request *req_ptr) {
-	req_ptr->first_run = TRUE;
-	req_ptr->receive_num = 0;
-	memset(req_ptr->stamp, 0, STAMP_SIZE);
-	req_ptr->next = NULL;
+int init_request_list() {
+	req_list = (struct request *) malloc(sizeof(struct request));
+	if (req_list == NULL) {
+		printf("malloc request list failed.\n");
+		return FALSE;
+	}
+	req_list->first_run = TRUE;
+	req_list->receive_num = 0;
+	memset(req_list->stamp, 0, STAMP_SIZE);
+	req_list->next = NULL;
+	return TRUE;
 }
 
 int find_request(const char *req_stamp) {
@@ -46,8 +53,10 @@ int insert_request(const char *req_stamp) {
 		return FALSE;
 	}
 
-	init_request(new_req);
+	new_req->first_run = TRUE;
+	new_req->receive_num = 0;
 	strncpy(new_req->stamp, req_stamp, STAMP_SIZE);
+	new_req->next = NULL;
 
 	struct request *req_ptr = req_list;
 	new_req->next = req_ptr->next;
@@ -87,7 +96,6 @@ int gen_request_stamp(char *stamp) {
 	return TRUE;
 }
 
-
 int do_traverse_torus(int socketfd, struct message msg) {
 	char stamp[STAMP_SIZE];
 	memset(stamp, 0, STAMP_SIZE);
@@ -106,6 +114,12 @@ int do_traverse_torus(int socketfd, struct message msg) {
 	if (FALSE == find_request(stamp)) {
 		insert_request(stamp);
 		printf("traverse torus: %s->%s\n", msg.src_ip, msg.dst_ip);
+
+		//write log
+		char buf[1024];
+		memset(buf, 0, 1024);
+		sprintf(buf, "traverse torus: %s->%s\n", msg.src_ip, msg.dst_ip);
+		write_log(TORUS_NODE_LOG, buf);
 	}
 
 	/*struct reply_message reply_msg;
@@ -115,7 +129,7 @@ int do_traverse_torus(int socketfd, struct message msg) {
 	struct request *req_ptr = req_list->next;
 	if (req_ptr && (TRUE == get_request(stamp, req_ptr))) {
 		if (req_ptr->first_run == TRUE) {
-			forward_message(msg);
+			forward_to_neighbors(msg);
 			req_ptr->first_run = FALSE;
 			req_ptr->receive_num = receive_num;
 		}
@@ -127,7 +141,7 @@ int do_traverse_torus(int socketfd, struct message msg) {
 	return TRUE;
 }
 
-int forward_message(struct message msg) {
+int forward_to_neighbors(struct message msg) {
 	int i, forward_num = 0;
 	int socketfd;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
@@ -150,6 +164,13 @@ int forward_message(struct message msg) {
 
 		if (TRUE == send_message(socketfd, msg)) {
 			printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+
+			//write log
+			char buf[1024];
+			memset(buf, 0, 1024);
+			sprintf(buf, "forward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+			write_log(TORUS_NODE_LOG, buf);
+
 			/*if (TRUE == receive_reply(socketfd, &reply_msg)) {
 			 if ((SUCCESS == reply_msg.reply_code)
 			 && (strcmp(reply_msg.stamp, msg.stamp) == 0)) {
@@ -200,6 +221,9 @@ int process_message(int socketfd, struct message msg) {
 	switch (msg.op) {
 
 	case UPDATE_TORUS:
+
+		write_log(TORUS_NODE_LOG, "receive request update torus.\n");
+
 		if (FALSE == do_update_torus(msg)) {
 			reply_code = FAILED;
 		}
@@ -213,7 +237,6 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-
 		print_torus_node(local_torus_node);
 		break;
 
@@ -237,5 +260,4 @@ int new_server() {
 	}
 	return server_socket;
 }
-
 
