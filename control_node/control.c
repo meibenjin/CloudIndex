@@ -443,6 +443,7 @@ int traverse_torus(const char *entry_ip) {
 }
 
 void print_torus() {
+
 	int i, nodes_num;
 	nodes_num = get_nodes_num(torus_p);
 	for (i = 0; i < nodes_num; ++i) {
@@ -458,13 +459,13 @@ int create_skip_list() {
 	int i, nodes_num;
 	nodes_num = get_nodes_num(torus_p);
 	for (i = 0; i < nodes_num; ++i) {
-		if(FALSE == insert_skip_list(torus_node_list[i])){
+		if (FALSE == insert_skip_list(torus_node_list[i])) {
 			// TODO do something when insert failed
 			continue;
 		}
 	}
 
-	if(TRUE ==search_skip_list(torus_node_list[6])){
+	if (TRUE == search_skip_list(torus_node_list[6])) {
 		printf("find\n");
 	}
 
@@ -484,6 +485,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (FALSE == construct_torus()) {
+		print_torus();
 		exit(1);
 	}
 
@@ -492,18 +494,17 @@ int main(int argc, char **argv) {
 	 // re-construct the original torus when append torus failed
 	 construct_torus();
 	 }*/
-	print_torus();
 
-	create_skip_list();
+	//create_skip_list();
 
-	/*if (TRUE == update_torus()) {
-	 while (1) {
-	 char entry_ip[IP_ADDR_LENGTH];
-	 printf("input entry ip:");
-	 scanf("%s", entry_ip);
-	 traverse_torus(entry_ip);
-	 }
-	 }*/
+	if (TRUE == update_torus()) {
+		while (1) {
+			char entry_ip[IP_ADDR_LENGTH];
+			printf("input entry ip:");
+			scanf("%s", entry_ip);
+			traverse_torus(entry_ip);
+		}
+	}
 
 	return 0;
 }
