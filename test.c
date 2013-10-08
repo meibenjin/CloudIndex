@@ -9,8 +9,6 @@
 #include<stdlib.h>
 #include<string.h>
 
-
-
 int main(void) {
 	char test[40];
 	memset(test, 0, 40);
