@@ -1,0 +1,12 @@
+#!/bin/bash
+root_dir=/home/iir/mbj/CloudIndex
+bin_dir=${root_dir}/bin
+remote_shell="${bin_dir}/start-node &"
+host_prefix="iir@"
+
+for i in $(cat torus-nodes)
+do 
+    remote_host="${host_prefix}$i"
+    ssh ${remote_host} "${remote_shell}"
+    echo "start torus node ${remote_host}"
+done
