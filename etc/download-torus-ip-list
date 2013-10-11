@@ -1,0 +1,20 @@
+#!/bin/bash
+# this shell runs on control node
+# before use this shell, passphraseless ssh to nova node should be set
+
+root_dir="${HOME}/mbj/CloudIndex"
+etc_dir="${root_dir}/etc"
+upload_dir="/home/jsq/mbj"
+
+host_prefix="jsq@"
+nova_shell_file="${etc_dir}/nova"
+nova_node="${host_prefix}10.77.50.3"
+torus_ip_list="${upload_dir}/torus_ip_list"
+
+scp -q ${nova_shell_file} ${nova_node}:${upload_dir}
+wait
+remote_shell="cd ${upload_dir}; ./nova torus-ip-list > ${torus_ip_list}"
+ssh ${nova_node} "${remote_shell}"
+wait
+scp -q ${nova_node}:${torus_ip_list} ${etc_dir}
+
