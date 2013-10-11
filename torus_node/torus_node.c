@@ -12,6 +12,8 @@
 #include"torus_node.h"
 #include"logs/log.h"
 
+//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 void set_node_ip(torus_node *node_ptr, const char *ip) {
 	if (!node_ptr) {
 		printf("set_node_ip: node_ptr is null pointer.\n");

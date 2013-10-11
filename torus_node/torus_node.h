@@ -12,7 +12,7 @@
 
 // limits for torus
 #define MAX_NEIGHBORS 6
-#define MAX_NODES_NUM 10 * 10 * 10
+#define MAX_NODES_NUM 20 * 20 * 20
 
 // torus node info 
 typedef struct node_info {

@@ -12,6 +12,8 @@
 #include"server.h"
 #include"logs/log.h"
 
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 int init_request_list() {
 	req_list = (struct request *) malloc(sizeof(struct request));
 	if (req_list == NULL) {

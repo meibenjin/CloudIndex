@@ -15,6 +15,8 @@
 #include"skip_list/skip_list.h"
 #include"logs/log.h"
 
+//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 int main(int argc, char **argv) {
 
 	//write log
