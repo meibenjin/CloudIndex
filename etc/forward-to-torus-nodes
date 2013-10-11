@@ -1,0 +1,45 @@
+#!/bin/bash
+# this shell runs on control node
+
+local_dir="${HOME}/mbj/CloudIndex"
+etc_dir="${local_dir}/etc"
+# be careful! when change upload dir
+upload_dir="/root/mbj"
+remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/* -rf"
+host_prefix="root@"
+torus_ip_list="${etc_dir}/torus_ip_list"
+
+function clean_remote_dir()
+{
+    for i in $(cat ${torus_ip_list} )
+    do 
+        remote_host="${host_prefix}$i"
+        ssh ${remote_host} "${remote_shell}"
+        echo "clean up directory ${remote_host}:${upload_dir}"
+    done
+}
+
+function copy_it()
+{
+    for i in $(cat ${torus_ip_list} )
+    do 
+        remote_host="${host_prefix}$i"
+        scp -r -q ${local_dir} ${remote_host}:${upload_dir}
+        echo "copy to ${remote_host}"
+    done
+}
+
+if [ $# = 0 ]; then
+    clean_remote_dir
+    copy_it
+fi
+
+COMMAND=$1
+
+if [ "$COMMAND" = "clean" ]; then
+    clean_remote_dir
+elif [ "$COMMAND" = "copy" ]; then
+    copy_it
+fi
+
+
