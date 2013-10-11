@@ -10,9 +10,9 @@
 #include<stdlib.h>
 #include<stdio.h>
 
-skip_list list;
+//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-//#define NIL list.header
+skip_list list;
 
 int compare(torus_node node1, torus_node node2) {
 	int id1 = node1.info.cluster_id;
@@ -26,12 +26,29 @@ int compare(torus_node node1, torus_node node2) {
 	}
 }
 
+// TODO optimize future
 int random_level() {
-	int level = 0;
+	/*int level = 0;
 	while ((level < MAXLEVEL) && (rand() < RAND_MAX / 2)) {
 		level++;
 	}
-	return level;
+	return level;*/
+    static int bits = 0;
+    static int reset = 0;
+    int level, found = 0;
+    for (level = 0; !found; level++) {
+        if (reset == 0) {
+            bits = rand();
+            reset = sizeof(int) * 8;
+        }
+        found = bits & 1;
+        bits = bits >> 1;
+        --reset;
+    }
+
+    if (level >= MAXLEVEL)
+        level = MAXLEVEL - 1;
+    return level;
 }
 
 int init_skip_list() {
@@ -57,12 +74,13 @@ int insert_skip_list(torus_node node) {
 
 	// find the position to insert the torus node
 	for (i = list.level; i >= 0; --i) {
-		while ((sln_ptr->forward[i] != NULL)
+        while ((sln_ptr->forward[i] != NULL)
 				&& (-1 == compare(sln_ptr->forward[i]->leader, node))) {
 			sln_ptr = sln_ptr->forward[i];
 		}
 		update[i] = sln_ptr;
 	}
+
 	sln_ptr = sln_ptr->forward[0];
 	if ((sln_ptr != NULL) && (0 == compare(sln_ptr->leader, node))) {
 		printf("insert: duplicate torus node.\n");

@@ -11,7 +11,7 @@
 #include"utils.h"
 #include"torus_node/torus_node.h"
 
-#define MAXLEVEL 20
+#define MAXLEVEL 32 
 
 //skip list node structure
 typedef struct skip_list_node {
