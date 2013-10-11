@@ -18,6 +18,7 @@
 
 # ignore files
 bin/*
+logs/*.log
 .settings/*
 !bin/README
 
