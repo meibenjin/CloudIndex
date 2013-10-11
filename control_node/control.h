@@ -13,6 +13,8 @@
 #include"socket/socket.h"
 #include"skip_list/skip_list.h"
 
+#define TORUS_IP_LIST "../etc/torus_ip_list"
+
 // directions code in 3-dimension
 enum direction
 {
@@ -79,6 +81,8 @@ int traverse_torus(const char *entry_ip);
 void print_torus();
 
 int create_skip_list();
+
+int read_torus_ip_list();
 
 #endif /* CONTROL_H_ */
 
