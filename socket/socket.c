@@ -12,6 +12,8 @@
 
 #include"socket.h"
 
+//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 void init_socket_addr(struct sockaddr_in *sock_addr) {
 	bzero(sock_addr, sizeof(struct sockaddr_in));
 	sock_addr->sin_family = AF_INET;
