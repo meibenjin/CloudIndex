@@ -1,0 +1,56 @@
+#!/bin/bash
+# this shell runs on torus nodes(invoked by torus-node-deamons)
+
+usage="Usage: torus-node-daemon start|stop torusnode"
+
+if [ $# -le 1 ]; then
+    echo $usage
+    exit 1
+fi
+
+root_dir=${HOME}/mbj/CloudIndex
+bin_dir=${root_dir}/bin
+pid=/tmp/cloudindex_torus_node.pid
+
+# get arguments
+start_stop=$1
+shift
+command=$1
+shift
+ip=$1
+
+case $start_stop in
+    (start)
+        if [ -f $pid ]; then
+            target_pid=`cat $pid`
+            if kill -0 $target_pid > /dev/null 2>&1; then
+                echo "$ip:$command running as process $target_pid. stop it first."
+                exit 1
+            fi
+        fi
+        cd ${bin_dir}
+        nohup ./start-node > /dev/null 2>&1 &
+        echo $! > $pid
+        echo "$ip:starting $command"
+        ;;
+    (stop)
+        if [ -f $pid ]; then
+            target_pid=`cat $pid`
+            if kill -0 $target_pid > /dev/null 2>&1; then
+                echo "stopping $command."
+                kill $target_pid
+            else
+                echo "$ip:no $command to stop"
+            fi
+        else
+            echo "$ip:no $command to stop"
+            echo 
+        fi
+        ;;
+    (*)
+        echo $usage
+        exit 1
+        ;;
+esac
+
+
