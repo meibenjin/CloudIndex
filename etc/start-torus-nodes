@@ -1,0 +1,7 @@
+#!/bin/bash
+# this shell runs on control node
+
+root_dir=${HOME}/mbj/CloudIndex
+etc_dir=${root_dir}/etc
+
+exec "${etc_dir}/torus-node-deamons" start torusnode
