@@ -1,0 +1,36 @@
+#!/bin/bash
+# this shell runs on develop host 
+
+local_dir=${HOME}/Programming/C/CloudIndex
+# be careful! when change upload dir
+upload_dir=/root/mbj
+remote_shell="rm ${upload_dir}/* -rf"
+host_prefix="root@"
+control_node="${host_prefix}10.77.50.221"
+
+function clean_remote_dir()
+{
+    ssh ${control_node} "${remote_shell}"
+    echo "clean up directory ${control_node}:${upload_dir}"
+}
+
+function copy_it()
+{
+    scp -r -q ${local_dir} ${control_node}:${upload_dir}
+    echo "copy to ${control_node}:${upload_dir}"
+}
+
+if [ $# = 0 ]; then
+    clean_remote_dir
+    copy_it
+fi
+
+COMMAND=$1
+
+if [ "$COMMAND" = "clean" ]; then
+    clean_remote_dir
+elif [ "$COMMAND" = "copy" ]; then
+    copy_it
+fi
+
+
