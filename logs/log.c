@@ -12,6 +12,8 @@
 
 #include"log.h"
 
+//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 void get_local_time(char* buffer) {
 	time_t rawtime;
 	struct tm* timeinfo;
