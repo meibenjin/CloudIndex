@@ -1,0 +1,17 @@
+#!/bin/bash
+# this shell runs on control node
+
+root_dir="${HOME}/mbj/CloudIndex"
+etc_dir="${root_dir}/etc"
+
+torus_ip_list="${etc_dir}/torus_ip_list"
+if [ ! -f "$torus_ip_list" ]; then
+    exec "${etc_dir}/download-torus-ip-list"
+    wait
+fi
+
+# invoke free_python.py to setup passphraseless ssh to
+# all torus nodes in torus_ip_list
+${etc_dir}/free_login.py <<EOF
+${torus_ip_list}
+EOF
