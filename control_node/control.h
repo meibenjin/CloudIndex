@@ -80,9 +80,12 @@ int traverse_torus(const char *entry_ip);
 
 void print_torus();
 
+int read_torus_ip_list();
+
+// create a skip list
 int create_skip_list();
 
-int read_torus_ip_list();
+int update_skip_list();
 
 #endif /* CONTROL_H_ */
 
