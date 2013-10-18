@@ -42,6 +42,7 @@ typedef enum REPLY_CODE {
 typedef enum OP {
 	// update torus node info
 	UPDATE_TORUS = 80,
+	UPDATE_SKIP_LIST,
 	TRAVERSE,
 	READ,
 	WRITE,
