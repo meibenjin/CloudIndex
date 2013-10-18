@@ -9,9 +9,9 @@
 #include<stdlib.h>
 #include<string.h>
 
+#include"utils.h"
 #include"torus_node.h"
 #include"server.h"
-#include"utils.h"
 #include"skip_list/skip_list.h"
 #include"logs/log.h"
 
@@ -31,12 +31,13 @@ int main(int argc, char **argv) {
 	int server_socket;
 	should_run = 1;
 
-	// initialize torus node
-	init_torus_node(&local_torus_node);
+	// new a torus node
+	the_torus_node = *new_torus_node();
 
-	init_request_list();
+	// create a new request list
+	req_list = new_request();
 
-	init_skip_list();
+	//init_skip_list();
 
 	server_socket = new_server();
 	if (server_socket == FALSE) {
