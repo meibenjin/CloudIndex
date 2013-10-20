@@ -52,7 +52,13 @@ skip_list_node *new_skip_list_node(int level, node_info *node_ptr) {
 		printf("new_skip_list_node:insufficient memory.\n");
 		return NULL;
 	}
-	sln->leader = node_ptr;
+    if(node_ptr == NULL) {
+        node_info node;
+        init_node_info(&node);
+        sln->leader = node;
+    } else {
+        sln->leader = *node_ptr;
+    }
     sln->height = level;
 
 	int i;
@@ -63,7 +69,7 @@ skip_list_node *new_skip_list_node(int level, node_info *node_ptr) {
 	return sln;
 }
 
-skip_list *new_skip_list() {
+skip_list *new_skip_list(int level) {
 	skip_list *slist;
 	slist = (skip_list *) malloc(sizeof(*slist));
 	if (slist == NULL) {
@@ -71,7 +77,7 @@ skip_list *new_skip_list() {
 		return NULL;
 	}
 	slist->level = 0;
-	slist->header = new_skip_list_node(MAXLEVEL, NULL);
+	slist->header = new_skip_list_node(level, NULL);
 	if (NULL == slist->header) {
 		return NULL;
 	}
@@ -103,7 +109,7 @@ int insert_skip_list(skip_list *slist, node_info *node_ptr) {
 		for (i = slist->level; i >= 0; --i) {
 			while ((sln_ptr->level[i].forward != NULL)
 					&& (-1
-							== compare(sln_ptr->level[i].forward->leader,
+							== compare(&sln_ptr->level[i].forward->leader,
 									node_ptr))) {
 				sln_ptr = sln_ptr->level[i].forward;
 			}
@@ -137,7 +143,7 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 		for (i = slist->level; i >= 0; --i) {
 			while ((sln_ptr->level[i].forward != NULL)
 					&& (-1
-							== compare(sln_ptr->level[i].forward->leader,
+							== compare(&sln_ptr->level[i].forward->leader,
 									node_ptr))) {
 				sln_ptr = sln_ptr->level[i].forward;
 			}
@@ -146,7 +152,7 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 			}
 			if ((sln_ptr->level[i].forward) != NULL
 					&& (0
-							== compare(sln_ptr->level[i].forward->leader,
+							== compare(&sln_ptr->level[i].forward->leader,
 									node_ptr))) {
 				sln_ptr->level[i].forward =
 						sln_ptr->level[i].forward->level[i].forward;
@@ -176,30 +182,30 @@ int search_skip_list(skip_list *slist, node_info *node_ptr) {
 	// find the torus node position
 	for (i = slist->level; i >= 0; --i) {
 		while ((sln_ptr->level[i].forward != NULL)
-				&& (-1 == compare(sln_ptr->level[i].forward->leader, node_ptr))) {
+				&& (-1 == compare(&sln_ptr->level[i].forward->leader, node_ptr))) {
 			sln_ptr = sln_ptr->level[i].forward;
 		}
 	}
 
 	sln_ptr = sln_ptr->level[0].forward;
-	if ((sln_ptr != NULL) && (0 == compare(sln_ptr->leader, node_ptr))) {
+	if ((sln_ptr != NULL) && (0 == compare(&sln_ptr->leader, node_ptr))) {
 		return TRUE;
 	}
 	return FALSE;
 }
 
-void traverse_skip_list(skip_list *slist) {
+void print_skip_list(skip_list *slist) {
 	int i;
 	skip_list_node *sln_ptr;
 	for (i = 0; i <= slist->level; ++i) {
 		sln_ptr = slist->header;
 		printf("level:%d\n", i);
 		while (sln_ptr->level[i].forward != NULL) {
-			print_node_info(*sln_ptr->level[i].forward->leader);
+			print_node_info(sln_ptr->level[i].forward->leader);
 			if (sln_ptr->level[i].forward->level[i].backward) {
 				printf("\tback:");
 				print_node_info(
-						*sln_ptr->level[i].forward->level[i].backward->leader);
+						sln_ptr->level[i].forward->level[i].backward->leader);
 			} else {
 				printf("\tback:NULL\n");
 			}
@@ -209,63 +215,36 @@ void traverse_skip_list(skip_list *slist) {
 	}
 }
 
-void print_skip_list_node(skip_list_node *sln_ptr) {
-	/*char buf[1024];
-	memset(buf, 0, 1024);
-	write_log(TORUS_NODE_LOG, "skip list:\n");
+void print_skip_list_node(skip_list *slist) {
+	int i = 0;
+	char buf[1024];
+    skip_list_node *sln_ptr;
+    sln_ptr = slist->header;
 
-	int i;
-	while(i <= sln_ptr->level){
-        memset(buf, 0, 1024);
-        sprintf(buf, "level:%s\n", i);
-        write_log(TORUS_NODE_LOG, buf);
-        if(sln_ptr[i].has_forward == 1) {
-            memset(buf, 0, 1024);
-            write_log(TORUS_NODE_LOG,"forward: ");
-            print_node_info(sln_ptr[i].forward);
-        }
-        if(sln_ptr[i].has_backward == 1) {
-            memset(buf, 0, 1024);
-            write_log(TORUS_NODE_LOG,"backward: ");
-            print_node_info(sln_ptr->forward);
-        }
-		i++;
-	}*/
-    ;
-}
+    write_log(TORUS_NODE_LOG, "visit myself:");
+    print_node_info(sln_ptr->leader);
 
-skip_list_node *construct_skip_list_node(int nodes_num, node_info *node_ptr){
-	skip_list_node *sln_ptr;
-    int level = nodes_num - 1;
-    sln_ptr = (skip_list_node *) malloc(sizeof(skip_list_node) * level);
-    char buf[1024];
-	if (sln_ptr == NULL) {
-		memset(buf, 0, 1024);
-		sprintf(buf, "sln_ptr is null");
-		write_log(TORUS_NODE_LOG, buf);
-		return NULL;
-	}
-
-    /*int i = 0;
-    while(i <= level) {
-        sln_ptr[i] = node_ptr[i];
+	while(i <= slist->level){
         memset(buf, 0, 1024);
         sprintf(buf, "level:%d\n", i);
         write_log(TORUS_NODE_LOG, buf);
-        if(sln_ptr[i].has_forward == 1) {
-            memset(buf, 0, 1024);
-            write_log(TORUS_NODE_LOG,"forward: ");
-            print_node_info(sln_ptr[i].forward);
-        }
-        if(sln_ptr[i].has_backward == 1) {
-            memset(buf, 0, 1024);
-            write_log(TORUS_NODE_LOG,"backward: ");
-            print_node_info(sln_ptr[i].backward);
-        }
-        i++;
-    } */
 
-	return sln_ptr;
+        memset(buf, 0, 1024);
+        if( sln_ptr->level[i].forward != NULL){
+            write_log(TORUS_NODE_LOG,"\tforward: ");
+            print_node_info(sln_ptr->level[i].forward->leader);
+        } else {
+            write_log(TORUS_NODE_LOG,"\tforward: NULL\n");
+        }
+        if( sln_ptr->level[i].backward != NULL){
+            memset(buf, 0, 1024);
+            write_log(TORUS_NODE_LOG, "\tbackward: ");
+            print_node_info(sln_ptr->level[i].backward->leader);
+        } else {
+            write_log(TORUS_NODE_LOG,"\tbackward: NULL\n");
+        }
+		i++;
+	}
 }
 
 
