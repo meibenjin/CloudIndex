@@ -18,13 +18,6 @@
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
 int main(int argc, char **argv) {
-
-	//write log
-	char ip[IP_ADDR_LENGTH];
-	get_local_ip(ip);
-	sprintf(ip, "%s\n", ip);
-	write_log(TORUS_NODE_LOG, ip);
-
 	printf("start torus node.\n");
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
 
@@ -37,7 +30,7 @@ int main(int argc, char **argv) {
 	// create a new request list
 	req_list = new_request();
 
-	//init_skip_list();
+	//the_skip_list = *new_skip_list_node();
 
 	server_socket = new_server();
 	if (server_socket == FALSE) {

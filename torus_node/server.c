@@ -86,7 +86,7 @@ int gen_request_stamp(char *stamp) {
 	return TRUE;
 }
 
-int do_traverse_torus(int socketfd, struct message msg) {
+int do_traverse_torus(struct message msg) {
 	char stamp[STAMP_SIZE];
 	memset(stamp, 0, STAMP_SIZE);
 
@@ -106,12 +106,12 @@ int do_traverse_torus(int socketfd, struct message msg) {
 
 	if (NULL == req_ptr) {
 		req_ptr = insert_request(req_list, stamp);
-		printf("traverse torus: %s->%s\n", msg.src_ip, msg.dst_ip);
+		printf("traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
 		//write log
 		char buf[1024];
 		memset(buf, 0, 1024);
-		sprintf(buf, "traverse torus: %s->%s\n", msg.src_ip, msg.dst_ip);
+		sprintf(buf, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
 		write_log(TORUS_NODE_LOG, buf);
 
 		if (req_ptr && (req_ptr->first_run == TRUE)) {
@@ -136,7 +136,6 @@ int do_traverse_torus(int socketfd, struct message msg) {
 
 int forward_to_neighbors(struct message msg) {
 	int i, forward_num = 0;
-	int socketfd;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
 	int neighbors_num = get_neighbors_num(the_torus_node);
@@ -144,35 +143,10 @@ int forward_to_neighbors(struct message msg) {
     get_node_ip(the_torus_node.info, src_ip);
 	for (i = 0; i < neighbors_num; ++i) {
 		get_node_ip(the_torus_node.neighbors[i]->info, dst_ip);
-		/*if (strcmp(dst_ip, msg.src_ip) == 0) {
-		 continue;
-		 }*/
 
 		strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
 		strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-
-		socketfd = new_client_socket(dst_ip);
-		if (FALSE == socketfd) {
-			return FALSE;
-		}
-
-		if (TRUE == send_message(socketfd, msg)) {
-			printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-
-			//write log
-			char buf[1024];
-			memset(buf, 0, 1024);
-			sprintf(buf, "forward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-			write_log(TORUS_NODE_LOG, buf);
-
-			/*if (TRUE == receive_reply(socketfd, &reply_msg)) {
-			 if ((SUCCESS == reply_msg.reply_code)
-			 && (strcmp(reply_msg.stamp, msg.stamp) == 0)) {
-			 ;
-			 }
-			 }*/
-		}
-		close(socketfd);
+        forward_message(msg);
 	}
 	return TRUE;
 }
@@ -180,13 +154,6 @@ int forward_to_neighbors(struct message msg) {
 int do_update_torus(struct message msg) {
 	int i;
 	int nodes_num = 0;
-	printf("update torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
-
-    //write log
-	char buf[1024];
-	memset(buf, 0, 1024);
-	sprintf(buf, "update torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
-	write_log(TORUS_NODE_LOG, buf);
 
 	memcpy(&nodes_num, msg.data, sizeof(int));
 	if (nodes_num <= 0) {
@@ -221,33 +188,114 @@ int do_update_skip_list(struct message msg) {
 	int nodes_num = 0;
 	printf("update skip_list: %s -> %s\n", msg.src_ip, msg.dst_ip);
     
-    //write log
-	char buf[1024];
-	memset(buf, 0, 1024);
-	sprintf(buf, "update skip_list: %s -> %s\n", msg.src_ip, msg.dst_ip);
-	write_log(TORUS_NODE_LOG, buf);
-
 	memcpy(&nodes_num, msg.data, sizeof(int));
 	if (nodes_num <= 0) {
 		printf("do_update_skip_list: skip_list node number is wrong\n");
 		return FALSE;
 	}
 
-	node_info nodes[nodes_num]; //= (skip_list_node_info *) malloc(sizeof(skip_list_node_info) *nodes_num);
+	node_info nodes[nodes_num]; 
 
 	for (i = 0; i < nodes_num; ++i) {
 		memcpy(&nodes[i],(void*) (msg.data + sizeof(int) + sizeof(node_info) * i),sizeof(node_info));
 	}
 
-	memset(buf, 0, 1024);
-	sprintf(buf, "receive message: %d\n", nodes_num);
-	write_log(TORUS_NODE_LOG, buf);
-    // create torus node from several nodes
-    //local_skip_list_node_info = construct_skip_list_node_info(nodes_num, nodes);
-	/*if (local_skip_list_node_info == NULL) {
-	 return FALSE;
-	 }*/
+    int index = 0;
+    int level = (nodes_num / 2 ) - 1;
+    skip_list_node *sln_ptr, *new_sln;
+
+    the_skip_list = *new_skip_list(level);
+
+    sln_ptr = the_skip_list.header;
+    sln_ptr->leader = the_torus_node.info;
+    sln_ptr->height = level;
+    the_skip_list.level = level;
+
+    for(i = 0; i <= level; i++){
+        if(get_cluster_id(nodes[index]) != -1) {
+            new_sln = new_skip_list_node(0, &nodes[index]);
+            sln_ptr->level[i].forward = new_sln;
+            index++;
+        } else {
+            index++;
+        }
+        if(get_cluster_id(nodes[index]) != -1) {
+            new_sln = new_skip_list_node(0, &nodes[index]);
+            sln_ptr->level[i].backward = new_sln;
+            index++;
+        } else {
+            index++;
+        }
+    }
+    
 	return TRUE;
+}
+
+int do_traverse_skip_list(struct message msg) {
+    char buf[1024];
+    char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+    skip_list_node *cur_sln, *forward, *backward;
+    cur_sln = the_skip_list.header;
+    forward = cur_sln->level[0].forward;
+    backward = cur_sln->level[0].backward;
+
+    write_log(TORUS_NODE_LOG, "visit myself:");
+    print_node_info(cur_sln->leader);
+
+    get_node_ip(cur_sln->leader, src_ip);
+    strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH); 
+	if (strcmp(msg.data, "") == 0) {
+
+        if(forward) {
+            get_node_ip(forward->leader, dst_ip);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH); 
+            strncpy(msg.data, "forward", DATA_SIZE);
+            forward_message(msg);
+        }
+
+        if(backward) {
+            get_node_ip(backward->leader, dst_ip);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH); 
+            strncpy(msg.data, "backward", DATA_SIZE);
+            forward_message(msg);
+        }
+
+	} else if(strcmp(msg.data, "forward") == 0) {
+        if(forward) {
+            get_node_ip(forward->leader, dst_ip);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH); 
+            forward_message(msg);
+        }
+
+	} else {
+        if(backward) {
+            get_node_ip(backward->leader, dst_ip);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH); 
+            forward_message(msg);
+        }
+    }
+
+	return TRUE;
+}
+
+int forward_message(struct message msg) {
+    int socketfd;
+    socketfd = new_client_socket(msg.dst_ip);
+    if (FALSE == socketfd) {
+        return FALSE;
+    }
+
+    if (TRUE == send_message(socketfd, msg)) {
+        printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+
+        //write log
+        char buf[1024];
+        memset(buf, 0, 1024);
+        sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+        write_log(TORUS_NODE_LOG, buf);
+
+    }
+    close(socketfd);
 }
 
 int process_message(int socketfd, struct message msg) {
@@ -275,7 +323,9 @@ int process_message(int socketfd, struct message msg) {
 		print_torus_node(the_torus_node);
 		break;
 	case UPDATE_SKIP_LIST:
+
 		write_log(TORUS_NODE_LOG, "receive request update skip list.\n");
+
 		if (FALSE == do_update_skip_list(msg)) {
 			reply_code = FAILED;
 		}
@@ -286,11 +336,17 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		//print_skip_list_node(local_sl_node);
+		print_skip_list_node(&the_skip_list);
 		break;
 
-	case TRAVERSE:
-		do_traverse_torus(socketfd, msg);
+	case TRAVERSE_TORUS:
+		write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
+		do_traverse_torus(msg);
+		break;
+
+	case TRAVERSE_SKIP_LIST:
+		write_log(TORUS_NODE_LOG, "receive request traverse skip list.\n");
+		do_traverse_skip_list(msg);
 		break;
 
 	default:

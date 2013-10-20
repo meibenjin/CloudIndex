@@ -11,7 +11,6 @@
 
 #include"torus_node.h"
 #include"logs/log.h"
-#include"skip_list/skip_list.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -85,7 +84,9 @@ void print_neighbors(torus_node node) {
 	int neighbors_num = get_neighbors_num(node);
 	for (i = 0; i < neighbors_num; ++i) {
 		if (node.neighbors[i] != NULL) {
-			printf("\t");
+			printf("\tneighbors:");
+            write_log(TORUS_NODE_LOG, "\tneighbor:");
+
 			print_node_info(node.neighbors[i]->info);
 		}
 	}
@@ -115,6 +116,7 @@ torus_node *new_torus_node() {
 }
 
 void print_torus_node(torus_node torus) {
+    write_log(TORUS_NODE_LOG, "myself:");
 	print_node_info(torus.info);
 	print_neighbors(torus);
 	printf("\n");

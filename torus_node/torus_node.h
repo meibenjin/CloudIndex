@@ -10,38 +10,14 @@
 
 #include"utils.h"
 
-// limits for torus
-#define MAX_NEIGHBORS 6
-#define MAX_NODES_NUM 20 * 20 * 20
 
-// torus node info 
-typedef struct node_info {
-	// torus node ip address
-	char ip[IP_ADDR_LENGTH];
-
-	// cluster id the node belongs to
-	int cluster_id;
-
-	// torus node coordinate
-	struct coordinate node_id;
-
-} node_info;
-
-typedef struct torus_node {
-	// torus node info
-	struct node_info info;
-
-	// number of neighbors
-	int neighbors_num;
-
-	// torus node's neighbors
-	struct torus_node *neighbors[MAX_NEIGHBORS];
-} torus_node;
 
 torus_node the_torus_node;
 
 // mark torus node is active or not 
 int should_run;
+
+skip_list the_skip_list;
 
 void init_node_info(node_info *node_ptr);
 
