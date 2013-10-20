@@ -87,5 +87,7 @@ int create_skip_list();
 
 int update_skip_list();
 
+int traverse_skip_list(skip_list *slist, const char *entry_ip);
+
 #endif /* CONTROL_H_ */
 

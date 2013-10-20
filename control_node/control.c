@@ -440,7 +440,7 @@ int traverse_torus(const char *entry_ip) {
 	}
 
 	struct message msg;
-	msg.op = TRAVERSE;
+	msg.op = TRAVERSE_TORUS;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
 	memset(msg.stamp, 0, STAMP_SIZE);
@@ -484,7 +484,7 @@ int read_torus_ip_list() {
 }
 
 int create_skip_list() {
-	list = new_skip_list();
+	list = new_skip_list(MAXLEVEL);
 
 	if (NULL == list) {
 		return FALSE;
@@ -562,24 +562,56 @@ int update_skip_list() {
 	cur_sln = list->header->level[0].forward;
 	while (cur_sln != NULL) {
 		int i, nodes_num, index = 0;
-		nodes_num = cur_sln->height + 1;
+		nodes_num = (cur_sln->height + 1) * 2;
 		node_info nodes[nodes_num];
 		for (i = 0; i <= cur_sln->height; ++i) {
 			if (cur_sln->level[i].forward) {
+                nodes[index++] = cur_sln->level[i].forward->leader;
 				//nodes[i].forward = *cur_sln->level[i].forward->leader;
 			} else {
+                init_node_info(&nodes[index++]);
 			}
 			if (cur_sln->level[i].backward) {
+                nodes[index++] = cur_sln->level[i].backward->leader;
 				//nodes[i].backward = *cur_sln->level[i].backward->leader;
 			} else {
+                init_node_info(&nodes[index++]);
 			}
 		}
+
 		char dst_ip[IP_ADDR_LENGTH];
-		strncpy(dst_ip, cur_sln->leader->ip, IP_ADDR_LENGTH);
+		strncpy(dst_ip, cur_sln->leader.ip, IP_ADDR_LENGTH);
 		send_skip_list_node(dst_ip, nodes_num, nodes);
 
 		cur_sln = cur_sln->level[0].forward;
 	}
+	return TRUE;
+}
+
+int traverse_skip_list(skip_list *slist, const char *entry_ip) {
+	int socketfd;
+
+	socketfd = new_client_socket(entry_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+	struct message msg;
+	msg.op = TRAVERSE_SKIP_LIST;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	memset(msg.stamp, 0, STAMP_SIZE);
+	memset(msg.data, 0, DATA_SIZE);
+
+	send_message(socketfd, msg);
+	close(socketfd);
 	return TRUE;
 }
 
@@ -610,26 +642,19 @@ int main(int argc, char **argv) {
 	 }*/
 
 	if (TRUE == update_torus()) {
-		while (1) {
-			char entry_ip[IP_ADDR_LENGTH];
-			printf("input entry ip:");
-			scanf("%s", entry_ip);
-			traverse_torus(entry_ip);
-		}
-		//char ip[IP_ADDR_LENGTH];
-		//get_local_ip(ip);
-		//traverse_torus(ip);
+        char entry_ip[IP_ADDR_LENGTH];
+        printf("input entry ip:");
+        scanf("%s", entry_ip);
+        //traverse_torus(entry_ip);
+        if (TRUE == create_skip_list()) {
+            print_skip_list(list);
+            if (TRUE == update_skip_list()) {
+                printf("update skip list success!\n");
+            }
+            traverse_skip_list(list, entry_ip);
+            printf("traverse skip list success!\n");
+        }
 	}
-
-	/*if (FALSE == create_skip_list()) {
-	 exit(1);
-	 }
-	 traverse_skip_list(list);
-
-	 if (FALSE == update_skip_list()) {
-	 exit(1);
-	 }*/
-	printf("update skip list success!\n");
 
 	return 0;
 }
