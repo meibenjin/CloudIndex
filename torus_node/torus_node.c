@@ -97,6 +97,7 @@ void init_torus_node(torus_node *node_ptr) {
 		printf("init_torus_node: node_ptr is null pointer.\n");
 		return;
 	}
+    init_node_info(&node_ptr->info);
 }
 
 torus_node *new_torus_node() {

@@ -10,8 +10,6 @@
 
 #include"utils.h"
 
-
-
 torus_node the_torus_node;
 
 // mark torus node is active or not 
@@ -20,6 +18,8 @@ int should_run;
 skip_list the_skip_list;
 
 void init_node_info(node_info *node_ptr);
+
+void init_torus_node(torus_node *node_ptr);
 
 // set torus node ip
 void set_node_ip(node_info *node_ptr, const char *ip);
