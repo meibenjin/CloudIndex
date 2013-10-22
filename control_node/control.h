@@ -69,8 +69,8 @@ int append_torus(int direction);
 // merge appent_list into torus_node_list
 int merge_torus(int direction, struct torus_partitions append_torus_p, struct torus_node *append_list);
 
-// send torus nodes info to dst_ip
-int send_torus_nodes(const char *dst_ip, int nodes_num, struct node_info *nodes);
+// send nodes info to dst_ip
+int send_nodes_info(OP op, const char *dst_ip, int nodes_num, struct node_info *nodes);
 
 // update all nodes and theirs neighbors info via socket
 int update_torus();
@@ -88,6 +88,8 @@ int create_skip_list();
 int update_skip_list();
 
 int traverse_skip_list(skip_list *slist, const char *entry_ip);
+
+int insert_skip_list_node(node_info *node_ptr);
 
 #endif /* CONTROL_H_ */
 
