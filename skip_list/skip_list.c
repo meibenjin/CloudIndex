@@ -78,6 +78,7 @@ skip_list *new_skip_list(int level) {
 	}
 	slist->level = 0;
 	slist->header = new_skip_list_node(level, NULL);
+    //slist->tail = new_skip_list_node(level, NULL);
 	if (NULL == slist->header) {
 		return NULL;
 	}
