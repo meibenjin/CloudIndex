@@ -67,6 +67,8 @@ int receive_reply(int socketfd, struct reply_message *reply_msg);
 
 int send_message(int socketfd, struct message msg);
 
+int forward_message(struct message msg);
+
 int receive_message(int socketfd, struct message *msg);
 
 // get local ip address based on if_name(eth0, eth1...)

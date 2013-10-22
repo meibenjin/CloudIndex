@@ -130,6 +130,36 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	return TRUE;
 }
 
+int forward_message(struct message msg) {
+    int socketfd;
+    socketfd = new_client_socket(msg.dst_ip);
+    if (FALSE == socketfd) {
+        return FALSE;
+    }
+
+    if (TRUE == send_message(socketfd, msg)) {
+        printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+
+        //write log
+        char buf[1024];
+        memset(buf, 0, 1024);
+        sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+        write_log(TORUS_NODE_LOG, buf);
+
+        struct reply_message reply_msg;
+        if (TRUE == receive_reply(socketfd, &reply_msg)) {
+            if (SUCCESS == reply_msg.reply_code) {
+                return TRUE;
+            } else {
+                return FALSE;
+            }
+        } else {
+            return FALSE;
+        }
+    }
+    close(socketfd);
+}
+
 int send_message(int socketfd, struct message msg) {
 	if (SOCKET_ERROR
 			== send(socketfd, (void *) &msg, sizeof(struct message), 0)) {
