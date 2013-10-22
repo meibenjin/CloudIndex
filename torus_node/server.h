@@ -43,7 +43,13 @@ int do_update_torus(struct message msg);
 
 int do_update_skip_list(struct message msg);
 
-int forward_message(struct message msg);
+int do_update_skip_list_node(struct message msg);
+
+int do_update_forward(struct message msg);
+
+int do_update_backward(struct message msg);
+
+int do_new_skip_list(struct message msg); 
 
 /* resolve the message sent from client
  * send reply code to client after all.
