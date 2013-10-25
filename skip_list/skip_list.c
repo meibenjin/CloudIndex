@@ -42,6 +42,9 @@ int random_level() {
 	if (level > MAXLEVEL) {
 		level = MAXLEVEL;
 	}
+	/*double rand_d;
+	rand_d = rand() * 1.0 / RAND_MAX;
+	for(; )*/
 	return level;
 }
 
@@ -52,6 +55,9 @@ skip_list_node *new_skip_list_node(int level, node_info *node_ptr) {
 		printf("new_skip_list_node:insufficient memory.\n");
 		return NULL;
 	}
+
+    // if node_ptr is NULL pointer
+    // let the leader to be initial node
     if(node_ptr == NULL) {
         node_info node;
         init_node_info(&node);
