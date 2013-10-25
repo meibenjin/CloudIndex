@@ -4,7 +4,7 @@
 local_dir=${HOME}/Programming/C/CloudIndex
 # be careful! when change upload dir
 upload_dir=/root/mbj
-remote_shell="rm ${upload_dir}/* -rf"
+remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/* -rf"
 host_prefix="root@"
 control_node="${host_prefix}10.77.50.221"
 
