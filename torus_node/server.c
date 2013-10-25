@@ -201,16 +201,16 @@ int do_update_torus(struct message msg) {
 }
 
 int do_update_skip_list(struct message msg) {
-	int i;
-	int nodes_num = 0;
-	printf("update skip_list: %s -> %s\n", msg.src_ip, msg.dst_ip);
+	int i, index, nodes_num, level;
 
+	nodes_num = 0;
 	memcpy(&nodes_num, msg.data, sizeof(int));
 	if (nodes_num <= 0) {
 		printf("do_update_skip_list: skip_list node number is wrong\n");
 		return FALSE;
 	}
 
+	skip_list_node *sln_ptr, *new_sln;
 	node_info nodes[nodes_num];
 
 	for (i = 0; i < nodes_num; ++i) {
@@ -219,19 +219,12 @@ int do_update_skip_list(struct message msg) {
 				sizeof(node_info));
 	}
 
-	int index = 0;
-	int level = (nodes_num / 2) - 1;
-	skip_list_node *sln_ptr, *new_sln;
-    /*char buf[1024];
-    memset(buf, 0, 1024);
-    sprintf(buf, "update_skip_list:%d\n", nodes_num);
-    write_log(TORUS_NODE_LOG, buf);
 
-    for(i = 0; i < nodes_num; i++) {
-        print_node_info(nodes[i]);
-    }*/
+    level = (nodes_num / 2) - 1;
+    index = 0;
+	sln_ptr = the_skip_list.header;
 
-	for (i = 0; i <= level; i++) {
+	for (i = level; i >= 0; i--) {
 		if (get_cluster_id(nodes[index]) != -1) {
 			new_sln = new_skip_list_node(0, &nodes[index]);
             // free old forward field first
@@ -255,7 +248,6 @@ int do_update_skip_list(struct message msg) {
 			index++;
 		}
 	}
-
 	return TRUE;
 }
 
