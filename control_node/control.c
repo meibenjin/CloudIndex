@@ -22,7 +22,8 @@ torus_partitions torus_p;
 // skip list (linked list for torus cluster)
 skip_list *list;
 
-char torus_ip_list[13][IP_ADDR_LENGTH];
+char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
+int torus_nodes_num;
 
 int set_partitions(int p_x, int p_y, int p_z) {
 	if ((p_x < 1) || (p_y < 1) || (p_z < 1)) {
@@ -101,7 +102,12 @@ int assign_node_ip(torus_node *node_ptr) {
 		printf("assign_node_ip: node_ptr is null pointer.\n");
 		return FALSE;
 	}
-	set_node_ip(&node_ptr->info, ((i < 10) ? torus_ip_list[i++] : "0.0.0.0"));
+    if (i < torus_nodes_num) {
+        set_node_ip(&node_ptr->info, torus_ip_list[i++]);
+    } else {
+		printf("assign_node_ip: no free ip to be assigned.\n");
+		return FALSE;
+    }
 
 	return TRUE;
 }
@@ -481,6 +487,7 @@ int read_torus_ip_list() {
 		ip[strlen(ip) - 1] = '\0';
 		strncpy(torus_ip_list[count++], ip, IP_ADDR_LENGTH);
 	}
+    torus_nodes_num = count;
 	return TRUE;
 }
 
@@ -570,7 +577,7 @@ int insert_skip_list_node(node_info *node_ptr) {
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
     skip_list_node *sln_ptr, *new_sln;
 
-    node_info update_nodes[2], null_node, update_forward, update_backward;
+    node_info *update_nodes, null_node, update_forward, update_backward;
 	init_node_info(&null_node);
 
 	memset(src_ip, 0, IP_ADDR_LENGTH);
@@ -605,7 +612,7 @@ int insert_skip_list_node(node_info *node_ptr) {
     }
 
     update_num = (new_level + 1) * 2;
-    //update_nodes = (node_info *) malloc(sizeof(node_info) * update_num);
+    update_nodes = (node_info *) malloc(sizeof(node_info) * update_num);
 
     sln_ptr = list->header;
     index = 0;
@@ -618,11 +625,11 @@ int insert_skip_list_node(node_info *node_ptr) {
         if (i <= new_level) {
             // update new skip list node's forward field
             new_sln->level[i].forward = sln_ptr->level[i].forward;
-            update_nodes[0] = (sln_ptr->level[i].forward == NULL) ? null_node : sln_ptr->level[i].forward->leader;
+            update_nodes[index++] = (sln_ptr->level[i].forward == NULL) ? null_node : sln_ptr->level[i].forward->leader;
 
             // update new skip list node's backwaard field
 			new_sln->level[i].backward = (sln_ptr == list->header) ? NULL : sln_ptr;
-            update_nodes[1] = (sln_ptr == list->header) ? null_node : sln_ptr->leader;
+            update_nodes[index++] = (sln_ptr == list->header) ? null_node : sln_ptr->leader;
 
             // if current skip list node's forward field
             // update it's(sln_ptr->level[i].forward) backward field 
@@ -658,26 +665,12 @@ int insert_skip_list_node(node_info *node_ptr) {
                     return FALSE;
                 }
             }
-
-            if((get_cluster_id(update_nodes[0]) != -1) || (get_cluster_id(update_nodes[1]) != -1)) {
-                msg.op = UPDATE_SKIP_LIST_NODE;
-                strncpy(msg.dst_ip, node_ptr->ip, IP_ADDR_LENGTH);
-                memcpy(msg.data, &i, sizeof(int));
-                memcpy(msg.data + sizeof(int), (void *) &update_nodes[0], sizeof(node_info));
-                memcpy(msg.data + sizeof(int) + sizeof(node_info), (void *) &update_nodes[1], sizeof(node_info));
-                if(TRUE == forward_message(msg)) {
-                    printf("update skip list node %s ... success\n", node_ptr->ip);
-                } else {
-                    printf("update skip list node %s ... failed\n", node_ptr->ip);
-                    return FALSE;
-                }
-            }
         }
     }
 
-    /*if(TRUE == send_nodes_info(UPDATE_SKIP_LIST, node_ptr->ip, update_num, update_nodes)) {
+    if(TRUE == send_nodes_info(UPDATE_SKIP_LIST, node_ptr->ip, update_num, update_nodes)) {
         return FALSE;
-    }*/
+    }
 
     return TRUE;
 }
@@ -722,6 +715,7 @@ int main(int argc, char **argv) {
             printf("traverse skip list success!\n");
         }
         insert_skip_list_node(&torus_node_list[4].info);
+        print_skip_list(list);
 	}
 	return 0;
 }
