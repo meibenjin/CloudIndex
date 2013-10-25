@@ -9,21 +9,29 @@
 #include<stdlib.h>
 #include<string.h>
 
-void show_bytes(char *p, int size) {
-    int i;
-    for(i = 0; i < size; i++){
-        printf("0x%.2x ", *p++);
-    }
-    printf("\n");
-}
+struct A{
+    int a;
+    char b;
+};
 
+struct B{
+	int a;
+	struct A n[];
+};
+struct B *new_B(){
+    struct A t = { 100, 'c'};
+    struct B *p;
+    p = (struct B *) malloc(sizeof(struct B) + sizeof(struct A));
+    p->a = 1;
+    //p->n = (struct A *) malloc(sizeof(struct A));
+    memcpy(&p->n[0], (void *)&t, sizeof(struct A));
+    return p;
+}
 int main(void) {
-    int a = 0x01;
-    int l = htonl(a);
-    printf("%d:", a);
-    show_bytes((void *)&a, sizeof(int));
-    printf("%d:", l);
-    show_bytes((void *)&l, sizeof(int));
+    struct B *p;
+    p = new_B();
+    printf("%d, %d, %c\n", p->a, p->n->a, p->n->b);
+    free(p);
     return 0;
 }
 
