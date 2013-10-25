@@ -137,6 +137,8 @@ int forward_message(struct message msg) {
         return FALSE;
     }
 
+    int ret = FALSE;
+
     if (TRUE == send_message(socketfd, msg)) {
         printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
@@ -149,15 +151,17 @@ int forward_message(struct message msg) {
         struct reply_message reply_msg;
         if (TRUE == receive_reply(socketfd, &reply_msg)) {
             if (SUCCESS == reply_msg.reply_code) {
-                return TRUE;
+                ret =  TRUE;
             } else {
-                return FALSE;
+                ret =  FALSE;
             }
         } else {
-            return FALSE;
+            ret = FALSE;
         }
     }
     close(socketfd);
+
+    return ret;
 }
 
 int send_message(int socketfd, struct message msg) {
