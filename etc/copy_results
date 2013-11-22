@@ -1,0 +1,21 @@
+#!/bin/bash
+# this batch shell can execute shell script
+# on multiple hosts specified by ip list file
+
+home_dir="/root/mbj/CloudIndex"
+
+result_dir="/root/mbj/result"
+
+if [ ! -d ${result_dir} ]; then
+    mkdir ${result_dir}
+fi
+
+ip_list_file="${home_dir}/etc/torus_ip_list"
+
+for i in $(cat ${ip_list_file})
+do 
+    remote_host="root@$i"
+    copyed_file=${remote_host}:${home_dir}/logs/control_node.log 
+    scp  ${copyed_file} ${result_dir}/$i.log
+    cat ${result_dir}/$i.log >> ${resulst_dir}/res.log
+done
