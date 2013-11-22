@@ -19,12 +19,16 @@
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
+//limits for rtree
+#define MAX_DIM_NUM 3
+
 // limits for torus
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
 
 // limits for skip list
 #define MAXLEVEL 31
+#define SKIPLIST_P 0.5
 
 // LOG file path
 #define CTRL_NODE_LOG "../logs/control_node.log"
@@ -54,13 +58,21 @@ typedef enum OP {
 	// update torus node info
 	UPDATE_TORUS = 80,
 	TRAVERSE_TORUS,
+    SEARCH_TORUS_NODE, 
 	NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
+	SEARCH_SKIP_LIST_NODE,
 	UPDATE_FORWARD,
 	UPDATE_BACKWARD,
 	TRAVERSE_SKIP_LIST,
 } OP;
+
+// interval of each dimension
+typedef struct interval {
+	int low;
+	int high;
+} interval;
 
 // torus node info 
 typedef struct node_info {
@@ -70,10 +82,7 @@ typedef struct node_info {
 	// cluster id the node belongs to
 	int cluster_id;
 
-	struct range{
-		struct coordinate low;
-		struct coordinate high;
-	}range;
+	struct interval dims[MAX_DIM_NUM];
 
 	// torus node coordinate
 	struct coordinate node_id;
@@ -91,10 +100,20 @@ typedef struct torus_node {
 	struct torus_node *neighbors[MAX_NEIGHBORS];
 } torus_node;
 
+
 //skip list node structure
 typedef struct skip_list_node {
-	node_info leader;
+
+	// the level of skip list node
 	int height;
+
+	/* torus cluster leader node info
+	 * note: dims in node_info is the
+	 * total interval of whole torus
+	 * cluster in all dimension
+	 */
+	node_info leader;
+
 	struct skip_list_level {
 		struct skip_list_node *forward;
 		struct skip_list_node *backward;
@@ -106,6 +125,40 @@ typedef struct skip_list {
 	skip_list_node *header;
 	int level;
 } skip_list;
+
+
+/*
+ * definitions for control node
+ */
+
+// directions code in 3-dimension
+enum direction
+{
+    X_R = 0,
+    X_L,
+    Y_R,
+    Y_L,
+    Z_R,
+    Z_L,
+};
+
+// torus partitions on 3-dimension
+typedef struct torus_partitions {
+	int p_x;
+	int p_y;
+	int p_z;
+} torus_partitions;
+
+typedef struct torus_s {
+    torus_partitions partition;
+    int cluster_id;
+    torus_node *node_list;
+}torus_s;
+
+typedef struct torus_cluster {
+    struct torus_s *torus;
+    struct torus_cluster *next;
+} torus_cluster;
 
 #endif /* UTILS_H_ */
 
