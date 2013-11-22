@@ -11,8 +11,10 @@
 #include"utils.h"
 
 
-// compare two torus_node by their torus cluster id
-int compare(node_info *node1, node_info *node2);
+// compare two torus_node by time interval
+int compare(interval cinterval, interval ointerval);
+
+int interval_overlap(interval cinterval, interval ointerval);
 
 // random choose the skip list level
 int random_level();
@@ -30,7 +32,9 @@ int insert_skip_list(skip_list *slist, node_info *node_ptr);
 int remove_skip_list(skip_list *slist, node_info *node_ptr);
 
 // find out a torus_node from skip_list
-int search_skip_list(skip_list *slist, node_info *node_ptr);
+//int search_skip_list(skip_list *slist, interval time_interval);
+
+node_info *search_skip_list(skip_list *slist, interval time_interval);
 
 // traverse the skip_list
 void print_skip_list(skip_list *slist);
