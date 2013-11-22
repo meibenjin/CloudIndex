@@ -12,7 +12,7 @@
 
 #include"socket.h"
 
-//__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
 void init_socket_addr(struct sockaddr_in *sock_addr) {
 	bzero(sock_addr, sizeof(struct sockaddr_in));
@@ -42,6 +42,7 @@ int new_client_socket(char *ip) {
 	if (FALSE == set_server_ip(&client_addr, ip)) {
 		return FALSE;
 	}
+
 
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client_socket < 0) {
@@ -128,6 +129,14 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	}
 
 	return TRUE;
+}
+
+void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, message *msg){
+	msg->op = op;
+	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
+	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
+	memcpy(msg->stamp, stamp, STAMP_SIZE);
+	memcpy(msg->data, data, DATA_SIZE);
 }
 
 int forward_message(struct message msg) {

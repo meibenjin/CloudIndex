@@ -67,6 +67,8 @@ int receive_reply(int socketfd, struct reply_message *reply_msg);
 
 int send_message(int socketfd, struct message msg);
 
+void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, message *msg);
+
 int forward_message(struct message msg);
 
 int receive_message(int socketfd, struct message *msg);
