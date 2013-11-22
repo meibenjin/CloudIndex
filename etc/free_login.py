@@ -3,13 +3,17 @@
 
 import os
 import pexpect
+import sys
 
-pwd = "111111"
-file_path = raw_input()
+file_path = sys.argv[1]
+user_name = sys.argv[2]
+pwd = sys.argv[3]
 file = open(file_path,"r")
 lines = file.readlines()
 for line in lines:
-    child = pexpect.spawn('ssh-copy-id -i /root/.ssh/id_rsa.pub root@' + line)
+    line = line.strip('\n')
+    print "set free login on host:%s" % line
+    child = pexpect.spawn('ssh-copy-id -i /root/.ssh/id_rsa.pub ' + user_name + '@' + line)
     message = ''
     try:
         i = child.expect(['[Pp]assword:','continue connecting (yes/no?)'])
