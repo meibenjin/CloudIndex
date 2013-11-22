@@ -147,23 +147,24 @@ int forward_to_neighbors(struct message msg) {
 		strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
 		strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
 		//forward_message(msg);
-        int socketfd;
-        socketfd = new_client_socket(msg.dst_ip);
-        if (FALSE == socketfd) {
-            return FALSE;
-        }
+		int socketfd;
+		socketfd = new_client_socket(msg.dst_ip);
+		if (FALSE == socketfd) {
+			return FALSE;
+		}
 
-        if (TRUE == send_message(socketfd, msg)) {
-            printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+		if (TRUE == send_message(socketfd, msg)) {
+			printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
-            //write log
-            char buf[1024];
-            memset(buf, 0, 1024);
-            sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-            write_log(TORUS_NODE_LOG, buf);
+			//write log
+			char buf[1024];
+			memset(buf, 0, 1024);
+			sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip,
+					msg.dst_ip);
+			write_log(TORUS_NODE_LOG, buf);
 
-        }
-        close(socketfd);
+		}
+		close(socketfd);
 	}
 	return TRUE;
 }
@@ -219,18 +220,17 @@ int do_update_skip_list(struct message msg) {
 				sizeof(node_info));
 	}
 
-
-    level = (nodes_num / 2) - 1;
-    index = 0;
+	level = (nodes_num / 2) - 1;
+	index = 0;
 	sln_ptr = the_skip_list.header;
 
 	for (i = level; i >= 0; i--) {
 		if (get_cluster_id(nodes[index]) != -1) {
 			new_sln = new_skip_list_node(0, &nodes[index]);
-            // free old forward field first
-            if(sln_ptr->level[i].forward) {
-                free(sln_ptr->level[i].forward);
-            }
+			// free old forward field first
+			if (sln_ptr->level[i].forward) {
+				free(sln_ptr->level[i].forward);
+			}
 			sln_ptr->level[i].forward = new_sln;
 			index++;
 		} else {
@@ -238,10 +238,10 @@ int do_update_skip_list(struct message msg) {
 		}
 		if (get_cluster_id(nodes[index]) != -1) {
 			new_sln = new_skip_list_node(0, &nodes[index]);
-            // free old forward field first
-            if(sln_ptr->level[i].backward) {
-                free(sln_ptr->level[i].backward);
-            }
+			// free old forward field first
+			if (sln_ptr->level[i].backward) {
+				free(sln_ptr->level[i].backward);
+			}
 			sln_ptr->level[i].backward = new_sln;
 			index++;
 		} else {
@@ -265,7 +265,6 @@ int do_traverse_skip_list(struct message msg) {
 	get_node_ip(cur_sln->leader, src_ip);
 	strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
 	if (strcmp(msg.data, "") == 0) {
-
 		if (forward) {
 			get_node_ip(forward->leader, dst_ip);
 			strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
@@ -305,17 +304,18 @@ int do_update_skip_list_node(struct message msg) {
 
 	node_info f_node, b_node;
 	memcpy(&f_node, (void*) (msg.data + sizeof(int)), sizeof(node_info));
-	memcpy(&b_node, (void*) (msg.data + sizeof(int) + sizeof(node_info)), sizeof(node_info));
+	memcpy(&b_node, (void*) (msg.data + sizeof(int) + sizeof(node_info)),
+			sizeof(node_info));
 
 	skip_list_node *sln_ptr, *new_sln;
 	sln_ptr = the_skip_list.header;
 	if (get_cluster_id(f_node) != -1) {
 		new_sln = new_skip_list_node(0, &f_node);
 
-        // free old forward field first
-        if(sln_ptr->level[i].forward) {
-            free(sln_ptr->level[i].forward);
-        }
+		// free old forward field first
+		if (sln_ptr->level[i].forward) {
+			free(sln_ptr->level[i].forward);
+		}
 
 		sln_ptr->level[i].forward = new_sln;
 	}
@@ -323,13 +323,13 @@ int do_update_skip_list_node(struct message msg) {
 	if (get_cluster_id(b_node) != -1) {
 		new_sln = new_skip_list_node(0, &b_node);
 
-        // free old backward field first
-        if(sln_ptr->level[i].backward) {
-            free(sln_ptr->level[i].backward);
-        }
+		// free old backward field first
+		if (sln_ptr->level[i].backward) {
+			free(sln_ptr->level[i].backward);
+		}
 		sln_ptr->level[i].backward = new_sln;
 	}
-    return TRUE;
+	return TRUE;
 }
 int do_update_forward(struct message msg) {
 	int i;
@@ -344,14 +344,14 @@ int do_update_forward(struct message msg) {
 	if (get_cluster_id(f_node) != -1) {
 		new_sln = new_skip_list_node(0, &f_node);
 
-        // free old forward field first
-        if(sln_ptr->level[i].forward) {
-            free(sln_ptr->level[i].forward);
-        }
+		// free old forward field first
+		if (sln_ptr->level[i].forward) {
+			free(sln_ptr->level[i].forward);
+		}
 
 		sln_ptr->level[i].forward = new_sln;
 	}
-    return TRUE;
+	return TRUE;
 }
 
 int do_update_backward(struct message msg) {
@@ -367,14 +367,14 @@ int do_update_backward(struct message msg) {
 	if (get_cluster_id(b_node) != -1) {
 		new_sln = new_skip_list_node(0, &b_node);
 
-        // free old backward field first
-        if(sln_ptr->level[i].backward) {
-            free(sln_ptr->level[i].backward);
-        }
+		// free old backward field first
+		if (sln_ptr->level[i].backward) {
+			free(sln_ptr->level[i].backward);
+		}
 
-		sln_ptr->level[i].backward= new_sln;
+		sln_ptr->level[i].backward = new_sln;
 	}
-
+	return TRUE;
 }
 
 int do_new_skip_list(struct message msg) {
@@ -382,17 +382,276 @@ int do_new_skip_list(struct message msg) {
 	skip_list_node *sln_ptr;
 	// analysis node info from message
 	memcpy(&level, msg.data, sizeof(int));
+	node_info leader;
+	memcpy(&leader, msg.data + sizeof(int), sizeof(node_info));
 
 	the_skip_list = *new_skip_list(level);
 	sln_ptr = the_skip_list.header;
-	sln_ptr->leader = the_torus_node.info;
+	sln_ptr->leader = leader;
 	sln_ptr->height = level;
 	the_skip_list.level = level;
-    return TRUE;
+	return TRUE;
+}
+
+int overlaps(interval c[], interval o[]) {
+	int i, ovlp = 1;
+	i = 0;
+	while (ovlp && i < MAX_DIM_NUM) {
+		ovlp = !(c[i].high < o[i].low || c[i].low > o[i].high);
+		i++;
+	}
+
+	return ovlp;
+}
+
+int forward_search(struct message msg, int d) {
+    int i;
+	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+	interval interval[MAX_DIM_NUM];
+	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+
+    struct coordinate lower_id = get_node_id(the_torus_node.info);
+    struct coordinate upper_id = get_node_id(the_torus_node.info);
+    switch (d) {
+        case 0:
+            lower_id.x -= 1;
+            upper_id.x += 1;
+            break;
+        case 1:
+            lower_id.y -= 1;
+            upper_id.y += 1;
+            break;
+        case 2:
+            lower_id.z -= 1;
+            upper_id.z += 1;
+            break;
+    }
+
+    node_info *lower_neighbor = get_neighbor_by_id(the_torus_node, lower_id);
+    node_info *upper_neighbor = get_neighbor_by_id(the_torus_node, upper_id);
+
+    if((lower_neighbor != NULL) && (strcmp(lower_neighbor->ip, msg.src_ip) != 0)) {
+        if (interval[d].low < the_torus_node.info.dims[d].low) {
+            struct message new_msg;
+            get_node_ip(the_torus_node.info, src_ip);
+            get_node_ip(*lower_neighbor, dst_ip);
+            fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data,&new_msg);
+
+            int socketfd;
+            socketfd = new_client_socket(new_msg.dst_ip);
+            if (FALSE == socketfd) {
+                return FALSE;
+            }
+
+            if (TRUE == send_message(socketfd, new_msg)) {
+                printf("\tforward message: %s -> %s\n", new_msg.src_ip, new_msg.dst_ip);
+            }
+            close(socketfd);
+        }
+    }
+    if((upper_neighbor != NULL) && (strcmp(upper_neighbor->ip, msg.src_ip) != 0)) {
+        if (interval[d].high > the_torus_node.info.dims[d].high) {
+            struct message new_msg;
+            get_node_ip(the_torus_node.info, src_ip);
+            get_node_ip(*upper_neighbor, dst_ip);
+            fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data,&new_msg);
+
+            int socketfd;
+            socketfd = new_client_socket(new_msg.dst_ip);
+            if (FALSE == socketfd) {
+                return FALSE;
+            }
+
+            if (TRUE == send_message(socketfd, new_msg)) {
+                printf("\tforward message: %s -> %s\n", new_msg.src_ip, new_msg.dst_ip);
+            }
+            close(socketfd);
+        }
+    }
+}
+
+int do_search_torus_node(struct message msg) {
+	int i, ovlp, forward_num;
+	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+
+	interval interval[MAX_DIM_NUM];
+	char stamp[STAMP_SIZE];
+	int count;
+	memcpy(&count, msg.data, sizeof(int));
+	count++;
+	memcpy(msg.data, &count, sizeof(int));
+	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+	memcpy(stamp, msg.stamp, STAMP_SIZE);
+
+	request *req_ptr = find_request(req_list, stamp);
+
+	if (NULL == req_ptr) {
+        req_ptr = insert_request(req_list, stamp);
+
+        if (1 == overlaps(interval, the_torus_node.info.dims)) {
+            write_log(TORUS_NODE_LOG, "search torus success!\n");
+            print_node_info(the_torus_node.info);
+
+            snprintf(buf, 1024, "query:[%d, %d], [%d, %d], [%d, %d]\n",
+                    interval[0].low, interval[0].high, interval[1].low,
+                    interval[1].high, interval[2].low, interval[2].high);
+            write_log(CTRL_NODE_LOG, buf);
+            snprintf(buf, 1024, "%s:[%d, %d], [%d, %d], [%d, %d]\n",
+                    the_torus_node.info.ip, the_torus_node.info.dims[0].low,
+                    the_torus_node.info.dims[0].high,
+                    the_torus_node.info.dims[1].low,
+                    the_torus_node.info.dims[1].high,
+                    the_torus_node.info.dims[2].low,
+                    the_torus_node.info.dims[2].high);
+            write_log(TORUS_NODE_LOG, buf);
+            write_log(CTRL_NODE_LOG, buf);
+            snprintf(buf, 1024, "%s:search torus success. %d\n\n", msg.dst_ip,
+                    count);
+            write_log(CTRL_NODE_LOG, buf);
+
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                forward_search(msg,i);
+            }
+            //TODO do rtree search
+
+        } else {
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                if (interval_overlap(interval[i], the_torus_node.info.dims[i]) != 0) {
+                    forward_search(msg,i);
+                    break;
+                }
+            }
+        }
+    }
+	/*} else {
+		req_ptr->receive_num--;
+		if (req_ptr->receive_num == 0) {
+			remove_request(req_list, stamp);
+		}*/
+	return TRUE;
+}
+
+int do_search_skip_list_node(struct message msg) {
+	int i;
+	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+	interval interval[MAX_DIM_NUM];
+	char stamp[STAMP_SIZE];
+	int count;
+	memcpy(&count, msg.data, sizeof(int));
+	count++;
+	memcpy(msg.data, &count, sizeof(int));
+	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+
+	message new_msg;
+
+	//get current skip list node  ip address
+	get_node_ip(the_skip_list.header->leader, src_ip);
+
+	skip_list_node *sln_ptr;
+	sln_ptr = the_skip_list.header;
+
+	if (0 == interval_overlap(sln_ptr->leader.dims[2], interval[2])) { // node searched
+		write_log(TORUS_NODE_LOG,
+				"search skip list success! turn to search torus\n");
+
+		// turn to torus layer
+		msg.op = SEARCH_TORUS_NODE;
+		if (FALSE == gen_request_stamp(stamp)) {
+			return FALSE;
+		}
+		strncpy(msg.stamp, stamp, STAMP_SIZE);
+		do_search_torus_node(msg);
+
+		//decide forward to it's forward and backward
+		if (strcmp(msg.stamp, "") == 0) {
+			if ((sln_ptr->level[0].forward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[0].forward->leader.dims[2],
+							interval[2]) == 0)) {
+				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+			}
+
+			if ((sln_ptr->level[0].backward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[0].backward->leader.dims[2],
+							interval[2]) == 0)) {
+				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+			}
+		} else if (strcmp(msg.stamp, "forward") == 0) {
+			if ((sln_ptr->level[0].forward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[0].forward->leader.dims[2],
+							interval[2]) == 0)) {
+				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+			}
+		} else {
+			if ((sln_ptr->level[0].backward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[0].backward->leader.dims[2],
+							interval[2]) == 0)) {
+				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+			}
+		}
+
+	} else if (-1 == interval_overlap(sln_ptr->leader.dims[2], interval[2])) { // node is on the forward of skip list
+		int visit_forward = 0;
+		for (i = the_skip_list.level; i >= 0; --i) {
+			if ((sln_ptr->level[i].forward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[i].forward->leader.dims[2],
+							interval[2]) <= 0)) {
+
+				get_node_ip(sln_ptr->level[i].forward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+				visit_forward = 1;
+				break;
+			}
+		}
+		if (visit_forward == 0) {
+			write_log(TORUS_NODE_LOG, "search failed!\n");
+		}
+
+	} else {							// node is on the backward of skip list
+		int visit_backward = 0;
+		for (i = the_skip_list.level; i >= 0; --i) {
+			if ((sln_ptr->level[i].backward != NULL)
+					&& (interval_overlap(
+							sln_ptr->level[i].backward->leader.dims[2],
+							interval[2]) >= 0)) {
+
+				get_node_ip(sln_ptr->level[i].backward->leader, dst_ip);
+				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+						&new_msg);
+				forward_message(new_msg);
+				visit_backward = 1;
+				break;
+			}
+		}
+		if (visit_backward == 0) {
+			write_log(TORUS_NODE_LOG, "search failed!\n");
+		}
+	}
+
+	return TRUE;
 }
 
 int process_message(int socketfd, struct message msg) {
 
+    char buf[1024];
 	struct reply_message reply_msg;
 	int reply_code = SUCCESS;
 	switch (msg.op) {
@@ -419,6 +678,11 @@ int process_message(int socketfd, struct message msg) {
 	case TRAVERSE_TORUS:
 		write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
 		do_traverse_torus(msg);
+		break;
+
+	case SEARCH_TORUS_NODE:
+		write_log(TORUS_NODE_LOG, "receive request search torus node.\n");
+		do_search_torus_node(msg);
 		break;
 
 	case UPDATE_SKIP_LIST:
@@ -452,9 +716,25 @@ int process_message(int socketfd, struct message msg) {
 		}
 		print_skip_list_node(&the_skip_list);
 		break;
-    
-    case UPDATE_FORWARD:
-		write_log(TORUS_NODE_LOG, "receive request update skip list node's forward field.\n");
+
+	case SEARCH_SKIP_LIST_NODE:
+		write_log(TORUS_NODE_LOG, "receive request search skip list node.\n");
+
+		if (FALSE == do_search_skip_list_node(msg)) {
+			reply_code = FAILED;
+		}
+		reply_msg.op = msg.op;
+		reply_msg.reply_code = reply_code;
+		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
+		if (FALSE == send_reply(socketfd, reply_msg)) {
+			// TODO handle send reply failed
+			return FALSE;
+		}
+		break;
+
+	case UPDATE_FORWARD:
+		write_log(TORUS_NODE_LOG,
+				"receive request update skip list node's forward field.\n");
 		if (FALSE == do_update_forward(msg)) {
 			reply_code = FAILED;
 		}
@@ -466,10 +746,11 @@ int process_message(int socketfd, struct message msg) {
 			return FALSE;
 		}
 		print_skip_list_node(&the_skip_list);
-        break;
+		break;
 
-    case UPDATE_BACKWARD:
-		write_log(TORUS_NODE_LOG, "receive request update skip list node's backward field.\n");
+	case UPDATE_BACKWARD:
+		write_log(TORUS_NODE_LOG,
+				"receive request update skip list node's backward field.\n");
 
 		if (FALSE == do_update_backward(msg)) {
 			reply_code = FAILED;

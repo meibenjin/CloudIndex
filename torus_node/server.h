@@ -38,6 +38,8 @@ int do_traverse_torus(struct message msg);
 
 int forward_to_neighbors(struct message msg);
 
+int do_search_torus_node(struct message msg);
+
 // handle the update torus request from client
 int do_update_torus(struct message msg);
 
@@ -48,6 +50,8 @@ int do_update_skip_list_node(struct message msg);
 int do_update_forward(struct message msg);
 
 int do_update_backward(struct message msg);
+
+int do_search_skip_list_node(struct message msg);
 
 int do_new_skip_list(struct message msg); 
 

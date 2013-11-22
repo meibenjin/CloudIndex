@@ -22,6 +22,33 @@ void init_node_info(node_info *info_ptr) {
 	set_node_ip(info_ptr, "0.0.0.0");
 	set_node_id(info_ptr, -1, -1, -1);
 	set_cluster_id(info_ptr, -1);
+
+	int i;
+	for(i = 0; i < MAX_DIM_NUM; ++i){
+		info_ptr->dims[i].low = 0;
+		info_ptr->dims[i].high = 0;
+	}
+
+}
+
+void init_torus_node(torus_node *node_ptr) {
+	if (!node_ptr) {
+		printf("init_torus_node: node_ptr is null pointer.\n");
+		return;
+	}
+    init_node_info(&node_ptr->info);
+}
+
+int assign_dimensions(node_info *node_ptr){
+	static int last_dim[MAX_DIM_NUM] = {0, 0, 0};
+	int i;
+	for(i = 0; i < MAX_DIM_NUM; ++i){
+		node_ptr->dims[i].low = last_dim[i] + rand() % 10;
+		node_ptr->dims[i].high = node_ptr->dims[i].low + rand() % 10;
+		last_dim[i] = node_ptr->dims[i].high;
+	}
+
+	return TRUE;
 }
 
 void set_node_ip(node_info *info_ptr, const char *ip) {
@@ -79,6 +106,20 @@ int get_neighbors_num(torus_node node) {
 	return node.neighbors_num;
 }
 
+node_info *get_neighbor_by_id(torus_node node, struct coordinate node_id){
+	int i, x, y, z;
+	int neighbors_num = get_neighbors_num(node);
+	for (i = 0; i < neighbors_num; ++i) {
+        x = node.neighbors[i]->info.node_id.x;
+        y =  node.neighbors[i]->info.node_id.y; 
+        z =  node.neighbors[i]->info.node_id.z; 
+		if ((node_id.x == x) && (node_id.y == y) && (node_id.z == z)) {
+            return &node.neighbors[i]->info;
+		}
+	}
+    return NULL;
+}
+
 void print_neighbors(torus_node node) {
 	int i;
 	int neighbors_num = get_neighbors_num(node);
@@ -92,13 +133,7 @@ void print_neighbors(torus_node node) {
 	}
 }
 
-void init_torus_node(torus_node *node_ptr) {
-	if (!node_ptr) {
-		printf("init_torus_node: node_ptr is null pointer.\n");
-		return;
-	}
-    init_node_info(&node_ptr->info);
-}
+
 
 torus_node *new_torus_node() {
 	torus_node *new_torus;
@@ -124,13 +159,22 @@ void print_torus_node(torus_node torus) {
 }
 
 void print_node_info(node_info node) {
+	int i;
 	coordinate c = node.node_id;
-	printf("%d\t(%d, %d, %d)\t%s\n", node.cluster_id, c.x, c.y, c.z, node.ip);
+	printf("%d %s ", node.cluster_id, node.ip);
+	for(i = 0; i < MAX_DIM_NUM; ++i){
+		printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
+	}
+	printf("\n");
 
 	char buf[1024];
 	memset(buf, 0, 1024);
-	sprintf(buf, "%d\t(%d, %d, %d)\t%s\n", node.cluster_id, c.x, c.y, c.z,
-			node.ip);
+	int len = sprintf(buf, "%d %s ", node.cluster_id, node.ip);
+	for(i = 0; i < MAX_DIM_NUM; ++i){
+			len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
+	}
+	sprintf(buf+len, "\n");
+
 	write_log(TORUS_NODE_LOG, buf);
 }
 
