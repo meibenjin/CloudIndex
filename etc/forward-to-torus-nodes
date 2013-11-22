@@ -8,6 +8,7 @@ upload_dir="/root/mbj"
 remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/* -rf"
 host_prefix="root@"
 torus_ip_list="${etc_dir}/torus_ip_list"
+tar_name="cloudindex.tar.gz"
 
 function clean_remote_dir()
 {
@@ -21,10 +22,13 @@ function clean_remote_dir()
 
 function copy_it()
 {
+    cd ${upload_dir}
+    tar -zmcf ${tar_name} CloudIndex --exclude=CloudIndex/.git
     for i in $(cat ${torus_ip_list} )
     do 
         remote_host="${host_prefix}$i"
-        scp -r -q ${local_dir} ${remote_host}:${upload_dir}
+        scp -r -q ${tar_name} ${remote_host}:${upload_dir}
+        ssh ${remote_host} "cd ${upload_dir}; tar -zmxf ${tar_name}; rm ${tar_name}"
         echo "copy to ${remote_host}"
     done
 }
