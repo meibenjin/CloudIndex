@@ -11,9 +11,28 @@
 
 #include"skip_list.h"
 #include"logs/log.h"
+//#include"torus_node/torus_node.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
+
+int overlaps(interval c[], interval o[]) {
+	int i, ovlp = 1;
+	i = 0;
+	while (ovlp && i < MAX_DIM_NUM) {
+		ovlp = !(c[i].high < o[i].low || c[i].low > o[i].high);
+		i++;
+	}
+
+	return ovlp;
+}
+
+int get_distance(interval c[], interval o[]){
+	int c_center = (c->low + c->high) / 2;
+	int o_center = (o->low + o->high) / 2;
+	int dis = c_center - o_center;
+	return (dis > 0) ? dis : (-1 * dis);
+}
 
 int compare(interval cinterval, interval ointerval) {
 	if (cinterval.low <= ointerval.low) {

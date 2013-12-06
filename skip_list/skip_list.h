@@ -10,6 +10,9 @@
 
 #include"utils.h"
 
+int overlaps(interval c[], interval o[]);
+
+int get_distance(interval c[], interval o[]);
 
 // compare two torus_node by time interval
 int compare(interval cinterval, interval ointerval);
