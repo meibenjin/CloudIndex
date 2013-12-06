@@ -8,24 +8,52 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<time.h>
 
-#include"utils.h"
+void gen_range(int min, int max, float p) {
+	int low, high, step, i, randint;
 
-int overlaps(interval c[], interval o[]) {
-    int i, ovlp = 1;
-    i = -1;
-    do {
-        i++;
-        ovlp = !(c[i].high < o[i].low || c[i].low > o[i].high); 
-    }while(ovlp && i != MAX_DIM_NUM);
+    step = max * p;
+    max = max - max * p;
 
-    return ovlp;
+	for (i = 0; i < 3; i++) {
+		randint = rand();
+		low = (randint % (max - min)) + min;
+		high = low + step - 1 ;
+		printf("%d %d ", low, high);
+	}
+	printf("\n");
 }
 
 int main(void) {
-    interval c[MAX_DIM_NUM] = {{40, 80}, { 100, 120 }, {100, 120}};
-    interval o[MAX_DIM_NUM] = {{74, 81}, { 113, 118 }, {96, 105}};
-    printf("%d\n", overlaps(c, o));
-    return 0;
+	int i;
+    srand(time(NULL));
+	for(i = 0; i< 100;i++){
+		gen_range(1, 100, 0.4);
+	}
+
+
+	return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
