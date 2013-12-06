@@ -1,3 +1,6 @@
+#ifndef UTILS_H_
+#define UTILS_H_
+
 /*
  * utils.h
  *
@@ -5,8 +8,6 @@
  *      Author: meibenjin
  */
 
-#ifndef UTILS_H_
-#define UTILS_H_
 
 // limits for socket
 #define IP_ADDR_LENGTH 20
@@ -57,6 +58,7 @@ typedef enum REPLY_CODE {
 typedef enum OP {
 	// update torus node info
 	UPDATE_TORUS = 80,
+	UPDATE_PARTITION,
 	TRAVERSE_TORUS,
     SEARCH_TORUS_NODE, 
 	NEW_SKIP_LIST,
@@ -66,6 +68,8 @@ typedef enum OP {
 	UPDATE_FORWARD,
 	UPDATE_BACKWARD,
 	TRAVERSE_SKIP_LIST,
+	RECEIVE_RESULT,
+	RECEIVE_QUERY,
 } OP;
 
 // interval of each dimension
@@ -101,6 +105,13 @@ typedef struct torus_node {
 } torus_node;
 
 
+// only used by skip list node
+struct skip_list_level {
+    struct skip_list_node *forward;
+    struct skip_list_node *backward;
+};
+
+
 //skip list node structure
 typedef struct skip_list_node {
 
@@ -113,11 +124,8 @@ typedef struct skip_list_node {
 	 * cluster in all dimension
 	 */
 	node_info leader;
+	struct skip_list_level level[];
 
-	struct skip_list_level {
-		struct skip_list_node *forward;
-		struct skip_list_node *backward;
-	} level[];
 } skip_list_node;
 
 // header of skip_list
