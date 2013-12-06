@@ -11,6 +11,7 @@
 #include<errno.h>
 
 #include"socket.h"
+#include"logs/log.h"
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -19,10 +20,9 @@ void init_socket_addr(struct sockaddr_in *sock_addr) {
 	sock_addr->sin_family = AF_INET;
 	sock_addr->sin_addr.s_addr = htons(INADDR_ANY);
 	sock_addr->sin_port = htons(LISTEN_PORT);
-
 }
 
-int set_server_ip(struct sockaddr_in *sock_addr, char *ip) {
+int set_server_ip(struct sockaddr_in *sock_addr, const char *ip) {
 	if (ip == NULL) {
 		printf("set_server_ip: ip is null pointer.\n");
 		return FALSE;
@@ -34,7 +34,7 @@ int set_server_ip(struct sockaddr_in *sock_addr, char *ip) {
 	return TRUE;
 }
 
-int new_client_socket(char *ip) {
+int new_client_socket(const char *ip) {
 	struct sockaddr_in client_addr;
 
 	//initial client address
@@ -42,7 +42,6 @@ int new_client_socket(char *ip) {
 	if (FALSE == set_server_ip(&client_addr, ip)) {
 		return FALSE;
 	}
-
 
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (client_socket < 0) {
@@ -107,7 +106,9 @@ int accept_connection(int socketfd) {
 }
 
 int send_reply(int socketfd, struct reply_message reply_msg) {
-	if (SOCKET_ERROR == send(socketfd, (void *) &reply_msg, sizeof(struct reply_message), 0)) {
+	if (SOCKET_ERROR
+			== send(socketfd, (void *) &reply_msg, sizeof(struct reply_message),
+					0)) {
 		// TODO do something if send failed
 		printf("send_reply: send reply failed.\n");
 		return FALSE;
@@ -131,7 +132,8 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	return TRUE;
 }
 
-void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, message *msg){
+void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data,
+		message *msg) {
 	msg->op = op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
@@ -139,45 +141,47 @@ void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, me
 	memcpy(msg->data, data, DATA_SIZE);
 }
 
-int forward_message(struct message msg) {
-    int socketfd;
-    socketfd = new_client_socket(msg.dst_ip);
-    if (FALSE == socketfd) {
-        return FALSE;
-    }
+int forward_message(struct message msg, int need_reply) {
+	int socketfd;
+	socketfd = new_client_socket(msg.dst_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
 
-    int ret = FALSE;
+	int ret = FALSE;
 
-    if (TRUE == send_message(socketfd, msg)) {
-        printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+	if (TRUE == send_message(socketfd, msg)) {
+		printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
-        //write log
-        char buf[1024];
-        memset(buf, 0, 1024);
-        sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-        write_log(TORUS_NODE_LOG, buf);
+		//write log
+		char buf[1024];
+		memset(buf, 0, 1024);
+		sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+		write_log(TORUS_NODE_LOG, buf);
 
-        struct reply_message reply_msg;
-        if (TRUE == receive_reply(socketfd, &reply_msg)) {
-            if (SUCCESS == reply_msg.reply_code) {
-                ret =  TRUE;
-            } else {
-                ret =  FALSE;
-            }
-        } else {
-            ret = FALSE;
-        }
-    }
-    close(socketfd);
+		if (need_reply) {
+			struct reply_message reply_msg;
+			if (TRUE == receive_reply(socketfd, &reply_msg)) {
+				if (SUCCESS == reply_msg.reply_code) {
+					ret = TRUE;
+				} else {
+					ret = FALSE;
+				}
+			} else {
+				ret = FALSE;
+			}
+		}
+	}
+	close(socketfd);
 
-    return ret;
+	return ret;
 }
 
 int send_message(int socketfd, struct message msg) {
 	if (SOCKET_ERROR
 			== send(socketfd, (void *) &msg, sizeof(struct message), 0)) {
 		// TODO do something if send failed
-		printf("%s: send torus nodes failed.\n", msg.dst_ip);
+		printf("send_message: %s send message failed.\n", msg.src_ip);
 		return FALSE;
 	}
 	return TRUE;
@@ -234,4 +238,3 @@ void print_message(struct message msg) {
 	printf("src:%s\n", msg.src_ip);
 	printf("dst:%s\n", msg.dst_ip);
 }
-

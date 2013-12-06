@@ -1,12 +1,12 @@
+#ifndef SOCKET_SERVER_H_
+#define SOCKET_SERVER_H_
+
 /*
  * socket_server.h
  *
  *  Created on: Sep 12, 2013
  *      Author: meibenjin
  */
-
-#ifndef SOCKET_SERVER_H_
-#define SOCKET_SERVER_H_
 
 //socket API
 #include<sys/types.h>
@@ -15,6 +15,7 @@
 #include<net/if.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
+#include<unistd.h>
 
 #include"utils.h"
 
@@ -51,7 +52,7 @@ void init_socket_addr(struct sockaddr_in *socket_addr);
 /* create a new client socket
  * return: socket file descriptor
  */
-int new_client_socket();
+int new_client_socket(const char *ip);
 
 /* create a new server socket
  * return: socket file descriptor
@@ -69,7 +70,8 @@ int send_message(int socketfd, struct message msg);
 
 void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, message *msg);
 
-int forward_message(struct message msg);
+// forward message to  msg.dst_ip
+int forward_message(struct message msg, int need_reply);
 
 int receive_message(int socketfd, struct message *msg);
 
