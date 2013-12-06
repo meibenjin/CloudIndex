@@ -419,13 +419,6 @@ int forward_search(struct message msg, int d) {
 	node_info *lower_neighbor = get_neighbor_by_id(the_torus_node, lower_id);
 	node_info *upper_neighbor = get_neighbor_by_id(the_torus_node, upper_id);
 
-	if (strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
-		lower_neighbor = NULL;
-	}
-	if (strcmp(upper_neighbor->ip, msg.src_ip) == 0) {
-		upper_neighbor = NULL;
-	}
-
 	int len = 0;
 	len = sprintf(buf, "query:");
 	for (i = 0; i < MAX_DIM_NUM; ++i) {
@@ -434,42 +427,66 @@ int forward_search(struct message msg, int d) {
 	}
 	sprintf(buf + len, "\n");
 
-	// if current torus node is on the lower end
-	if ((the_torus_node.info.dims[d].low < lower_neighbor->dims[d].low)
-			&& (the_torus_node.info.dims[d].low < upper_neighbor->dims[d].low)) {
-		if (get_distance(interval[d], lower_neighbor->dims[d])
-				< get_distance(interval[d], upper_neighbor->dims[d])) {
-			upper_neighbor = lower_neighbor;
-		}
-		lower_neighbor = NULL;
+	int lower_overlap = interval_overlap(interval[d], lower_neighbor->dims[d]);
+	int upper_overlap = interval_overlap(interval[d], upper_neighbor->dims[d]);
 
-	} else if ((the_torus_node.info.dims[d].high > lower_neighbor->dims[d].high)
-			&& (the_torus_node.info.dims[d].high > upper_neighbor->dims[d].high)) {
-		if (get_distance(interval[d], upper_neighbor->dims[d])
-				< get_distance(interval[d], lower_neighbor->dims[d])) {
-			lower_neighbor = upper_neighbor;
+	// choose forward neighbor if query overlap one neighbor at most
+	if ((lower_overlap != 0) || (upper_overlap != 0)) {
+
+		//current torus node is the first node on dimension d
+		if ((the_torus_node.info.dims[d].low < lower_neighbor->dims[d].low)
+				&& (the_torus_node.info.dims[d].low
+						< upper_neighbor->dims[d].low)) {
+			if (get_distance(interval[d], lower_neighbor->dims[d])
+					< get_distance(interval[d], upper_neighbor->dims[d])) {
+				upper_neighbor = lower_neighbor;
+			}
+			lower_neighbor = NULL;
+
+		} else if ((the_torus_node.info.dims[d].high
+				> lower_neighbor->dims[d].high)
+				&& (the_torus_node.info.dims[d].high
+						> upper_neighbor->dims[d].high)) {
+			if (get_distance(interval[d], upper_neighbor->dims[d])
+					< get_distance(interval[d], lower_neighbor->dims[d])) {
+				lower_neighbor = upper_neighbor;
+			}
+			upper_neighbor = NULL;
+		} else {
+			if (lower_overlap != 0) {
+				lower_neighbor = NULL;
+			}
+			if (upper_overlap != 0) {
+				upper_neighbor = NULL;
+			}
 		}
+	}
+
+	// the message is from lower_neighbor
+	if (strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
+		lower_neighbor = NULL;
+	}
+	// the message is from upper_neighbor
+	if (strcmp(upper_neighbor->ip, msg.src_ip) == 0) {
 		upper_neighbor = NULL;
 	}
 
-	if ((lower_neighbor != NULL)
-			&& (interval[d].low < the_torus_node.info.dims[d].low)) {
+	if (lower_neighbor != NULL) {
 		struct message new_msg;
 		get_node_ip(the_torus_node.info, src_ip);
 		get_node_ip(*lower_neighbor, dst_ip);
 		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
-        write_log(TORUS_NODE_LOG, buf);
+		write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
 	}
-	if ((upper_neighbor != NULL)
-			&& (interval[d].high > the_torus_node.info.dims[d].high)) {
+	if (upper_neighbor != NULL) {
 		struct message new_msg;
 		get_node_ip(the_torus_node.info, src_ip);
 		get_node_ip(*upper_neighbor, dst_ip);
 		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
-        write_log(TORUS_NODE_LOG, buf);
+		write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
 	}
 	return TRUE;
@@ -478,7 +495,7 @@ int forward_search(struct message msg, int d) {
 int do_search_torus_node(struct message msg) {
 	int i;
 	char buf[1024];
-	//char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+//char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
 	interval interval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
@@ -501,7 +518,7 @@ int do_search_torus_node(struct message msg) {
 			fill_message(RECEIVE_RESULT, msg.dst_ip, result_ip, msg.stamp,
 					msg.data, &new_msg);
 
-			forward_message(new_msg, 0);// end test
+			forward_message(new_msg, 0);			// end test
 
 			write_log(TORUS_NODE_LOG, "search torus success!\n\t");
 			print_node_info(the_torus_node.info);
@@ -554,15 +571,15 @@ int do_search_skip_list_node(struct message msg) {
 	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	interval interval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
-	//int count;
-	//memcpy(&count, msg.data, sizeof(int));
-	//count++;
-	//memcpy(msg.data, &count, sizeof(int));
+//int count;
+//memcpy(&count, msg.data, sizeof(int));
+//count++;
+//memcpy(msg.data, &count, sizeof(int));
 	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
 
 	message new_msg;
 
-	//get current skip list node  ip address
+//get current skip list node  ip address
 	get_node_ip(the_skip_list.header->leader, src_ip);
 
 	skip_list_node *sln_ptr;
@@ -724,15 +741,15 @@ int do_receive_result(struct message msg) {
 		//	fprintf(stdout, "[%d, %d] ", intval[i].low, intval[i].high);
 	}
 	fprintf(fp, "\n");
-	//fprintf(stdout, "\n");
+//fprintf(stdout, "\n");
 
-	//fprintf(fp, "start time:[%ld:%ld]\n", query_start.tv_sec, query_start.tv_nsec);
-	//fprintf(fp, "end time:[%ld:%ld]\n", query_end.tv_sec , query_end.tv_nsec);
+//fprintf(fp, "start time:[%ld:%ld]\n", query_start.tv_sec, query_start.tv_nsec);
+//fprintf(fp, "end time:[%ld:%ld]\n", query_end.tv_sec , query_end.tv_nsec);
 	fprintf(fp, "query time:%f us\n", (double) qtime / 1000.0);
-	//fprintf(stdout, "query time:%f ms\n", qtime);
+//fprintf(stdout, "query time:%f ms\n", qtime);
 
 	fprintf(fp, "%s:%d\n\n", ip, count);
-	//fprintf(stdout, "%s:%d\n\n", ip, count);
+//fprintf(stdout, "%s:%d\n\n", ip, count);
 	fclose(fp);
 
 	return TRUE;
@@ -755,7 +772,7 @@ int do_receive_query(struct message msg) {
 
 int process_message(int socketfd, struct message msg) {
 
-	//char buf[1024];
+//char buf[1024];
 	struct reply_message reply_msg;
 	int reply_code = SUCCESS;
 	switch (msg.op) {
