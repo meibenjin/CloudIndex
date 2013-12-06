@@ -1,3 +1,6 @@
+#ifndef LOG_H_
+#define LOG_H_
+
 /*
  * log.h
  *
@@ -5,11 +8,7 @@
  *      Author: meibenjin
  */
 
-#ifndef LOG_H_
-#define LOG_H_
-
-
-char log_buf[1024];
+void get_local_time(char* buffer);
 
 void write_log(const char *file_name, const char *buffer);
 
