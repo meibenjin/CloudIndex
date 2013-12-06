@@ -1,12 +1,12 @@
+#ifndef TORUS_NODE_H_
+#define TORUS_NODE_H_
+
 /*
  * torus_node.h
  *
  *  Created on: Sep 16, 2013
  *      Author: meibenjin
  */
-
-#ifndef TORUS_NODE_H_
-#define TORUS_NODE_H_
 
 #include"utils.h"
 
@@ -20,7 +20,7 @@ skip_list the_skip_list;
 
 void init_node_info(node_info *node_ptr);
 
-void init_torus_node(torus_node *node_ptr);
+extern void init_torus_node(torus_node *node_ptr);
 
 int assign_dimensions(node_info *node_ptr);
 
@@ -48,7 +48,7 @@ void print_neighbors(torus_node node);
 
 void print_torus_node(torus_node torus);
 
-void print_node_info(node_info node);
+extern void print_node_info(node_info node);
 
 torus_node *new_torus_node();
 

@@ -160,8 +160,8 @@ void print_torus_node(torus_node torus) {
 
 void print_node_info(node_info node) {
 	int i;
-	coordinate c = node.node_id;
-	printf("%d %s ", node.cluster_id, node.ip);
+
+	printf("%s:", node.ip);
 	for(i = 0; i < MAX_DIM_NUM; ++i){
 		printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
 	}
@@ -169,7 +169,7 @@ void print_node_info(node_info node) {
 
 	char buf[1024];
 	memset(buf, 0, 1024);
-	int len = sprintf(buf, "%d %s ", node.cluster_id, node.ip);
+	int len = sprintf(buf, "%s:", node.ip);
 	for(i = 0; i < MAX_DIM_NUM; ++i){
 			len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
 	}

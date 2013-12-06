@@ -1,12 +1,12 @@
+#ifndef SERVER_H_
+#define SERVER_H_
+
 /*
  * server.h
  *
  *  Created on: Sep 24, 2013
  *      Author: meibenjin
  */
-
-#ifndef SERVER_H_
-#define SERVER_H_
 
 #include"utils.h"
 #include"torus_node/torus_node.h"
@@ -40,15 +40,19 @@ int forward_to_neighbors(struct message msg);
 
 int do_search_torus_node(struct message msg);
 
-// handle the update torus request from client
+// handle update torus request from client
 int do_update_torus(struct message msg);
 
+// handle update skip list node request functions
 int do_update_skip_list(struct message msg);
 
+// update current torus node's skip list node's forward and backward
 int do_update_skip_list_node(struct message msg);
 
+// update current torus node's skip list node's forward
 int do_update_forward(struct message msg);
 
+// update current torus node's skip list node's backward
 int do_update_backward(struct message msg);
 
 int do_search_skip_list_node(struct message msg);
