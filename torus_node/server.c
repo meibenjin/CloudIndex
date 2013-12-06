@@ -459,6 +459,7 @@ int forward_search(struct message msg, int d) {
 		get_node_ip(*lower_neighbor, dst_ip);
 		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
+        write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
 	}
 	if ((upper_neighbor != NULL)
@@ -468,6 +469,7 @@ int forward_search(struct message msg, int d) {
 		get_node_ip(*upper_neighbor, dst_ip);
 		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
+        write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
 	}
 	return TRUE;
