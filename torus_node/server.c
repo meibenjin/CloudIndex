@@ -463,11 +463,11 @@ int forward_search(struct message msg, int d) {
 	}
 
 	// the message is from lower_neighbor
-	if (strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
+	if (lower_neighbor && strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
 		lower_neighbor = NULL;
 	}
 	// the message is from upper_neighbor
-	if (strcmp(upper_neighbor->ip, msg.src_ip) == 0) {
+	if (upper_neighbor && strcmp(upper_neighbor->ip, msg.src_ip) == 0) {
 		upper_neighbor = NULL;
 	}
 
