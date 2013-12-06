@@ -5,7 +5,7 @@ local_dir="${HOME}/mbj/CloudIndex"
 etc_dir="${local_dir}/etc"
 # be careful! when change upload dir
 upload_dir="/root/mbj"
-remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/* -rf"
+remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/CloudIndex -rf"
 host_prefix="root@"
 torus_ip_list="${etc_dir}/torus_ip_list"
 tar_name="cloudindex.tar.gz"
@@ -31,6 +31,7 @@ function copy_it()
         ssh ${remote_host} "cd ${upload_dir}; tar -zmxf ${tar_name}; rm ${tar_name}"
         echo "copy to ${remote_host}"
     done
+    rm ${tar_name}
 }
 
 if [ $# = 0 ]; then
