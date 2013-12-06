@@ -1,12 +1,12 @@
+#ifndef CONTROL_H_
+#define CONTROL_H_
+
 /*
  * control.h
  *
  *  Created on: Sep 20, 2013
  *      Author: meibenjin
  */
-
-#ifndef CONTROL_H_
-#define CONTROL_H_
 
 #include"utils.h"
 #include"torus_node/torus_node.h"
@@ -64,6 +64,8 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction);
 
 // send nodes info to dst_ip
 int send_nodes_info(OP op, const char *dst_ip, int nodes_num, struct node_info *nodes);
+
+int send_partition_info(const char *dst_ip, struct torus_partitions torus_p);
 
 // update all nodes and theirs neighbors info via socket
 int update_torus(torus_s *torus);

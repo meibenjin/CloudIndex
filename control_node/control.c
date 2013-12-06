@@ -11,6 +11,7 @@
 #include<stdlib.h>
 #include<string.h>
 #include<time.h>
+#include<unistd.h>
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -74,7 +75,6 @@ int remove_torus_cluster(torus_cluster *list, int cluster_id) {
 }
 
 void print_torus_cluster(torus_cluster *list) {
-	int nodes_num, i;
 	torus_cluster *cluster_ptr = list->next;
 	while (cluster_ptr) {
 		printf("cluster:%d\n", cluster_ptr->torus->cluster_id);
@@ -110,7 +110,7 @@ int translate_coordinates(torus_s *torus, int direction) {
 		return FALSE;
 	}
 
-	int i, x, y, z, nodes_num;
+	int i, nodes_num;
 
 	torus_partitions t_p = torus->partition;
 	nodes_num = get_nodes_num(t_p);
@@ -296,31 +296,45 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 	int i, j, k, index;
 
 	index = 0;
-	static int last_dim[MAX_DIM_NUM] = {1, 1, 1};
+	//static int last_dim[MAX_DIM_NUM] = { 1, 1, 1 };
 	interval intvl[MAX_DIM_NUM];
-    int d_x[new_torus_p.p_x + 1];
-    int d_y[new_torus_p.p_y + 1];
-    int d_z[new_torus_p.p_z + 1];
+	int d_x[new_torus_p.p_x + 1];
+	int d_y[new_torus_p.p_y + 1];
+	int d_z[new_torus_p.p_z + 1];
 
-	for (i = 1, d_x[0] = 1; i <= new_torus_p.p_x; ++i) {
-        d_x[i] = d_x[i-1] + rand() % 19;
-    }
-    for (j = 1, d_y[0] = 1; j <= new_torus_p.p_y; ++j) {
-        d_y[j] = d_y[j-1] + rand() % 19;
-    }
-    for (k = 1, d_z[0] = 1; k <= new_torus_p.p_z; ++k) {
-        d_z[k] = d_z[k-1] + rand() % 19;
-    }
+	int range = 100;
+
+	for (i = 1, d_x[0] = 0; i <= new_torus_p.p_x; ++i) {
+		if (i == new_torus_p.p_x) {
+			d_x[i] = 100;
+			break;
+		}
+		d_x[i] = d_x[i - 1] + range / new_torus_p.p_x;
+	}
+	for (j = 1, d_y[0] = 0; j <= new_torus_p.p_y; ++j) {
+		if (j == new_torus_p.p_y) {
+			d_y[j] = 100;
+			break;
+		}
+		d_y[j] = d_y[j - 1] + range / new_torus_p.p_y;
+	}
+	for (k = 1, d_z[0] = 0; k <= new_torus_p.p_z; ++k) {
+		if (k == new_torus_p.p_z) {
+			d_z[k] = 100;
+			break;
+		}
+		d_z[k] = d_z[k - 1] + range / new_torus_p.p_z;
+	}
 
 	for (i = 0; i < new_torus_p.p_x; ++i) {
 		intvl[0].low = d_x[i] + 1;
-		intvl[0].high = d_x[i+1];
+		intvl[0].high = d_x[i + 1];
 		for (j = 0; j < new_torus_p.p_y; ++j) {
-            intvl[1].low = d_y[j] + 1;
-            intvl[1].high = d_y[j+1];
+			intvl[1].low = d_y[j] + 1;
+			intvl[1].high = d_y[j + 1];
 			for (k = 0; k < new_torus_p.p_z; ++k) {
-                intvl[2].low = d_z[k] + 1;
-                intvl[2].high = d_z[k+1];
+				intvl[2].low = d_z[k] + 1;
+				intvl[2].high = d_z[k + 1];
 
 				new_node = &torus_ptr->node_list[index];
 
@@ -331,7 +345,7 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 				}
 
 				int t;
-				for(t = 0; t < MAX_DIM_NUM; ++t){
+				for (t = 0; t < MAX_DIM_NUM; ++t) {
 					new_node->info.dims[t].low = intvl[t].low;
 					new_node->info.dims[t].high = intvl[t].high;
 				}
@@ -453,6 +467,51 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction) {
 	return merged_torus;
 }
 
+int send_partition_info(const char *dst_ip, struct torus_partitions torus_p) {
+	int socketfd;
+	socketfd = new_client_socket(dst_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+	struct message msg;
+	msg.op = UPDATE_PARTITION;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+	memcpy(msg.data, &torus_p, sizeof(struct torus_partitions));
+
+	int ret;
+	struct reply_message reply_msg;
+	if (TRUE == send_message(socketfd, msg)) {
+		if (TRUE == receive_reply(socketfd, &reply_msg)) {
+			if (SUCCESS == reply_msg.reply_code) {
+				printf("%s: send partition info ...... finish.\n", dst_ip);
+				ret = TRUE;
+			} else {
+				printf("%s: send partition info ...... error occurred.\n",
+						dst_ip);
+				ret = FALSE;
+			}
+		} else {
+			printf("%s: receive reply ...... failed.\n", dst_ip);
+			ret = FALSE;
+		}
+	} else {
+		printf("%s: send partition info...... failed.\n", dst_ip);
+		ret = FALSE;
+	}
+	close(socketfd);
+	return ret;
+
+}
+
 int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
 		struct node_info *nodes) {
 	int i;
@@ -507,12 +566,12 @@ int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
 
 int update_torus(torus_s *torus) {
 	int i, j, index, nodes_num;
-    
-    nodes_num = get_nodes_num(torus->partition);
-	for (i = 0; i < nodes_num; ++i) {
-        int neighbors_num = get_neighbors_num(torus->node_list[i]);
 
-        // the nodes array includes dst nodes and its' neighbors
+	nodes_num = get_nodes_num(torus->partition);
+	for (i = 0; i < nodes_num; ++i) {
+		int neighbors_num = get_neighbors_num(torus->node_list[i]);
+
+		// the nodes array includes dst nodes and its' neighbors
 		node_info nodes[neighbors_num + 1];
 
 		// add dst node itself
@@ -537,6 +596,9 @@ int update_torus(torus_s *torus) {
 						nodes)) {
 			return FALSE;
 		}
+
+		send_partition_info(dst_ip, torus->partition);
+
 	}
 	return TRUE;
 }
@@ -632,7 +694,6 @@ int update_skip_list(skip_list *list) {
 			}
 		}
 
-
 		char dst_ip[IP_ADDR_LENGTH];
 		strncpy(dst_ip, cur_sln->leader.ip, IP_ADDR_LENGTH);
 		send_nodes_info(UPDATE_SKIP_LIST, dst_ip, nodes_num, nodes);
@@ -674,7 +735,7 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	skip_list_node *sln_ptr, *new_sln;
 
-	node_info *update_nodes, null_node, update_forward, update_backward;
+	node_info *update_nodes, null_node;
 	init_node_info(&null_node);
 
 	memset(src_ip, 0, IP_ADDR_LENGTH);
@@ -697,7 +758,7 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 	strncpy(msg.stamp, "", STAMP_SIZE);
 	memcpy(msg.data, &new_level, sizeof(int));
 	memcpy(msg.data + sizeof(int), node_ptr, sizeof(node_info));
-	if (TRUE == forward_message(msg)) {
+	if (TRUE == forward_message(msg, 1)) {
 		printf("new skip list node %s ... success\n", node_ptr->ip);
 	} else {
 		printf("new skip list node %s ... failed\n", node_ptr->ip);
@@ -729,13 +790,13 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 					(sln_ptr->level[i].forward == NULL) ?
 							null_node : sln_ptr->level[i].forward->leader;
 
-			// update new skip list node's backwaard field
+			// update new skip list node's backward field
 			new_sln->level[i].backward =
 					(sln_ptr == list->header) ? NULL : sln_ptr;
 			update_nodes[index++] =
 					(sln_ptr == list->header) ? null_node : sln_ptr->leader;
 
-			// if current skip list node's forward field
+			// if current skip list node's forward field exist(not the tail node)
 			// update it's(sln_ptr->level[i].forward) backward field
 			if (sln_ptr->level[i].forward) {
 				new_sln->level[i].forward->level[i].backward = new_sln;
@@ -746,7 +807,7 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 				memcpy(msg.data, &i, sizeof(int));
 				memcpy(msg.data + sizeof(int), (void *) node_ptr,
 						sizeof(struct node_info));
-				if (TRUE == forward_message(msg)) {
+				if (TRUE == forward_message(msg, 1)) {
 					printf("update skip list node %s's backward ... success\n",
 							dst_ip);
 				} else {
@@ -766,7 +827,7 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 				memcpy(msg.data, &i, sizeof(int));
 				memcpy(msg.data + sizeof(int), (void *) node_ptr,
 						sizeof(struct node_info));
-				if (TRUE == forward_message(msg)) {
+				if (TRUE == forward_message(msg, 1)) {
 					printf("update skip list node %s's forward ... success\n",
 							dst_ip);
 				} else {
@@ -805,15 +866,14 @@ int search_skip_list_node(interval interval[], const char *entry_ip) {
 	memcpy(msg.data, &count, sizeof(int));
 	memcpy(msg.data + sizeof(int), (void *) interval, DATA_SIZE);
 
-
-    int i;
-	if(FALSE == forward_message(msg)) {
-        printf("!!!ERROR!!! ");
-        for(i = 0; i < MAX_DIM_NUM; ++i){
-            printf("[%d, %d] ", interval[i].low, interval[i].high);
-        }
-    }
-    printf("\n");
+	int i;
+	if (FALSE == forward_message(msg, 1)) {
+		printf("!!!ERROR!!! ");
+		for (i = 0; i < MAX_DIM_NUM; ++i) {
+			printf("[%d, %d] ", interval[i].low, interval[i].high);
+		}
+	}
+	printf("\n");
 
 	return TRUE;
 }
@@ -828,9 +888,6 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	int if_run = 0;
-	int x, y, z;
-
 	cluster_list = new_torus_cluster();
 
 	if (NULL == cluster_list) {
@@ -843,114 +900,60 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	//only for test
-	int i;
-	char entry_ip[16][IP_ADDR_LENGTH];
-	struct interval total_intrvl[MAX_DIM_NUM] = { { 10000, -1 }, { 10000, -1 },
-			{ 10000, -1 } };
+	char entry_ip[IP_ADDR_LENGTH];
 
-    x = 1;
-    y = 1;
-    z = 1;
+	// create a new torus by torus partition info
+	struct torus_s *torus_ptr;
+	torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+	if (torus_ptr == NULL) {
+		exit(1);
+	}
+	//print_torus(torus_ptr);
 
-    int num = 0;
+	node_info *leader_node;
+	leader_node = assign_torus_leader(torus_ptr);
 
-	while (1) {
+	strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
 
-		//printf("input partitions:");
-		//scanf("%d %d %d", &x, &y, &z);
-		x++;
-		y++;
-		z++;
-        num += x * y * z;
+	// insert newly created torus cluster into cluster_list
+	insert_torus_cluster(cluster_list, torus_ptr);
 
-        if(num > 128)
-        {
-            break;
-        }
+	//print_torus_cluster(cluster_list);
 
-		// create a new torus by torus partition info
-		struct torus_s *torus_ptr;
-		torus_ptr = create_torus(x, y, z);
-		if (torus_ptr == NULL) {
-			continue;
+	if (TRUE == update_torus(torus_ptr)) {
+		if (TRUE == insert_skip_list_node(slist, leader_node)) {
+			print_skip_list(slist);
+			//printf("traverse skip list success!\n");
 		}
-		//print_torus(torus_ptr);
-
-		node_info *leader_node;
-		leader_node = assign_torus_leader(torus_ptr);
-
-		strncpy(entry_ip[if_run], leader_node->ip, IP_ADDR_LENGTH);
-
-		for (i = 0; i < MAX_DIM_NUM; ++i) {
-			if (leader_node->dims[i].low < total_intrvl[i].low) {
-				total_intrvl[i].low = leader_node->dims[i].low;
-				//leader_node->dims[i].low = torus->node_list[j].info.dims[i].low;
-			}
-			if (leader_node->dims[i].high > total_intrvl[i].high) {
-				total_intrvl[i].high = leader_node->dims[i].high;
-			}
-		}
-
-		// insert newly created torus cluster into cluster_list
-		insert_torus_cluster(cluster_list, torus_ptr);
-
-		//print_torus_cluster(cluster_list);
-
-		if (TRUE == update_torus(torus_ptr)) {
-			if (TRUE == insert_skip_list_node(slist, leader_node)) {
-                print_skip_list(slist);
-				//printf("traverse skip list success!\n");
-			}
-		}
-		if_run++;
 	}
 
 	printf("\n\n");
 	print_torus_cluster(cluster_list);
 	printf("\n\n");
 
-	int count = 0;
-	while (count++ < 50) {
-		struct interval interval[MAX_DIM_NUM];
-		int randint, r_cluster_id, r_id;
+	FILE *fp = fopen("./range_query", "rb");
+	if (fp == NULL) {
+		printf("can't open file\n");
+		exit(1);
+	}
 
-		srand((unsigned) time(NULL));
-		r_cluster_id = rand() % 3;
-		torus_cluster *tc = find_torus_cluster(cluster_list, r_cluster_id);
-		if(tc == NULL){
-			continue;
-		}
-        int nn = get_nodes_num(tc->torus->partition);
-		r_id = rand() % nn;
-		node_info node = tc->torus->node_list[r_id].info;
+	int count = 0, i;
+	while (count++ < 100) {
+		struct interval intval[MAX_DIM_NUM];
 
-		printf("cluster id:%d\t node id:%d\n", r_cluster_id, r_id);
-
-
-		for (i = 0; i < MAX_DIM_NUM; i++) {
-			if(node.dims[i].high - node.dims[i].low == 0){
-				randint = node.dims[i].low;
-			} else {
-				randint = rand() % (node.dims[i].high - node.dims[i].low)
-						+ node.dims[i].low;
-			}
-			interval[i].low = randint;
-			interval[i].high = randint + rand()%9 + 1;
-		}
-
-		randint = rand() % 3;
 		printf("%d.begin search: ", count);
-		for(i = 0; i < MAX_DIM_NUM; ++i){
-			printf("[%d, %d] ", interval[i].low, interval[i].high);
+		for (i = 0; i < MAX_DIM_NUM; i++) {
+			fscanf(fp, "%d %d", &intval[i].low, &intval[i].high);
+			printf("[%d, %d] ", intval[i].low, intval[i].high);
 		}
-		printf("%d\n", randint);
+		printf("\n");
 
-		search_skip_list_node(interval, entry_ip[randint]);
+		search_skip_list_node(intval, entry_ip);
 
 		printf("search finish.\n");
-		sleep(2);
+		//sleep(1);
 	}
+	fclose(fp);
 
 	return 0;
 }
