@@ -132,9 +132,8 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	return TRUE;
 }
 
-void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data,
-		message *msg) {
-	msg->op = op;
+void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, message *msg){
+	msg->op = (OP)op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
 	memcpy(msg->stamp, stamp, STAMP_SIZE);

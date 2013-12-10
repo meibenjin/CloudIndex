@@ -1,12 +1,12 @@
-#ifndef SOCKET_SERVER_H_
-#define SOCKET_SERVER_H_
-
 /*
  * socket_server.h
  *
  *  Created on: Sep 12, 2013
  *      Author: meibenjin
  */
+
+#ifndef SOCKET_SERVER_H_
+#define SOCKET_SERVER_H_
 
 //socket API
 #include<sys/types.h>
@@ -68,7 +68,7 @@ int receive_reply(int socketfd, struct reply_message *reply_msg);
 
 int send_message(int socketfd, struct message msg);
 
-void fill_message(OP op, char *src_ip, char *dst_ip, char *stamp, char *data, message *msg);
+void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, message *msg);
 
 // forward message to  msg.dst_ip
 int forward_message(struct message msg, int need_reply);
