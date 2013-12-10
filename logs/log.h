@@ -1,5 +1,3 @@
-#ifndef LOG_H_
-#define LOG_H_
 
 /*
  * log.h
@@ -7,6 +5,9 @@
  *  Created on: Oct 8, 2013
  *      Author: meibenjin
  */
+
+#ifndef LOG_H_
+#define LOG_H_
 
 void get_local_time(char* buffer);
 
