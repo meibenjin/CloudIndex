@@ -870,7 +870,7 @@ int search_skip_list_node(interval interval[], const char *entry_ip) {
 	if (FALSE == forward_message(msg, 1)) {
 		printf("!!!ERROR!!! ");
 		for (i = 0; i < MAX_DIM_NUM; ++i) {
-			printf("[%d, %d] ", interval[i].low, interval[i].high);
+			printf("[%.15f, %.15f] ", interval[i].low, interval[i].high);
 		}
 	}
 	printf("\n");
@@ -943,8 +943,8 @@ int main(int argc, char **argv) {
 
 		printf("%d.begin search: ", count);
 		for (i = 0; i < MAX_DIM_NUM; i++) {
-			fscanf(fp, "%d %d", &intval[i].low, &intval[i].high);
-			printf("[%d, %d] ", intval[i].low, intval[i].high);
+			fscanf(fp, "%lf %lf", &intval[i].low, &intval[i].high);
+			printf("[%.15f, %.15f] ", intval[i].low, intval[i].high);
 		}
 		printf("\n");
 
