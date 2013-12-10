@@ -133,8 +133,6 @@ void print_neighbors(torus_node node) {
 	}
 }
 
-
-
 torus_node *new_torus_node() {
 	torus_node *new_torus;
 	new_torus = (torus_node *) malloc(sizeof(torus_node));
@@ -163,7 +161,7 @@ void print_node_info(node_info node) {
 
 	printf("%s:", node.ip);
 	for(i = 0; i < MAX_DIM_NUM; ++i){
-		printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
+		printf("[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
 	}
 	printf("\n");
 
@@ -171,7 +169,7 @@ void print_node_info(node_info node) {
 	memset(buf, 0, 1024);
 	int len = sprintf(buf, "%s:", node.ip);
 	for(i = 0; i < MAX_DIM_NUM; ++i){
-			len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
+			len += sprintf(buf + len, "[%.15f, %15f] ", node.dims[i].low, node.dims[i].high);
 	}
 	sprintf(buf+len, "\n");
 

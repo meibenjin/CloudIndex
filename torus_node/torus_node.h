@@ -1,6 +1,3 @@
-#ifndef TORUS_NODE_H_
-#define TORUS_NODE_H_
-
 /*
  * torus_node.h
  *
@@ -8,15 +5,11 @@
  *      Author: meibenjin
  */
 
+#ifndef TORUS_NODE_H_
+#define TORUS_NODE_H_
+
 #include"utils.h"
 
-torus_node the_torus_node;
-struct torus_partitions the_partition;
-
-// mark torus node is active or not 
-int should_run;
-
-skip_list the_skip_list;
 
 void init_node_info(node_info *node_ptr);
 
