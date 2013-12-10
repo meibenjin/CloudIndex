@@ -11,7 +11,7 @@
 
 #include"skip_list.h"
 #include"logs/log.h"
-//#include"torus_node/torus_node.h"
+#include"torus_node/torus_node.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -27,10 +27,10 @@ int overlaps(interval c[], interval o[]) {
 	return ovlp;
 }
 
-int get_distance(interval c[], interval o[]){
-	int c_center = (c->low + c->high) / 2;
-	int o_center = (o->low + o->high) / 2;
-	int dis = c_center - o_center;
+int get_distance(interval c, interval o){
+	double c_center = (c.low + c.high) / 2;
+	double o_center = (o.low + o.high) / 2;
+	double dis = c_center - o_center;
 	return (dis > 0) ? dis : (-1 * dis);
 }
 
