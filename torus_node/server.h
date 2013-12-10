@@ -1,6 +1,3 @@
-#ifndef SERVER_H_
-#define SERVER_H_
-
 /*
  * server.h
  *
@@ -8,19 +5,10 @@
  *      Author: meibenjin
  */
 
+#ifndef SERVER_H_
+#define SERVER_H_
+
 #include"utils.h"
-#include"torus_node/torus_node.h"
-#include"socket/socket.h"
-
-// request info for torus node
-typedef struct request {
-	int first_run;
-	int receive_num;
-	char stamp[STAMP_SIZE];
-	struct request *next;
-} request;
-
-struct request *req_list;
 
 request *new_request();
 

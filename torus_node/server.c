@@ -5,16 +5,38 @@
  *      Author: meibenjin
  */
 
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
 #include<time.h>
 
+extern "C" {
 #include"server.h"
 #include"logs/log.h"
+#include"torus_node/torus_node.h"
 #include"skip_list/skip_list.h"
+#include"socket/socket.h"
+};
 
-__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+#include"torus_rtree.h"
+
+//define torus server 
+/*****************************************************************************/
+
+torus_node the_torus_node;
+struct torus_partitions the_partition;
+
+ISpatialIndex* the_torus_rtree;
+
+// mark torus node is active or not 
+int should_run;
+
+struct skip_list the_skip_list;
+
+struct request *req_list;
+
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 
@@ -24,6 +46,8 @@ struct query {
 };
 
 struct query query_list[10000];
+
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 request *new_request() {
 	request *req_ptr;
@@ -422,7 +446,7 @@ int forward_search(struct message msg, int d) {
 	int len = 0;
 	len = sprintf(buf, "query:");
 	for (i = 0; i < MAX_DIM_NUM; ++i) {
-		len += sprintf(buf + len, "[%d, %d] ", interval[i].low,
+		len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
 				interval[i].high);
 	}
 	sprintf(buf + len, "\n");
@@ -475,7 +499,7 @@ int forward_search(struct message msg, int d) {
 		struct message new_msg;
 		get_node_ip(the_torus_node.info, src_ip);
 		get_node_ip(*lower_neighbor, dst_ip);
-		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
+		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
 		write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
@@ -484,7 +508,7 @@ int forward_search(struct message msg, int d) {
 		struct message new_msg;
 		get_node_ip(the_torus_node.info, src_ip);
 		get_node_ip(*upper_neighbor, dst_ip);
-		fill_message(msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
+		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
 		write_log(TORUS_NODE_LOG, buf);
 		forward_message(new_msg, 0);
@@ -495,7 +519,7 @@ int forward_search(struct message msg, int d) {
 int do_search_torus_node(struct message msg) {
 	int i;
 	char buf[1024];
-//char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+    //char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
 	interval interval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
@@ -526,7 +550,7 @@ int do_search_torus_node(struct message msg) {
 			int len = 0;
 			len = sprintf(buf, "query:");
 			for (i = 0; i < MAX_DIM_NUM; ++i) {
-				len += sprintf(buf + len, "[%d, %d] ", interval[i].low,
+				len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
 						interval[i].high);
 			}
 			sprintf(buf + len, "\n");
@@ -535,7 +559,7 @@ int do_search_torus_node(struct message msg) {
 			len = 0;
 			len = sprintf(buf, "%s:", the_torus_node.info.ip);
 			for (i = 0; i < MAX_DIM_NUM; ++i) {
-				len += sprintf(buf + len, "[%d, %d] ",
+				len += sprintf(buf + len, "[%.15f, %.15f] ",
 						the_torus_node.info.dims[i].low,
 						the_torus_node.info.dims[i].high);
 			}
@@ -598,7 +622,7 @@ int do_search_skip_list_node(struct message msg) {
 		int len = 0;
 		len = sprintf(buf, "query:");
 		for (i = 0; i < MAX_DIM_NUM; ++i) {
-			len += sprintf(buf + len, "[%d, %d] ", interval[i].low,
+			len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
 					interval[i].high);
 		}
 		sprintf(buf + len, "\n");
@@ -608,7 +632,7 @@ int do_search_skip_list_node(struct message msg) {
 				"search skip list success! turn to search torus\n");
 
 		// turn to torus layer
-		msg.op = SEARCH_TORUS_NODE;
+		msg.op = (OP)SEARCH_TORUS_NODE;
 		strncpy(msg.stamp, stamp, STAMP_SIZE);
 		do_search_torus_node(msg);
 
@@ -619,7 +643,7 @@ int do_search_skip_list_node(struct message msg) {
 							sln_ptr->level[0].forward->leader.dims[2],
 							interval[2]) == 0)) {
 				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 			}
@@ -629,7 +653,7 @@ int do_search_skip_list_node(struct message msg) {
 							sln_ptr->level[0].backward->leader.dims[2],
 							interval[2]) == 0)) {
 				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 			}
@@ -639,7 +663,7 @@ int do_search_skip_list_node(struct message msg) {
 							sln_ptr->level[0].forward->leader.dims[2],
 							interval[2]) == 0)) {
 				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 			}
@@ -649,7 +673,7 @@ int do_search_skip_list_node(struct message msg) {
 							sln_ptr->level[0].backward->leader.dims[2],
 							interval[2]) == 0)) {
 				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 			}
@@ -664,7 +688,7 @@ int do_search_skip_list_node(struct message msg) {
 							interval[2]) <= 0)) {
 
 				get_node_ip(sln_ptr->level[i].forward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "forward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 				visit_forward = 1;
@@ -684,7 +708,7 @@ int do_search_skip_list_node(struct message msg) {
 							interval[2]) >= 0)) {
 
 				get_node_ip(sln_ptr->level[i].backward->leader, dst_ip);
-				fill_message(msg.op, src_ip, dst_ip, "backward", msg.data,
+				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
 						&new_msg);
 				forward_message(new_msg, 1);
 				visit_backward = 1;
@@ -735,21 +759,14 @@ int do_receive_result(struct message msg) {
 	}
 
 	fprintf(fp, "query:");
-//	fprintf(stdout, "query:");
 	for (i = 0; i < MAX_DIM_NUM; i++) {
-		fprintf(fp, "[%d, %d] ", intval[i].low, intval[i].high);
-		//	fprintf(stdout, "[%d, %d] ", intval[i].low, intval[i].high);
+		fprintf(fp, "[%.15f, %.15f] ", intval[i].low, intval[i].high);
 	}
 	fprintf(fp, "\n");
-//fprintf(stdout, "\n");
 
-//fprintf(fp, "start time:[%ld:%ld]\n", query_start.tv_sec, query_start.tv_nsec);
-//fprintf(fp, "end time:[%ld:%ld]\n", query_end.tv_sec , query_end.tv_nsec);
 	fprintf(fp, "query time:%f us\n", (double) qtime / 1000.0);
-//fprintf(stdout, "query time:%f ms\n", qtime);
 
 	fprintf(fp, "%s:%d\n\n", ip, count);
-//fprintf(stdout, "%s:%d\n\n", ip, count);
 	fclose(fp);
 
 	return TRUE;
@@ -785,8 +802,8 @@ int process_message(int socketfd, struct message msg) {
 			reply_code = FAILED;
 		}
 
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 
 		if (FALSE == send_reply(socketfd, reply_msg)) {
@@ -802,8 +819,8 @@ int process_message(int socketfd, struct message msg) {
 			reply_code = FAILED;
 		}
 
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 
 		if (FALSE == send_reply(socketfd, reply_msg)) {
@@ -828,8 +845,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_update_skip_list(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -844,8 +861,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_update_skip_list_node(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -860,8 +877,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_search_skip_list_node(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -875,8 +892,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_update_forward(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -892,8 +909,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_update_backward(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -907,8 +924,8 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_new_skip_list(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = msg.op;
-		reply_msg.reply_code = reply_code;
+		reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
@@ -933,7 +950,7 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	default:
-		reply_code = WRONG_OP;
+		reply_code = (REPLY_CODE)WRONG_OP;
 
 	}
 
@@ -947,5 +964,58 @@ int new_server() {
 		return FALSE;
 	}
 	return server_socket;
+}
+
+int main(int argc, char **argv) {
+
+	printf("start torus node.\n");
+	write_log(TORUS_NODE_LOG, "start torus node.\n");
+
+	int server_socket;
+	should_run = 1;
+
+	// new a torus node
+	the_torus_node = *new_torus_node();
+
+	// create a new request list
+	req_list = new_request();
+
+	//the_skip_list = *new_skip_list_node();
+
+	server_socket = new_server();
+	if (server_socket == FALSE) {
+        exit(1);
+	}
+	printf("start server.\n");
+	write_log(TORUS_NODE_LOG, "start server.\n");
+
+    the_torus_rtree = load_rtree();
+    if(the_torus_rtree == NULL){
+        exit(1);
+    }
+	printf("load rtree.\n");
+	write_log(TORUS_NODE_LOG, "load rtree.\n");
+
+	while (should_run) {
+		int conn_socket;
+		conn_socket = accept_connection(server_socket);
+		if (conn_socket == FALSE) {
+			// TODO: handle accept connection failed
+			continue;
+		}
+
+		struct message msg;
+		memset(&msg, 0, sizeof(struct message));
+
+		// receive message through the conn_socket
+		if (TRUE == receive_message(conn_socket, &msg)) {
+			process_message(conn_socket, msg);
+		} else {
+			//  TODO: handle receive message failed
+			printf("receive message failed.\n");
+		}
+		close(conn_socket);
+	}
+	return 0;
 }
 
