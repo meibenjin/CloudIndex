@@ -1,12 +1,12 @@
-#ifndef UTILS_H_
-#define UTILS_H_
-
 /*
  * utils.h
  *
  *  Created on: Sep 16, 2013
  *      Author: meibenjin
  */
+
+#ifndef UTILS_H_
+#define UTILS_H_
 
 
 // limits for socket
@@ -74,8 +74,8 @@ typedef enum OP {
 
 // interval of each dimension
 typedef struct interval {
-	int low;
-	int high;
+	double low;
+	double high;
 } interval;
 
 // torus node info 
@@ -104,14 +104,6 @@ typedef struct torus_node {
 	struct torus_node *neighbors[MAX_NEIGHBORS];
 } torus_node;
 
-
-// only used by skip list node
-struct skip_list_level {
-    struct skip_list_node *forward;
-    struct skip_list_node *backward;
-};
-
-
 //skip list node structure
 typedef struct skip_list_node {
 
@@ -124,7 +116,11 @@ typedef struct skip_list_node {
 	 * cluster in all dimension
 	 */
 	node_info leader;
-	struct skip_list_level level[];
+    struct skip_list_level {
+        struct skip_list_node *forward;
+        struct skip_list_node *backward;
+    }level[];
+	//struct skip_list_level level[];
 
 } skip_list_node;
 
@@ -167,6 +163,18 @@ typedef struct torus_cluster {
     struct torus_s *torus;
     struct torus_cluster *next;
 } torus_cluster;
+
+/*
+ * definitions for torus server 
+ */
+
+// request info for torus node
+typedef struct request {
+	int first_run;
+	int receive_num;
+	char stamp[STAMP_SIZE];
+	struct request *next;
+} request;
 
 #endif /* UTILS_H_ */
 
