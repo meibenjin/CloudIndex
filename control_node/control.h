@@ -1,12 +1,12 @@
-#ifndef CONTROL_H_
-#define CONTROL_H_
-
 /*
  * control.h
  *
  *  Created on: Sep 20, 2013
  *      Author: meibenjin
  */
+
+#ifndef CONTROL_H_
+#define CONTROL_H_
 
 #include"utils.h"
 #include"torus_node/torus_node.h"
