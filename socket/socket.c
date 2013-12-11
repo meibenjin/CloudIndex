@@ -152,11 +152,13 @@ int forward_message(struct message msg, int need_reply) {
 	if (TRUE == send_message(socketfd, msg)) {
 		printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
-		//write log
-		char buf[1024];
-		memset(buf, 0, 1024);
-		sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-		write_log(TORUS_NODE_LOG, buf);
+        #ifdef WRITE_LOG 
+            //write log
+            char buf[1024];
+            memset(buf, 0, 1024);
+            sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
+            write_log(TORUS_NODE_LOG, buf);
+        #endif
 
 		if (need_reply) {
 			struct reply_message reply_msg;

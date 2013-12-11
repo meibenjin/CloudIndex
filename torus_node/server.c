@@ -142,11 +142,13 @@ int do_traverse_torus(struct message msg) {
 		req_ptr = insert_request(req_list, stamp);
 		printf("traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
-		//write log
-		char buf[1024];
-		memset(buf, 0, 1024);
-		sprintf(buf, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
-		write_log(TORUS_NODE_LOG, buf);
+        #ifdef WRITE_LOG
+            //write log
+            char buf[1024];
+            memset(buf, 0, 1024);
+            sprintf(buf, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
+            write_log(TORUS_NODE_LOG, buf);
+        #endif
 
 		if (req_ptr && (req_ptr->first_run == TRUE)) {
 			forward_to_neighbors(msg);
@@ -217,10 +219,12 @@ int do_update_partition(struct message msg) {
 
 	memcpy(&the_partition, msg.data, sizeof(struct torus_partitions));
 
-	char buf[1024];
-	sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-			the_partition.p_y, the_partition.p_z);
-	write_log(TORUS_NODE_LOG, buf);
+    #ifdef WRITE_LOG 
+        char buf[1024];
+        sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+                the_partition.p_y, the_partition.p_z);
+        write_log(TORUS_NODE_LOG, buf);
+    #endif
 
 	return TRUE;
 }
@@ -283,7 +287,9 @@ int do_traverse_skip_list(struct message msg) {
 	forward = cur_sln->level[0].forward;
 	backward = cur_sln->level[0].backward;
 
-	write_log(TORUS_NODE_LOG, "visit myself:");
+    #ifdef WRITE_LOG
+        write_log(TORUS_NODE_LOG, "visit myself:");
+    #endif
 	print_node_info(cur_sln->leader);
 
 	get_node_ip(cur_sln->leader, src_ip);
@@ -418,8 +424,7 @@ int do_new_skip_list(struct message msg) {
 }
 
 int forward_search(struct message msg, int d) {
-	int i;
-	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	interval interval[MAX_DIM_NUM];
 	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
 
@@ -443,13 +448,16 @@ int forward_search(struct message msg, int d) {
 	node_info *lower_neighbor = get_neighbor_by_id(the_torus_node, lower_id);
 	node_info *upper_neighbor = get_neighbor_by_id(the_torus_node, upper_id);
 
-	int len = 0;
-	len = sprintf(buf, "query:");
-	for (i = 0; i < MAX_DIM_NUM; ++i) {
-		len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
-				interval[i].high);
-	}
-	sprintf(buf + len, "\n");
+    #ifdef WRITE_LOG 
+        char buf[1024];
+        int len = 0, i;
+        len = sprintf(buf, "query:");
+        for (i = 0; i < MAX_DIM_NUM; ++i) {
+            len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
+                    interval[i].high);
+        }
+        sprintf(buf + len, "\n");
+    #endif
 
 	int lower_overlap = interval_overlap(interval[d], lower_neighbor->dims[d]);
 	int upper_overlap = interval_overlap(interval[d], upper_neighbor->dims[d]);
@@ -501,7 +509,9 @@ int forward_search(struct message msg, int d) {
 		get_node_ip(*lower_neighbor, dst_ip);
 		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
-		write_log(TORUS_NODE_LOG, buf);
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, buf);
+        #endif
 		forward_message(new_msg, 0);
 	}
 	if (upper_neighbor != NULL) {
@@ -510,7 +520,9 @@ int forward_search(struct message msg, int d) {
 		get_node_ip(*upper_neighbor, dst_ip);
 		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
-		write_log(TORUS_NODE_LOG, buf);
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, buf);
+        #endif
 		forward_message(new_msg, 0);
 	}
 	return TRUE;
@@ -518,7 +530,6 @@ int forward_search(struct message msg, int d) {
 
 int do_search_torus_node(struct message msg) {
 	int i;
-	char buf[1024];
     //char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
 	interval interval[MAX_DIM_NUM];
@@ -544,28 +555,31 @@ int do_search_torus_node(struct message msg) {
 
 			forward_message(new_msg, 0);			// end test
 
-			write_log(TORUS_NODE_LOG, "search torus success!\n\t");
-			print_node_info(the_torus_node.info);
+            #ifdef WRITE_LOG
+                char buf[1024];
+                write_log(TORUS_NODE_LOG, "search torus success!\n\t");
+                print_node_info(the_torus_node.info);
 
-			int len = 0;
-			len = sprintf(buf, "query:");
-			for (i = 0; i < MAX_DIM_NUM; ++i) {
-				len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
-						interval[i].high);
-			}
-			sprintf(buf + len, "\n");
-			write_log(CTRL_NODE_LOG, buf);
+                int len = 0;
+                len = sprintf(buf, "query:");
+                for (i = 0; i < MAX_DIM_NUM; ++i) {
+                    len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
+                            interval[i].high);
+                }
+                sprintf(buf + len, "\n");
+                write_log(CTRL_NODE_LOG, buf);
 
-			len = 0;
-			len = sprintf(buf, "%s:", the_torus_node.info.ip);
-			for (i = 0; i < MAX_DIM_NUM; ++i) {
-				len += sprintf(buf + len, "[%.15f, %.15f] ",
-						the_torus_node.info.dims[i].low,
-						the_torus_node.info.dims[i].high);
-			}
-			sprintf(buf + len, "\n%s:search torus success. %d\n\n", msg.dst_ip,
-					count);
-			write_log(CTRL_NODE_LOG, buf);
+                len = 0;
+                len = sprintf(buf, "%s:", the_torus_node.info.ip);
+                for (i = 0; i < MAX_DIM_NUM; ++i) {
+                    len += sprintf(buf + len, "[%.15f, %.15f] ",
+                            the_torus_node.info.dims[i].low,
+                            the_torus_node.info.dims[i].high);
+                }
+                sprintf(buf + len, "\n%s:search torus success. %d\n\n", msg.dst_ip,
+                        count);
+                write_log(CTRL_NODE_LOG, buf);
+            #endif
 
 			for (i = 0; i < MAX_DIM_NUM; i++) {
 				forward_search(msg, i);
@@ -592,18 +606,14 @@ int do_search_torus_node(struct message msg) {
 
 int do_search_skip_list_node(struct message msg) {
 	int i;
-	char buf[1024], src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	interval interval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
-//int count;
-//memcpy(&count, msg.data, sizeof(int));
-//count++;
-//memcpy(msg.data, &count, sizeof(int));
 	memcpy(interval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
 
 	message new_msg;
 
-//get current skip list node  ip address
+    //get current skip list node  ip address
 	get_node_ip(the_skip_list.header->leader, src_ip);
 
 	skip_list_node *sln_ptr;
@@ -619,17 +629,20 @@ int do_search_skip_list_node(struct message msg) {
 		fill_message(RECEIVE_QUERY, src_ip, result_ip, stamp, "", &new_msg);
 		forward_message(new_msg, 0); // end test
 
-		int len = 0;
-		len = sprintf(buf, "query:");
-		for (i = 0; i < MAX_DIM_NUM; ++i) {
-			len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
-					interval[i].high);
-		}
-		sprintf(buf + len, "\n");
-		write_log(TORUS_NODE_LOG, buf);
+        #ifdef WRITE_LOG
+            char buf[1024];
+            int len = 0;
+            len = sprintf(buf, "query:");
+            for (i = 0; i < MAX_DIM_NUM; ++i) {
+                len += sprintf(buf + len, "[%.15f, %.15f] ", interval[i].low,
+                        interval[i].high);
+            }
+            sprintf(buf + len, "\n");
+            write_log(TORUS_NODE_LOG, buf);
 
-		write_log(TORUS_NODE_LOG,
-				"search skip list success! turn to search torus\n");
+            write_log(TORUS_NODE_LOG,
+                    "search skip list success! turn to search torus\n");
+        #endif
 
 		// turn to torus layer
 		msg.op = (OP)SEARCH_TORUS_NODE;
@@ -696,7 +709,9 @@ int do_search_skip_list_node(struct message msg) {
 			}
 		}
 		if (visit_forward == 0) {
-			write_log(TORUS_NODE_LOG, "search failed!\n");
+            #ifdef WRITE_LOG
+                write_log(TORUS_NODE_LOG, "search failed!\n");
+            #endif
 		}
 
 	} else {							// node is on the backward of skip list
@@ -716,7 +731,9 @@ int do_search_skip_list_node(struct message msg) {
 			}
 		}
 		if (visit_backward == 0) {
-			write_log(TORUS_NODE_LOG, "search failed!\n");
+            #ifdef WRITE_LOG
+                write_log(TORUS_NODE_LOG, "search failed!\n");
+            #endif
 		}
 	}
 
@@ -780,23 +797,25 @@ int do_receive_query(struct message msg) {
 	query_list[list_index].start = query_start;
 	list_index++;
 
-	char buf[1024];
-	sprintf(buf, "index:%d [%ld:%ld]\n", list_index, query_start.tv_sec,
-			query_start.tv_nsec);
-	write_log(TORUS_NODE_LOG, buf);
+    #ifdef WRITE_LOG
+        char buf[1024];
+        sprintf(buf, "index:%d [%ld:%ld]\n", list_index, query_start.tv_sec,
+                query_start.tv_nsec);
+        write_log(TORUS_NODE_LOG, buf);
+    #endif
 	return TRUE;
 }
 
 int process_message(int socketfd, struct message msg) {
 
-//char buf[1024];
 	struct reply_message reply_msg;
 	int reply_code = SUCCESS;
 	switch (msg.op) {
 
 	case UPDATE_TORUS:
-
-		write_log(TORUS_NODE_LOG, "receive request update torus.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update torus.\n");
+        #endif
 
 		if (FALSE == do_update_torus(msg)) {
 			reply_code = FAILED;
@@ -814,10 +833,12 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case UPDATE_PARTITION:
-		write_log(TORUS_NODE_LOG, "receive request update torus.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update torus.\n");
 		if (FALSE == do_update_partition(msg)) {
 			reply_code = FAILED;
 		}
+        #endif
 
 		reply_msg.op = (OP)msg.op;
 		reply_msg.reply_code = (REPLY_CODE)reply_code;
@@ -830,17 +851,25 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case TRAVERSE_TORUS:
-		write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
+        #endif
+
 		do_traverse_torus(msg);
 		break;
 
 	case SEARCH_TORUS_NODE:
-		write_log(TORUS_NODE_LOG, "\nreceive request search torus node.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "\nreceive request search torus node.\n");
+        #endif
+
 		do_search_torus_node(msg);
 		break;
 
 	case UPDATE_SKIP_LIST:
-		write_log(TORUS_NODE_LOG, "receive request update skip list.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update skip list.\n");
+        #endif
 
 		if (FALSE == do_update_skip_list(msg)) {
 			reply_code = FAILED;
@@ -856,7 +885,9 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case UPDATE_SKIP_LIST_NODE:
-		write_log(TORUS_NODE_LOG, "receive request update skip list node.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update skip list node.\n");
+        #endif
 
 		if (FALSE == do_update_skip_list_node(msg)) {
 			reply_code = FAILED;
@@ -872,7 +903,9 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case SEARCH_SKIP_LIST_NODE:
-		write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
+        #endif
 
 		if (FALSE == do_search_skip_list_node(msg)) {
 			reply_code = FAILED;
@@ -887,8 +920,10 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case UPDATE_FORWARD:
-		write_log(TORUS_NODE_LOG,
-				"receive request update skip list node's forward field.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update skip list node's forward field.\n");
+        #endif
+
 		if (FALSE == do_update_forward(msg)) {
 			reply_code = FAILED;
 		}
@@ -903,8 +938,10 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case UPDATE_BACKWARD:
-		write_log(TORUS_NODE_LOG,
-				"receive request update skip list node's backward field.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request update skip list node's backward field.\n");
+
+        #endif
 
 		if (FALSE == do_update_backward(msg)) {
 			reply_code = FAILED;
@@ -920,7 +957,10 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case NEW_SKIP_LIST:
-		write_log(TORUS_NODE_LOG, "receive request new skip list.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request new skip list.\n");
+        #endif
+
 		if (FALSE == do_new_skip_list(msg)) {
 			reply_code = FAILED;
 		}
@@ -935,17 +975,24 @@ int process_message(int socketfd, struct message msg) {
 		break;
 
 	case TRAVERSE_SKIP_LIST:
-		write_log(TORUS_NODE_LOG, "receive request traverse skip list.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request traverse skip list.\n");
+        #endif
+
 		do_traverse_skip_list(msg);
 		break;
 
 	case RECEIVE_QUERY:
-		printf("receive request receive query.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request receive query.\n");
+        #endif
 		do_receive_query(msg);
 		break;
 
 	case RECEIVE_RESULT:
-		printf("receive request receive result.\n");
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request receive result.\n");
+        #endif
 		do_receive_result(msg);
 		break;
 
@@ -989,12 +1036,12 @@ int main(int argc, char **argv) {
 	printf("start server.\n");
 	write_log(TORUS_NODE_LOG, "start server.\n");
 
-    the_torus_rtree = load_rtree();
+    /*the_torus_rtree = rtree_load();
     if(the_torus_rtree == NULL){
         exit(1);
     }
 	printf("load rtree.\n");
-	write_log(TORUS_NODE_LOG, "load rtree.\n");
+	write_log(TORUS_NODE_LOG, "load rtree.\n");*/
 
 	while (should_run) {
 		int conn_socket;

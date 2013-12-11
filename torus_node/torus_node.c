@@ -126,7 +126,9 @@ void print_neighbors(torus_node node) {
 	for (i = 0; i < neighbors_num; ++i) {
 		if (node.neighbors[i] != NULL) {
 			printf("\tneighbors:");
-            write_log(TORUS_NODE_LOG, "\tneighbor:");
+            #ifdef WRITE_LOG
+                write_log(TORUS_NODE_LOG, "\tneighbor:");
+            #endif
 
 			print_node_info(node.neighbors[i]->info);
 		}
@@ -150,7 +152,9 @@ torus_node *new_torus_node() {
 }
 
 void print_torus_node(torus_node torus) {
-    write_log(TORUS_NODE_LOG, "myself:");
+    #ifdef WRITE_LOG 
+        write_log(TORUS_NODE_LOG, "myself:");
+    #endif
 	print_node_info(torus.info);
 	print_neighbors(torus);
 	printf("\n");
@@ -165,14 +169,15 @@ void print_node_info(node_info node) {
 	}
 	printf("\n");
 
-	char buf[1024];
-	memset(buf, 0, 1024);
-	int len = sprintf(buf, "%s:", node.ip);
-	for(i = 0; i < MAX_DIM_NUM; ++i){
-			len += sprintf(buf + len, "[%.15f, %15f] ", node.dims[i].low, node.dims[i].high);
-	}
-	sprintf(buf+len, "\n");
-
-	write_log(TORUS_NODE_LOG, buf);
+    #ifdef WRITE_LOG 
+        char buf[1024];
+        memset(buf, 0, 1024);
+        int len = sprintf(buf, "%s:", node.ip);
+        for(i = 0; i < MAX_DIM_NUM; ++i){
+                len += sprintf(buf + len, "[%.15f, %15f] ", node.dims[i].low, node.dims[i].high);
+        }
+        sprintf(buf+len, "\n");
+        write_log(TORUS_NODE_LOG, buf);
+    #endif
 }
 
