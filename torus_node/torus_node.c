@@ -165,7 +165,11 @@ void print_node_info(node_info node) {
 
 	printf("%s:", node.ip);
 	for(i = 0; i < MAX_DIM_NUM; ++i){
-		printf("[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
+        #ifdef INT_DATA
+            printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
+        #else 
+            printf("[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
+        #endif
 	}
 	printf("\n");
 
@@ -174,7 +178,11 @@ void print_node_info(node_info node) {
         memset(buf, 0, 1024);
         int len = sprintf(buf, "%s:", node.ip);
         for(i = 0; i < MAX_DIM_NUM; ++i){
-                len += sprintf(buf + len, "[%.15f, %15f] ", node.dims[i].low, node.dims[i].high);
+            #ifdef INT_DATA
+                len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
+            #else 
+                len += sprintf(buf + len, "[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
+            #endif
         }
         sprintf(buf+len, "\n");
         write_log(TORUS_NODE_LOG, buf);
