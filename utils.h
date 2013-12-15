@@ -31,9 +31,13 @@
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
+//#define WRITE_LOG
 // LOG file path
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
+
+#define INT_DATA
+typedef int data_type;
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -74,8 +78,8 @@ typedef enum OP {
 
 // interval of each dimension
 typedef struct interval {
-	double low;
-	double high;
+	data_type low;
+	data_type high;
 } interval;
 
 // torus node info 
