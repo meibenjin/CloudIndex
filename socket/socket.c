@@ -133,10 +133,10 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 }
 
 void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, message *msg){
-	msg->op = (OP)op;
+	msg->op = op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
-	memcpy(msg->stamp, stamp, STAMP_SIZE);
+	strncpy(msg->stamp, stamp, STAMP_SIZE);
 	memcpy(msg->data, data, DATA_SIZE);
 }
 

@@ -28,7 +28,7 @@
  */
 typedef struct message
 {
-	int op;
+	OP op;
 	char src_ip[IP_ADDR_LENGTH];
 	char dst_ip[IP_ADDR_LENGTH];
 	char stamp[STAMP_SIZE];
