@@ -36,9 +36,9 @@ case $start_stop in
     (stop)
         if [ -f $pid ]; then
             target_pid=`cat $pid`
-            if kill -9 $target_pid > /dev/null 2>&1; then
+            if kill -0 $target_pid > /dev/null 2>&1; then
                 echo "stopping $command."
-                kill $target_pid
+                kill -9 $target_pid
             else
                 echo "$ip:no $command to stop"
             fi
