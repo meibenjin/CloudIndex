@@ -25,13 +25,17 @@ void gen_range(int min, int max, float p) {
 	printf("\n");
 }
 
+typedef enum test{
+    SUCCESS,
+    FAILED
+}test;
+
 int main(void) {
 	int i;
     srand(time(NULL));
 	for(i = 0; i< 100;i++){
 		gen_range(1, 100, 0.4);
 	}
-
 
 	return 0;
 }
