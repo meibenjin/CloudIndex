@@ -27,10 +27,10 @@ int overlaps(interval c[], interval o[]) {
 	return ovlp;
 }
 
-int get_distance(interval c, interval o){
-	double c_center = (c.low + c.high) / 2;
-	double o_center = (o.low + o.high) / 2;
-	double dis = c_center - o_center;
+data_type get_distance(interval c, interval o){
+	data_type c_center = (c.low + c.high) / 2;
+	data_type o_center = (o.low + o.high) / 2;
+	data_type dis = c_center - o_center;
 	return (dis > 0) ? dis : (-1 * dis);
 }
 
