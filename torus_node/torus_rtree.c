@@ -5,11 +5,20 @@
  *      Author: meibenjin
  */
 
+
+extern "C" {
+#include "utils.h"
+#include "logs/log.h"
+};
+
 #include "torus_rtree.h"
+
 
 #define INSERT 1
 #define DELETE 0
 #define QUERY 2
+
+#define DATA_PATH "/root/mbj/data/data"
 
 // example of a Visitor pattern.
 // findes the index and leaf IO for answering the query and prints
@@ -39,10 +48,14 @@ public:
 		// data should be an array of characters representing a Region as a string.
 		byte* pData = 0;
 		uint32_t cLen = 0;
+
 		d.getData(cLen, &pData);
 		// do something.
-		//string s = reinterpret_cast<char*>(pData);
-		//cout << s << endl;
+        #ifdef WRITE_LOG 
+            char * buf = reinterpret_cast<char*>(pData);
+            write_log(TORUS_NODE_LOG, buf);
+        #endif
+
 		delete[] pData;
 
 		cout << d.getIdentifier() << endl;
@@ -55,75 +68,8 @@ public:
 	}
 };
 
-// example of a Strategy pattern.
-// traverses the tree by level.
-class MyQueryStrategy : public SpatialIndex::IQueryStrategy
-{
-private:
-	queue<id_type> ids;
 
-public:
-	void getNextEntry(const IEntry& entry, id_type& nextEntry, bool& hasNext)
-	{
-		IShape* ps;
-		entry.getShape(&ps);
-		Region* pr = dynamic_cast<Region*>(ps);
-
-		cout << pr->m_pLow[0] << " " << pr->m_pLow[1] << endl;
-		cout << pr->m_pHigh[0] << " " << pr->m_pLow[1] << endl;
-		cout << pr->m_pHigh[0] << " " << pr->m_pHigh[1] << endl;
-		cout << pr->m_pLow[0] << " " << pr->m_pHigh[1] << endl;
-		cout << pr->m_pLow[0] << " " << pr->m_pLow[1] << endl << endl << endl;
-			// print node MBRs gnuplot style!
-
-		delete ps;
-
-		const INode* n = dynamic_cast<const INode*>(&entry);
-
-		// traverse only index nodes at levels 2 and higher.
-		if (n != 0 && n->getLevel() > 1)
-		{
-			for (uint32_t cChild = 0; cChild < n->getChildrenCount(); cChild++)
-			{
-				ids.push(n->getChildIdentifier(cChild));
-			}
-		}
-
-		if (! ids.empty())
-		{
-			nextEntry = ids.front(); ids.pop();
-			hasNext = true;
-		}
-		else
-		{
-			hasNext = false;
-		}
-	}
-};
-
-// example of a Strategy pattern.
-// find the total indexed space managed by the index (the MBR of the root).
-class MyQueryStrategy2 : public IQueryStrategy
-{
-public:
-	Region m_indexedSpace;
-
-public:
-	void getNextEntry(const IEntry& entry, id_type& nextEntry, bool& hasNext)
-	{
-		// the first time we are called, entry points to the root.
-
-		// stop after the root.
-		hasNext = false;
-
-		IShape* ps;
-		entry.getShape(&ps);
-		ps->getMBR(m_indexedSpace);
-		delete ps;
-	}
-};
-
-int rtree_query(int op, int id, double plow[], double phigh[], int d, ISpatialIndex *rtree) {
+int rtree_query(int op, int id, data_type plow[], data_type phigh[], ISpatialIndex *rtree) {
     try
     {
 		size_t indexIO = 0;
@@ -136,19 +82,19 @@ int rtree_query(int op, int id, double plow[], double phigh[], int d, ISpatialIn
 
             if (queryType == 0)
             {
-                Region r = Region(plow, phigh, d);
+                Region r = Region(plow, phigh, MAX_DIM_NUM);
                 rtree->intersectsWithQuery(r, vis);
                 // this will find all data that intersect with the query range.
             }
             else if (queryType == 1)
             {
-                Point p = Point(plow, d);
+                Point p = Point(plow, MAX_DIM_NUM);
                 rtree->nearestNeighborQuery(10, p, vis);
                 // this will find the 10 nearest neighbors.
             }
             else
             {
-                Region r = Region(plow, phigh, d);
+                Region r = Region(plow, phigh, MAX_DIM_NUM);
                 rtree->selfJoinQuery(r, vis);
             }
 
@@ -167,15 +113,15 @@ int rtree_query(int op, int id, double plow[], double phigh[], int d, ISpatialIn
 		cerr << "******ERROR******" << endl;
 		std::string s = e.what();
 		cerr << s << endl;
-		return -1;
+		return FALSE;
 	}
 	catch (...)
 	{
 		cerr << "******ERROR******" << endl;
 		cerr << "other exception" << endl;
-		return -1;
+		return FALSE;
 	}
-    return 0;
+    return TRUE;
 }
 
 ISpatialIndex* rtree_load()
@@ -183,10 +129,10 @@ ISpatialIndex* rtree_load()
     ISpatialIndex *tree;
 	try
 	{
-        std::ifstream fin("/root/mbj/data/data");
+        std::ifstream fin(DATA_PATH);
         if (! fin)
         {
-            std::cerr << "Cannot open data file /root/mbj/data/data." << std::endl;
+            std::cerr << "Cannot open data file " << DATA_PATH << std::endl;
             return NULL;
         }
 
@@ -201,27 +147,28 @@ ISpatialIndex* rtree_load()
         // Create a new, empty, RTree with dimensionality 2, minimum load 70%, using "file" as
         // the StorageManager and the RSTAR splitting policy.
         id_type indexIdentifier;
-        tree = RTree::createNewRTree(*file, 0.7, 20, 20, 3, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
+        tree = RTree::createNewRTree(*file, 0.7, 20, 20, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
 
         size_t count = 0;
         id_type id;
         uint32_t op;
         double x1, x2, y1, y2, z1, z2;
-        double plow[3], phigh[3];
+        double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
 
         uint32_t queryType = 0;
 
         // read data file
         while (fin)
         {
+            // important! specify the precision of double type
+            fin.precision(10);
             fin >> op >> id >> x1 >> y1 >> z1 >> x2 >> y2 >> z2;
             if (! fin.good()) continue; // skip newlines, etc.
-
             if (op == INSERT)
             {
                 plow[0] = x1; plow[1] = y1; plow[2] = z1;
                 phigh[0] = x2; phigh[1] = y2; phigh[2] = z2;
-                Region r = Region(plow, phigh, 3);
+                Region r = Region(plow, phigh, MAX_DIM_NUM);
 
                 std::ostringstream os;
                 os << r;
@@ -236,7 +183,7 @@ ISpatialIndex* rtree_load()
             {
                 plow[0] = x1; plow[1] = y1; plow[2] = z1;
                 phigh[0] = x2; phigh[1] = y2; phigh[2] = z2;
-                Region r = Region(plow, phigh, 3);
+                Region r = Region(plow, phigh, MAX_DIM_NUM);
 
                 if (tree->deleteData(r, id) == false)
                 {
@@ -254,24 +201,24 @@ ISpatialIndex* rtree_load()
 
                 if (queryType == 0)
                 {
-                    Region r = Region(plow, phigh, 3);
+                    Region r = Region(plow, phigh, MAX_DIM_NUM);
                     tree->intersectsWithQuery(r, vis);
                     // this will find all data that intersect with the query range.
                 }
                 else if (queryType == 1)
                 {
-                    Point p = Point(plow, 3);
+                    Point p = Point(plow, MAX_DIM_NUM);
                     tree->nearestNeighborQuery(10, p, vis);
                     // this will find the 10 nearest neighbors.
                 }
                 else if(queryType == 2)
                 {
-                    Region r = Region(plow, phigh, 3);
+                    Region r = Region(plow, phigh, MAX_DIM_NUM);
                     tree->selfJoinQuery(r, vis);
                 }
                 else
                 {
-                    Region r = Region(plow, phigh, 3);
+                    Region r = Region(plow, phigh, MAX_DIM_NUM);
                     tree->containsWhatQuery(r, vis);
                     // this will find all data that is contained by the query range.
                 }

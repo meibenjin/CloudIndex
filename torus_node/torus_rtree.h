@@ -16,7 +16,7 @@
 using namespace SpatialIndex;
 using namespace std;
 
-int rtree_query(int op, int id, double plow[], double phigh[], int d, ISpatialIndex *rtree);
+int rtree_query(int op, int id, data_type plow[], data_type phigh[], ISpatialIndex *rtree);
 
 ISpatialIndex* rtree_load();
 
