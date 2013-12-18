@@ -510,6 +510,10 @@ int forward_search(struct message msg, int d) {
 		upper_neighbor = NULL;
 	}
 
+    if(lower_neighbor ==  upper_neighbor) {
+        lower_neighbor = NULL;
+    }
+
 	if (lower_neighbor != NULL) {
 		struct message new_msg;
 		get_node_ip(the_torus_node.info, src_ip);
