@@ -86,7 +86,7 @@ int traverse_skip_list(const char *entry_ip);
 
 int insert_skip_list_node(skip_list *list, node_info *node_ptr);
 
-int search_skip_list_node(interval interval[], const char *entry_ip);
+int search_skip_list_node(int query_op, int query_id, struct interval intval[], const char *entry_ip);
 
 #endif /* CONTROL_H_ */
 
