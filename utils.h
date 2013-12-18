@@ -8,6 +8,9 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+// limits for common
+#define MAX_FILE_NAME 255 
+
 
 // limits for socket
 #define IP_ADDR_LENGTH 20
@@ -16,7 +19,6 @@
 #define REQUEST_LIST_LENGTH 20
 #define SOCKET_BUF_SIZE 1024 
 #define DATA_SIZE 1000
-#define REPLY_SIZE sizeof(int)
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
@@ -31,13 +33,14 @@
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
-//#define WRITE_LOG
 // LOG file path
+#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 
-#define INT_DATA
-typedef int data_type;
+//#define INT_DATA
+//typedef int data_type;
+typedef double data_type;
 
 // 3-dimension coordinate
 typedef struct coordinate {
