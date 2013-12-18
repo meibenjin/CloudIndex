@@ -40,7 +40,7 @@ struct request *req_list;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 
-struct query {
+struct query{
 	char stamp[STAMP_SIZE];
 	struct timespec start;
 };
@@ -425,8 +425,10 @@ int do_new_skip_list(struct message msg) {
 
 int forward_search(struct message msg, int d) {
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
-	interval intval[MAX_DIM_NUM];
-	memcpy(intval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+
+    // get query from message
+	struct interval intval[MAX_DIM_NUM];
+	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
 
 	struct coordinate lower_id = get_node_id(the_torus_node.info);
 	struct coordinate upper_id = get_node_id(the_torus_node.info);
@@ -457,7 +459,7 @@ int forward_search(struct message msg, int d) {
                 len += sprintf(buf + len, "[%d, %d] ", intval[i].low,
                         intval[i].high);
             #else
-                len += sprintf(buf + len, "[%.15f, %.15f] ", intval[i].low,
+                len += sprintf(buf + len, "[%.10f, %.10f] ", intval[i].low,
                         intval[i].high);
             #endif
         }
@@ -533,18 +535,48 @@ int forward_search(struct message msg, int d) {
 	return TRUE;
 }
 
+int search_rtree(struct message msg) {
+
+    #ifdef WRITE_LOG
+        write_log(TORUS_NODE_LOG, "begin search torus rtree!\n");
+    #endif
+
+    int i, op, id;
+    data_type plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
+	struct interval intval[MAX_DIM_NUM];
+	memcpy(&op, msg.data + sizeof(int) * 1, sizeof(int));
+	memcpy(&id, msg.data + sizeof(int) * 2, sizeof(int));
+	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
+
+    for (i = 0; i < MAX_DIM_NUM; i++) {
+        plow[i] = intval[i].low;
+        phigh[i] = intval[i].high;
+    }
+    
+    // query rtree of the torus node
+    if (FALSE == rtree_query(op, id, plow, phigh, the_torus_rtree)) {
+        return FALSE;
+    }
+    #ifdef WRITE_LOG
+        write_log(TORUS_NODE_LOG, "finish search torus rtree!\n");
+    #endif
+    return TRUE;
+}
+
 int do_search_torus_node(struct message msg) {
 	int i;
     //char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
-
-	interval intval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
+
+    // get query from message
 	int count;
+	struct interval intval[MAX_DIM_NUM];
 	memcpy(&count, msg.data, sizeof(int));
 	count++;
 	memcpy(msg.data, &count, sizeof(int));
 	strncpy(stamp, msg.stamp, STAMP_SIZE);
-	memcpy(intval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+    
+	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
 
 	request *req_ptr = find_request(req_list, stamp);
 
@@ -572,7 +604,7 @@ int do_search_torus_node(struct message msg) {
                         len += sprintf(buf + len, "[%d, %d] ", intval[i].low,
                                 intval[i].high);
                     #else
-                        len += sprintf(buf + len, "[%.15f, %.15f] ", intval[i].low,
+                        len += sprintf(buf + len, "[%.10f, %.10f] ", intval[i].low,
                                 intval[i].high);
                     #endif
                 }
@@ -587,7 +619,7 @@ int do_search_torus_node(struct message msg) {
                                 the_torus_node.info.dims[i].low,
                                 the_torus_node.info.dims[i].high);
                     #else
-                        len += sprintf(buf + len, "[%.15f, %.15f] ",
+                        len += sprintf(buf + len, "[%.10f, %.10f] ",
                                 the_torus_node.info.dims[i].low,
                                 the_torus_node.info.dims[i].high);
                     #endif
@@ -601,6 +633,8 @@ int do_search_torus_node(struct message msg) {
 				forward_search(msg, i);
 			}
 			//TODO do rtree search
+
+            search_rtree(msg);
 
 		} else {
 			for (i = 0; i < MAX_DIM_NUM; i++) {
@@ -622,9 +656,11 @@ int do_search_torus_node(struct message msg) {
 int do_search_skip_list_node(struct message msg) {
 	int i;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
-	interval intval[MAX_DIM_NUM];
 	char stamp[STAMP_SIZE];
-	memcpy(intval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+
+    // get query from message
+	struct interval intval[MAX_DIM_NUM];
+	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
 
 	message new_msg;
 
@@ -653,7 +689,7 @@ int do_search_skip_list_node(struct message msg) {
                     len += sprintf(buf + len, "[%d, %d] ", intval[i].low,
                             intval[i].high);
                 #else
-                    len += sprintf(buf + len, "[%.15f, %.15f] ", intval[i].low,
+                    len += sprintf(buf + len, "[%.10f, %.10f] ", intval[i].low,
                             intval[i].high);
                 #endif
             }
@@ -777,7 +813,7 @@ int do_receive_result(struct message msg) {
 	memcpy(stamp, msg.stamp, STAMP_SIZE);
 	memcpy(ip, msg.src_ip, IP_ADDR_LENGTH);
 	memcpy(&count, msg.data, sizeof(int));
-	memcpy(intval, msg.data + sizeof(int), sizeof(interval) * MAX_DIM_NUM);
+	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(interval) * MAX_DIM_NUM);
 
 	for (i = 0; i < 10000; i++) {
 		if (strcmp(stamp, query_list[i].stamp) == 0) {
@@ -799,7 +835,7 @@ int do_receive_result(struct message msg) {
         #ifdef INT_DATA
             fprintf(fp, "[%d, %d] ", intval[i].low, intval[i].high);
         #else
-            fprintf(fp, "[%.15f, %.15f] ", intval[i].low, intval[i].high);
+            fprintf(fp, "[%.10f, %.10f] ", intval[i].low, intval[i].high);
         #endif
 	}
 	fprintf(fp, "\n");
@@ -1060,12 +1096,13 @@ int main(int argc, char **argv) {
 	printf("start server.\n");
 	write_log(TORUS_NODE_LOG, "start server.\n");
 
-    /*the_torus_rtree = rtree_load();
+    the_torus_rtree = rtree_load();
     if(the_torus_rtree == NULL){
-        exit(1);
+        write_log(TORUS_NODE_LOG, "load rtree failed.\n");
+        //exit(1);
     }
 	printf("load rtree.\n");
-	write_log(TORUS_NODE_LOG, "load rtree.\n");*/
+	write_log(TORUS_NODE_LOG, "load rtree.\n");
 
 	while (should_run) {
 		int conn_socket;

@@ -26,6 +26,8 @@ int do_traverse_torus(struct message msg);
 
 int forward_to_neighbors(struct message msg);
 
+int search_rtree(struct message msg);
+
 int do_search_torus_node(struct message msg);
 
 // handle update torus request from client
