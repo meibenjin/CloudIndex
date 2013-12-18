@@ -15,7 +15,7 @@ void init_node_info(node_info *node_ptr);
 
 extern void init_torus_node(torus_node *node_ptr);
 
-int assign_dimensions(node_info *node_ptr);
+int set_interval(node_info *node_ptr);
 
 // set torus node ip
 void set_node_ip(node_info *node_ptr, const char *ip);

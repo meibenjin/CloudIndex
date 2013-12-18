@@ -13,6 +13,9 @@
 #include"logs/log.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+//
+
+#define TMP_DATA_DIR "/root/mbj/data"
 
 void init_node_info(node_info *info_ptr) {
 	if (!info_ptr) {
@@ -39,15 +42,26 @@ void init_torus_node(torus_node *node_ptr) {
     init_node_info(&node_ptr->info);
 }
 
-int assign_dimensions(node_info *node_ptr){
-	static int last_dim[MAX_DIM_NUM] = {0, 0, 0};
-	int i;
-	for(i = 0; i < MAX_DIM_NUM; ++i){
-		node_ptr->dims[i].low = last_dim[i] + rand() % 10;
-		node_ptr->dims[i].high = node_ptr->dims[i].low + rand() % 10;
-		last_dim[i] = node_ptr->dims[i].high;
-	}
+int set_interval(node_info *node_ptr){
+    int i;
+    int cid = node_ptr->cluster_id;
+    coordinate nid = node_ptr->node_id;
 
+    char range_file[MAX_FILE_NAME];
+    snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", TMP_DATA_DIR, cid, nid.x, nid.y, nid.z);
+    FILE *fp = fopen(range_file, "rb");
+    if(fp == NULL) {
+        printf("can't open range file %s\n", range_file);
+        return FALSE;
+    }
+    for (i = 0; i < MAX_DIM_NUM; i++) {
+        #ifdef INT_DATA
+            fscanf(fp, "%d %d", &node_ptr->dims[i].low, &node_ptr->dims[i].high);
+        #else
+            fscanf(fp, "%lf %lf", &node_ptr->dims[i].low, &node_ptr->dims[i].high);
+        #endif
+    }
+    fclose(fp);
 	return TRUE;
 }
 
@@ -168,7 +182,7 @@ void print_node_info(node_info node) {
         #ifdef INT_DATA
             printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
         #else 
-            printf("[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
+            printf("[%.10f, %.10f] ", node.dims[i].low, node.dims[i].high);
         #endif
 	}
 	printf("\n");
@@ -181,7 +195,7 @@ void print_node_info(node_info node) {
             #ifdef INT_DATA
                 len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
             #else 
-                len += sprintf(buf + len, "[%.15f, %.15f] ", node.dims[i].low, node.dims[i].high);
+                len += sprintf(buf + len, "[%.10f, %.10f] ", node.dims[i].low, node.dims[i].high);
             #endif
         }
         sprintf(buf+len, "\n");
