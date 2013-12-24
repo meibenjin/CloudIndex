@@ -34,7 +34,7 @@ int main(void) {
 	int i;
     srand(time(NULL));
 	for(i = 0; i< 100;i++){
-		gen_range(1, 100, 0.4);
+		gen_range(1, 100, 0.6);
 	}
 
 	return 0;
