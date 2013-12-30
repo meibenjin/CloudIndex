@@ -920,7 +920,7 @@ int main(int argc, char **argv) {
         int query_op, query_id;
         struct interval intval[MAX_DIM_NUM];
 
-		printf("%d.begin search: ", count);
+		printf("%d.begin search: ", count++);
         fscanf(fp, "%d %d", &query_op, &query_id);
         printf("%d %d", query_op, query_id);
 
