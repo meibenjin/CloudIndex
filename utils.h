@@ -37,6 +37,7 @@
 #define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
+#define RESULT_LOG "../logs/query_result.log"
 
 //#define INT_DATA
 //typedef int data_type;
