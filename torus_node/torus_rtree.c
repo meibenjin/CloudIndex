@@ -52,8 +52,10 @@ public:
 		d.getData(cLen, &pData);
 		// do something.
         #ifdef WRITE_LOG 
-            char * buf = reinterpret_cast<char*>(pData);
-            write_log(TORUS_NODE_LOG, buf);
+            char buf[1024];
+            char *res = reinterpret_cast<char*>(pData);
+            sprintf(buf, "%s\n", res);
+            write_log(RESULT_LOG, buf);
         #endif
 
 		delete[] pData;
@@ -79,6 +81,7 @@ int rtree_query(int op, int id, data_type plow[], data_type phigh[], ISpatialInd
         if (op == QUERY)
         {
             MyVisitor vis;
+            //printf("query: [%.10g %.10g %.10g %.10g %.10g %.10g]\n", plow[0], plow[1], plow[2], phigh[0], phigh[1], phigh[2]);
 
             if (queryType == 0)
             {
