@@ -87,6 +87,22 @@ int new_server_socket() {
 	return server_socket;
 }
 
+int set_nonblocking(int socketfd) {
+    int opts;
+    opts = fcntl(socketfd, F_GETFL);
+    if(opts < 0) {
+        fprintf(stderr, "fcntl(socket, GETFL)\n");
+        return FALSE;
+    }
+
+    opts = opts | O_NONBLOCK;
+    if(fcntl(socketfd, F_SETFL, opts) < 0) {
+        fprintf(stderr, "fcntl(socket, SETFL, opts)\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
 int accept_connection(int socketfd) {
 	struct sockaddr_in client_addr;
 	socklen_t length = sizeof(client_addr);

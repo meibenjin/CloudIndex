@@ -15,6 +15,7 @@
 #include<net/if.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
+#include<fcntl.h>
 #include<unistd.h>
 
 #include"utils.h"
@@ -58,6 +59,9 @@ int new_client_socket(const char *ip);
  * return: socket file descriptor
  */
 int new_server_socket();
+
+// set socket fd no blocking
+int set_nonblocking(int socketfd);
 
 // accept a connection from client
 int accept_connection(int socketfd);
