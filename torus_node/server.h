@@ -9,6 +9,7 @@
 #define SERVER_H_
 
 #include"utils.h"
+#include<sys/epoll.h>
 
 request *new_request();
 

@@ -40,13 +40,76 @@ struct request *req_list;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 
-struct query{
-	char stamp[STAMP_SIZE];
-	struct timespec start;
-};
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
-struct query query_list[10000];
+// list for collect result
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+typedef struct query {
+    char stamp[STAMP_SIZE];
+    struct timespec start;
+    struct query *next;
+}query;
 
+struct query *query_list;
+
+query *new_query() {
+    query *query_ptr;
+    query_ptr = (struct query *) malloc(sizeof(query));
+    if (query_ptr == NULL) {
+        printf("malloc request list failed.\n");
+        return NULL;
+    }
+
+    query_ptr->next = NULL;
+    return query_ptr;
+}
+
+query *find_query(query *list, const char *query_stamp) {
+    query *query_ptr = list->next;
+    while (query_ptr) {
+        if (strcmp(query_ptr->stamp, query_stamp) == 0) {
+            return query_ptr;
+        }
+        query_ptr = query_ptr->next;
+    }
+    return NULL;
+}
+
+query  *insert_query(query *list, const char *query_stamp, struct timespec tspec) {
+    struct query *new_q = new_query();
+    if (new_q == NULL) {
+        printf("insert_query: allocate new query failed.\n");
+        return NULL;
+    }
+    strncpy(new_q->stamp, query_stamp, STAMP_SIZE);
+    new_q->start = tspec;
+
+    query *query_ptr = list;
+    new_q->next = query_ptr->next;
+    query_ptr->next = new_q;
+
+    return new_q;
+}
+
+int remove_query(query *list, const char *query_stamp) {
+    struct query *pre_ptr = list;
+    struct query *query_ptr = list->next;
+    while (query_ptr) {
+        if (strcmp(query_ptr->stamp, query_stamp) == 0) {
+            pre_ptr->next = query_ptr->next;
+            free(query_ptr);
+            query_ptr = NULL;
+            return TRUE;
+        }
+        pre_ptr = pre_ptr->next;
+        query_ptr = query_ptr->next;
+    }
+    return FALSE;
+}
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+
+// torus server request list
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 request *new_request() {
@@ -819,12 +882,13 @@ int do_receive_result(struct message msg) {
 	memcpy(&count, msg.data, sizeof(int));
 	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(interval) * MAX_DIM_NUM);
 
-	for (i = 0; i < 10000; i++) {
-		if (strcmp(stamp, query_list[i].stamp) == 0) {
-			query_start = query_list[i].start;
-			qtime = get_elasped_time(query_start, query_end);
-		}
+	struct query *query_ptr = find_query(query_list, stamp);
+	if(query_ptr == NULL) {
+		printf("can't find this query!\n");
+		return FALSE;
 	}
+	query_start = query_ptr->start;
+	qtime = get_elasped_time(query_start, query_end);
 
 	char file_name[1024];
 	sprintf(file_name, "/root/result/%s", stamp);
@@ -855,17 +919,9 @@ int do_receive_result(struct message msg) {
 int do_receive_query(struct message msg) {
 	struct timespec query_start;
 	clock_gettime(CLOCK_REALTIME, &query_start);
-	static int list_index = 0;
-	strncpy(query_list[list_index].stamp, msg.stamp, STAMP_SIZE);
-	query_list[list_index].start = query_start;
-	list_index++;
 
-    #ifdef WRITE_LOG
-        char buf[1024];
-        sprintf(buf, "index:%d [%ld:%ld]\n", list_index, query_start.tv_sec,
-                query_start.tv_nsec);
-        write_log(TORUS_NODE_LOG, buf);
-    #endif
+	insert_query(query_list, msg.stamp, query_start);
+
 	return TRUE;
 }
 
@@ -1091,7 +1147,20 @@ int main(int argc, char **argv) {
 	// create a new request list
 	req_list = new_request();
 
+	// create a new query list(collect results)
+	query_list = new_query();
+
 	//the_skip_list = *new_skip_list_node();
+
+	// load rtree
+	the_torus_rtree = rtree_load();
+    if(the_torus_rtree == NULL){
+        write_log(TORUS_NODE_LOG, "load rtree failed.\n");
+        //exit(1);
+    }
+	printf("load rtree.\n");
+	write_log(TORUS_NODE_LOG, "load rtree.\n");
+
 
 	server_socket = new_server();
 	if (server_socket == FALSE) {
@@ -1100,34 +1169,55 @@ int main(int argc, char **argv) {
 	printf("start server.\n");
 	write_log(TORUS_NODE_LOG, "start server.\n");
 
-    the_torus_rtree = rtree_load();
-    if(the_torus_rtree == NULL){
-        write_log(TORUS_NODE_LOG, "load rtree failed.\n");
-        //exit(1);
-    }
-	printf("load rtree.\n");
-	write_log(TORUS_NODE_LOG, "load rtree.\n");
+	// set server socket nonblocking
+	set_nonblocking(server_socket);
 
-	while (should_run) {
-		int conn_socket;
-		conn_socket = accept_connection(server_socket);
-		if (conn_socket == FALSE) {
-			// TODO: handle accept connection failed
-			continue;
+	// epoll
+	int epfd;
+	struct epoll_event ev, events[MAX_EVENTS];
+	epfd = epoll_create(MAX_EVENTS);
+
+	ev.data.fd = server_socket;
+
+	ev.events = EPOLLIN;
+
+	epoll_ctl(epfd, EPOLL_CTL_ADD, server_socket, &ev);
+
+	int nfds, i;
+	while(should_run) {
+		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+		for(i = 0; i < nfds; i++) {
+			int conn_socket;
+			if(events[i].data.fd == server_socket) {
+				while((conn_socket = accept_connection(server_socket)) > 0) {
+					set_nonblocking(conn_socket);
+
+					ev.events = EPOLLIN;
+					ev.data.fd = conn_socket;
+					epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
+				}
+				if (conn_socket == FALSE) {
+					// TODO: handle accept connection failed
+					continue;
+				}
+			} else {
+				conn_socket = events[i].data.fd;
+				struct message msg;
+				memset(&msg, 0, sizeof(struct message));
+
+				// receive message through the conn_socket
+				if (TRUE == receive_message(conn_socket, &msg)) {
+					process_message(conn_socket, msg);
+				} else {
+					//  TODO: handle receive message failed
+					printf("receive message failed.\n");
+				}
+				close(conn_socket);
+
+			}
 		}
-
-		struct message msg;
-		memset(&msg, 0, sizeof(struct message));
-
-		// receive message through the conn_socket
-		if (TRUE == receive_message(conn_socket, &msg)) {
-			process_message(conn_socket, msg);
-		} else {
-			//  TODO: handle receive message failed
-			printf("receive message failed.\n");
-		}
-		close(conn_socket);
 	}
+
 	return 0;
 }
 
