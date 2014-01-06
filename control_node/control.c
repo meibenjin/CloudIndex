@@ -927,18 +927,23 @@ int main(int argc, char **argv) {
 		for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].low);
+                printf("%d ", intval[i].low);
             #else
                 fscanf(fp, "%lf", &intval[i].low);
+                printf("%lf ", intval[i].low);
             #endif
 		}
 
 		for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].high);
+                printf("%d ", intval[i].high);
             #else
                 fscanf(fp, "%lf", &intval[i].high);
+                printf("%lf ", intval[i].high);
             #endif
 		}
+        printf("\n");
 
 		search_skip_list_node(query_op, query_id, intval, entry_ip);
 
