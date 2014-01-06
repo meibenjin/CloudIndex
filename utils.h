@@ -39,6 +39,9 @@
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
 
+//limits for epoll
+#define MAX_EVENTS 10000
+
 //#define INT_DATA
 //typedef int data_type;
 typedef double data_type;
