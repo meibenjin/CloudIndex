@@ -26,6 +26,7 @@
 #define MAX_DIM_NUM 3
 
 // limits for torus
+#define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
 
@@ -42,9 +43,9 @@
 //limits for epoll
 #define MAX_EVENTS 10000
 
-//#define INT_DATA
-//typedef int data_type;
-typedef double data_type;
+#define INT_DATA
+typedef int data_type;
+//typedef double data_type;
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -104,6 +105,12 @@ typedef struct node_info {
 
 } node_info;
 
+// torus neighbors node information
+struct neighbor_node{
+    struct node_info *info;
+    struct neighbor_node *next;
+};
+
 typedef struct torus_node {
 	// torus node info
 	struct node_info info;
@@ -111,8 +118,9 @@ typedef struct torus_node {
 	// number of neighbors
 	int neighbors_num;
 
-	// torus node's neighbors
-	struct torus_node *neighbors[MAX_NEIGHBORS];
+	// torus node's neighbors in 6 directions
+    struct neighbor_node *neighbors[DIRECTIONS]; 
+
 } torus_node;
 
 //skip list node structure
@@ -131,7 +139,6 @@ typedef struct skip_list_node {
         struct skip_list_node *forward;
         struct skip_list_node *backward;
     }level[];
-	//struct skip_list_level level[];
 
 } skip_list_node;
 
@@ -149,12 +156,12 @@ typedef struct skip_list {
 // directions code in 3-dimension
 enum direction
 {
-    X_R = 0,
-    X_L,
-    Y_R,
+    X_L = 0,
+    X_R,
     Y_L,
-    Z_R,
+    Y_R,
     Z_L,
+    Z_R,
 };
 
 // torus partitions on 3-dimension
