@@ -118,16 +118,16 @@ int translate_coordinates(torus_s *torus, int direction) {
 	for (i = 0; i < nodes_num; ++i) {
 		struct coordinate c = get_node_id(torus->node_list[i].info);
 		switch (direction) {
-		case X_R:
 		case X_L:
+		case X_R:
 			set_node_id(&torus->node_list[i].info, t_p.p_x + c.x, c.y, c.z);
 			break;
-		case Y_R:
 		case Y_L:
+		case Y_R:
 			set_node_id(&torus->node_list[i].info, c.x, t_p.p_y + c.y, c.z);
 			break;
-		case Z_R:
 		case Z_L:
+		case Z_R:
 			set_node_id(&torus->node_list[i].info, c.x, c.y, t_p.p_z + c.z);
 			break;
 		}
@@ -206,29 +206,36 @@ int set_neighbors(torus_s *torus, torus_node *node_ptr) {
 	// index of the left neighbor of node_ptr on z-axis
 	int zli = get_node_index(torus_p, c.x, c.y, zlc);
 
-	int i = 0;
+
+    int neighbors_num = 0;
 	if (xrc != c.x) {
-		node_ptr->neighbors[i++] = &torus->node_list[xri];
+        add_neighbor_info(node_ptr, X_R, &torus->node_list[xri].info);
+        neighbors_num++;
 	}
 	if (xri != xli) {
-		node_ptr->neighbors[i++] = &torus->node_list[xli];
+        add_neighbor_info(node_ptr, X_L, &torus->node_list[xli].info);
+        neighbors_num++;
 	}
 
 	if (yrc != c.y) {
-		node_ptr->neighbors[i++] = &torus->node_list[yri];
+        add_neighbor_info(node_ptr, Y_R, &torus->node_list[yri].info);
+        neighbors_num++;
 	}
 	if (yri != yli) {
-		node_ptr->neighbors[i++] = &torus->node_list[yli];
+        add_neighbor_info(node_ptr, Y_L, &torus->node_list[yli].info);
+        neighbors_num++;
 	}
 
 	if (zrc != c.z) {
-		node_ptr->neighbors[i++] = &torus->node_list[zri];
+        add_neighbor_info(node_ptr, Z_R, &torus->node_list[zri].info);
+        neighbors_num++;
 	}
 	if (zri != zli) {
-		node_ptr->neighbors[i++] = &torus->node_list[zli];
+        add_neighbor_info(node_ptr, Z_L, &torus->node_list[zli].info);
+        neighbors_num++;
 	}
 
-	set_neighbors_num(node_ptr, i);
+    set_neighbors_num(node_ptr, neighbors_num);
 
 	return TRUE;
 }
@@ -264,7 +271,8 @@ node_info *assign_torus_leader(torus_s *torus) {
 }
 
 torus_s *new_torus(struct torus_partitions new_torus_p) {
-	int nodes_num;
+	int i, j, k, index, nodes_num;
+
 	nodes_num = get_nodes_num(new_torus_p);
 	if (nodes_num <= 0) {
 		printf("new_torus: incorrect partition.\n");
@@ -293,9 +301,14 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 		return NULL;
 	}
 
-	int i, j, k, index;
-	index = 0;
+	for (i = 0; i < nodes_num; ++i) {
+        for(j = 0; j < DIRECTIONS; j++) {
+            torus_ptr->node_list[i].neighbors[j] = NULL;
+        }
+    }
+    
 
+	index = 0;
 	for (i = 0; i < new_torus_p.p_x; ++i) {
 		for (j = 0; j < new_torus_p.p_y; ++j) {
 			for (k = 0; k < new_torus_p.p_z; ++k) {
@@ -339,17 +352,62 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
 		return NULL;
 	}
 
+    #ifdef INT_DATA
+        interval intvl[MAX_DIM_NUM];
+        int d_x[new_torus_p.p_x + 1];
+        int d_y[new_torus_p.p_y + 1];
+        int d_z[new_torus_p.p_z + 1];
+
+        int range = 100;
+
+        for (i = 1, d_x[0] = 0; i <= new_torus_p.p_x; ++i) {
+            if (i == new_torus_p.p_x) {
+                d_x[i] = 100;
+                break;
+            }
+            d_x[i] = d_x[i - 1] + range / new_torus_p.p_x;
+        }
+        for (j = 1, d_y[0] = 0; j <= new_torus_p.p_y; ++j) {
+            if (j == new_torus_p.p_y) {
+                d_y[j] = 100;
+                break;
+            }
+            d_y[j] = d_y[j - 1] + range / new_torus_p.p_y;
+        }
+        for (k = 1, d_z[0] = 0; k <= new_torus_p.p_z; ++k) {
+            if (k == new_torus_p.p_z) {
+                d_z[k] = 100;
+                break;
+            }
+            d_z[k] = d_z[k - 1] + range / new_torus_p.p_z;
+        }
+    #endif
+
     // set data interval for each torus node
 	index = 0;
 	struct torus_node *pnode;
 	for (i = 0; i < new_torus_p.p_x; ++i) {
 		for (j = 0; j < new_torus_p.p_y; ++j) {
 			for (k = 0; k < new_torus_p.p_z; ++k) {
-				pnode = &torus_ptr->node_list[index];
+                pnode = &torus_ptr->node_list[index];
+                #ifdef INT_DATA
+                    intvl[0].low = d_x[i] + 1;
+                    intvl[0].high = d_x[i + 1];
+                    intvl[1].low = d_y[j] + 1;
+                    intvl[1].high = d_y[j + 1];
+                    intvl[2].low = d_z[k] + 1;
+                    intvl[2].high = d_z[k + 1];
 
-                if(FALSE == set_interval(&pnode->info)){
-                    return NULL;
-                }
+                    int t;
+                    for (t = 0; t < MAX_DIM_NUM; ++t) {
+                        pnode->info.dims[t].low = intvl[t].low;
+                        pnode->info.dims[t].high = intvl[t].high;
+                    }
+                #else
+                    if(FALSE == set_interval(&pnode->info)){
+                       return NULL;
+                    }
+                #endif
                 index++;
             }
         }
@@ -392,16 +450,16 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction) {
 	// calc merged torus partitions info
 	merged_partition = to->partition;
 	switch (direction) {
-	case X_R:
 	case X_L:
+	case X_R:
 		merged_partition.p_x += from->partition.p_x;
 		break;
-	case Y_R:
 	case Y_L:
+	case Y_R:
 		merged_partition.p_y += from->partition.p_y;
 		break;
-	case Z_R:
 	case Z_L:
+	case Z_R:
 		merged_partition.p_z += from->partition.p_z;
 		break;
 	}
@@ -439,7 +497,7 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction) {
 	return merged_torus;
 }
 
-int send_partition_info(const char *dst_ip, struct torus_partitions torus_p) {
+/*int send_partition_info(const char *dst_ip, struct torus_partitions torus_p) {
 	int socketfd;
 	socketfd = new_client_socket(dst_ip);
 	if (FALSE == socketfd) {
@@ -482,11 +540,9 @@ int send_partition_info(const char *dst_ip, struct torus_partitions torus_p) {
 	close(socketfd);
 	return ret;
 
-}
+}*/
 
-int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
-		struct node_info *nodes) {
-	int i;
+int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	int socketfd;
 
 	socketfd = new_client_socket(dst_ip);
@@ -506,21 +562,17 @@ int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, &nodes_num, sizeof(int));
-	for (i = 0; i < nodes_num; i++) {
-		memcpy(msg.data + sizeof(int) + sizeof(struct node_info) * i,
-				(void *) &nodes[i], sizeof(struct node_info));
-	}
+	memcpy(msg.data, (void *) data, length);
 
 	int ret;
 	struct reply_message reply_msg;
 	if (TRUE == send_message(socketfd, msg)) {
 		if (TRUE == receive_reply(socketfd, &reply_msg)) {
 			if (SUCCESS == reply_msg.reply_code) {
-				printf("%s: send nodes info ...... finish.\n", dst_ip);
+				printf("%s: send torus info ...... finish.\n", dst_ip);
 				ret = TRUE;
 			} else {
-				printf("%s: send nodes info ...... error occurred.\n", dst_ip);
+				printf("%s: send torus info ...... error occurred.\n", dst_ip);
 				ret = FALSE;
 			}
 		} else {
@@ -528,7 +580,7 @@ int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
 			ret = FALSE;
 		}
 	} else {
-		printf("%s: send nodes info...... failed.\n", dst_ip);
+		printf("%s: send torus info...... failed.\n", dst_ip);
 		ret = FALSE;
 	}
 
@@ -537,39 +589,53 @@ int send_nodes_info(OP op, const char *dst_ip, int nodes_num,
 }
 
 int update_torus(torus_s *torus) {
-	int i, j, index, nodes_num;
+	int i, nodes_num;
 
 	nodes_num = get_nodes_num(torus->partition);
+    // send info to all torus nodes
 	for (i = 0; i < nodes_num; ++i) {
-		int neighbors_num = get_neighbors_num(torus->node_list[i]);
+        int d;
+        size_t cpy_len = 0;
+        char buf[DATA_SIZE];
+        //memset(buf, 0, DATA_SIZE);
 
-		// the nodes array includes dst nodes and its' neighbors
-		node_info nodes[neighbors_num + 1];
+        //copy torus partitions into buf
+        memcpy(buf, (void *)&torus->partition, sizeof(struct torus_partitions));
+        cpy_len += sizeof(struct torus_partitions);
 
-		// add dst node itself
-		nodes[0] = torus->node_list[i].info;
 
-		struct torus_node *node_ptr = NULL;
-		node_ptr = &torus->node_list[i];
-		for (j = 0; j < neighbors_num; ++j) {
-			if (node_ptr && node_ptr->neighbors[j]) {
-				nodes[j + 1] = node_ptr->neighbors[j]->info;
-				index++;
-			}
-		}
+        //copy dst node info into buf
+        struct torus_node *node_ptr;
+        node_ptr = &torus->node_list[i];
+		memcpy(buf + cpy_len,(void *) &node_ptr->info, sizeof(node_info));
+        cpy_len += sizeof(node_info);
+
+        // copy neighbors info into buf
+        for(d = 0; d < DIRECTIONS; d++) {
+            int num = get_neighbors_num_d(node_ptr, d);
+            memcpy(buf + cpy_len, &num, sizeof(int));
+            cpy_len += sizeof(int); 
+
+            if(node_ptr->neighbors[d] != NULL) {
+                struct neighbor_node *nn_ptr;
+                nn_ptr = node_ptr->neighbors[d]->next;
+                while(nn_ptr != NULL) {
+                    memcpy(buf + cpy_len, nn_ptr->info, sizeof(node_info));
+                    cpy_len += sizeof(node_info);
+                    nn_ptr = nn_ptr->next;
+                }
+            }
+        }
+
 
 		char dst_ip[IP_ADDR_LENGTH];
 		memset(dst_ip, 0, IP_ADDR_LENGTH);
 		get_node_ip(node_ptr->info, dst_ip);
 
 		// send to dst_ip
-		if (FALSE
-				== send_nodes_info(UPDATE_TORUS, dst_ip, neighbors_num + 1,
-						nodes)) {
+		if (FALSE == send_data(UPDATE_TORUS, dst_ip, buf, cpy_len)) {
 			return FALSE;
 		}
-
-		send_partition_info(dst_ip, torus->partition);
 
 	}
 	return TRUE;
@@ -666,9 +732,22 @@ int update_skip_list(skip_list *list) {
 			}
 		}
 
+        char buf[DATA_SIZE];
+        memset(buf, 0, DATA_SIZE);
+        size_t cpy_len = 0;
+
+        memcpy(buf, &nodes_num, sizeof(int));
+        cpy_len += sizeof(int);
+        for(i = 0; i < nodes_num; i++) {
+            memcpy(buf + cpy_len, (void *)&nodes[i], sizeof(struct node_info));
+            cpy_len += sizeof(struct node_info);
+        }
+
 		char dst_ip[IP_ADDR_LENGTH];
+		memset(dst_ip, 0, IP_ADDR_LENGTH);
 		strncpy(dst_ip, cur_sln->leader.ip, IP_ADDR_LENGTH);
-		send_nodes_info(UPDATE_SKIP_LIST, dst_ip, nodes_num, nodes);
+
+		send_data(UPDATE_SKIP_LIST, dst_ip, buf, cpy_len);
 
 		cur_sln = cur_sln->level[0].forward;
 	}
@@ -811,9 +890,19 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 		}
 	}
 
-	if (FALSE
-			== send_nodes_info(UPDATE_SKIP_LIST, node_ptr->ip, update_num,
-					update_nodes)) {
+    char buf[DATA_SIZE];
+    memset(buf, 0, DATA_SIZE);
+    size_t cpy_len = 0;
+
+    memcpy(buf, &update_num, sizeof(int));
+    cpy_len += sizeof(int);
+
+    for(i = 0; i < update_num; i++){
+        memcpy(buf + cpy_len, (void *) &update_nodes[i], sizeof(struct node_info));
+        cpy_len += sizeof(struct node_info);
+    }
+
+	if (FALSE == send_data(UPDATE_SKIP_LIST, node_ptr->ip, buf, cpy_len)) {
 		return FALSE;
 	}
 
@@ -831,14 +920,22 @@ int search_skip_list_node(int query_op, int query_id, struct interval intval[], 
 
 	struct message msg;
 	int count = 0;
+    size_t cpy_len = 0; 
 	msg.op = SEARCH_SKIP_LIST_NODE;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);
 	memcpy(msg.data, &count, sizeof(int));
-	memcpy(msg.data + sizeof(int) * 1, (void *) &query_op, sizeof(int));
-	memcpy(msg.data + sizeof(int) * 2, (void *) &query_id, sizeof(int));
-	memcpy(msg.data + sizeof(int) * 3, (void *) intval, sizeof(interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(int);
+
+	memcpy(msg.data + cpy_len, (void *) &query_op, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy(msg.data + cpy_len, (void *) &query_id, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy(msg.data + cpy_len, (void *) intval, sizeof(interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(interval) * MAX_DIM_NUM;
 
 	int i;
 	if (FALSE == forward_message(msg, 1)) {
@@ -880,34 +977,34 @@ int main(int argc, char **argv) {
 
 	char entry_ip[IP_ADDR_LENGTH];
 
-	// create a new torus by torus partition info
-	struct torus_s *torus_ptr;
-	torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
-	if (torus_ptr == NULL) {
-		exit(1);
-	}
-	//print_torus(torus_ptr);
+    int cnt = 3;
+    // create a new torus by torus partition info
+    struct torus_s *torus_ptr;
+    torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+    if (torus_ptr == NULL) {
+        exit(1);
+    }
 
-	node_info *leader_node;
-	leader_node = assign_torus_leader(torus_ptr);
+    node_info *leader_node;
+    leader_node = assign_torus_leader(torus_ptr);
 
-	strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
+    strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
 
-	// insert newly created torus cluster into cluster_list
-	insert_torus_cluster(cluster_list, torus_ptr);
+    // insert newly created torus cluster into cluster_list
+    insert_torus_cluster(cluster_list, torus_ptr);
 
+    //print_torus_cluster(cluster_list);
+
+    if (TRUE == update_torus(torus_ptr)) {
+        if (TRUE == insert_skip_list_node(slist, leader_node)) {
+            print_skip_list(slist);
+            //printf("traverse skip list success!\n");
+        }
+    }
+
+	printf("\n\n");
 	//print_torus_cluster(cluster_list);
-
-	if (TRUE == update_torus(torus_ptr)) {
-		if (TRUE == insert_skip_list_node(slist, leader_node)) {
-			print_skip_list(slist);
-			//printf("traverse skip list success!\n");
-		}
-	}
-
-	printf("\n\n");
-	print_torus_cluster(cluster_list);
-	printf("\n\n");
+	//printf("\n\n");
 
 	FILE *fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
@@ -919,12 +1016,11 @@ int main(int argc, char **argv) {
 	while (!feof(fp)) {
         int query_op, query_id;
         struct interval intval[MAX_DIM_NUM];
+        printf("%d.begin search: ", count++);
 
-		printf("%d.begin search: ", count++);
         fscanf(fp, "%d %d", &query_op, &query_id);
         printf("%d %d", query_op, query_id);
-
-		for (i = 0; i < MAX_DIM_NUM; i++) {
+        for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].low);
                 printf("%d ", intval[i].low);
@@ -932,9 +1028,9 @@ int main(int argc, char **argv) {
                 fscanf(fp, "%lf", &intval[i].low);
                 printf("%lf ", intval[i].low);
             #endif
-		}
+        }
 
-		for (i = 0; i < MAX_DIM_NUM; i++) {
+        for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].high);
                 printf("%d ", intval[i].high);
@@ -942,11 +1038,10 @@ int main(int argc, char **argv) {
                 fscanf(fp, "%lf", &intval[i].high);
                 printf("%lf ", intval[i].high);
             #endif
-		}
+        }
         printf("\n");
 
-		search_skip_list_node(query_op, query_id, intval, entry_ip);
-
+        search_skip_list_node(query_op, query_id, intval, entry_ip);
 		printf("search finish.\n");
 		//sleep(1);
 	}

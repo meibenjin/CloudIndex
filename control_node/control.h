@@ -62,10 +62,10 @@ torus_s *create_torus(int p_x, int p_y, int p_z);
 // append a extra new torus
 torus_s *append_torus(torus_s *to, torus_s *from, int direction);
 
-// send nodes info to dst_ip
-int send_nodes_info(OP op, const char *dst_ip, int nodes_num, struct node_info *nodes);
+// send info to dst_ip
+int send_data(OP op, const char *dst_ip, const char *data, size_t length);
 
-int send_partition_info(const char *dst_ip, struct torus_partitions torus_p);
+//int send_partition_info(const char *dst_ip, struct torus_partitions torus_p);
 
 // update all nodes and theirs neighbors info via socket
 int update_torus(torus_s *torus);
