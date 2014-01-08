@@ -71,7 +71,7 @@ public:
 };
 
 
-int rtree_query(int op, int id, data_type plow[], data_type phigh[], ISpatialIndex *rtree) {
+int rtree_query(int op, int id, double plow[], double phigh[], ISpatialIndex *rtree) {
     try
     {
 		size_t indexIO = 0;
