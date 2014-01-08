@@ -25,7 +25,7 @@ extern "C" {
 //define torus server 
 /*****************************************************************************/
 
-torus_node the_torus_node;
+torus_node *the_torus;
 struct torus_partitions the_partition;
 
 ISpatialIndex* the_torus_rtree;
@@ -33,7 +33,7 @@ ISpatialIndex* the_torus_rtree;
 // mark torus node is active or not 
 int should_run;
 
-struct skip_list the_skip_list;
+struct skip_list *the_skip_list;
 
 struct request *req_list;
 
@@ -187,7 +187,7 @@ int do_traverse_torus(struct message msg) {
 	char stamp[STAMP_SIZE];
 	memset(stamp, 0, STAMP_SIZE);
 
-	int neighbors_num = get_neighbors_num(the_torus_node);
+	int neighbors_num = get_neighbors_num(the_torus);
 
 	if (strcmp(msg.stamp, "") == 0) {
 		if (FALSE == gen_request_stamp(stamp)) {
@@ -230,51 +230,77 @@ int do_traverse_torus(struct message msg) {
 }
 
 int forward_to_neighbors(struct message msg) {
-	int i;
+	int d;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
-	int neighbors_num = get_neighbors_num(the_torus_node);
+	//int neighbors_num = get_neighbors_num(the_torus);
 
-	get_node_ip(the_torus_node.info, src_ip);
-	for (i = 0; i < neighbors_num; ++i) {
-		get_node_ip(the_torus_node.neighbors[i]->info, dst_ip);
+	get_node_ip(the_torus->info, src_ip);
+	for (d = 0; d < DIRECTIONS; ++d) {
+        if(the_torus->neighbors[d] != NULL) {
+            struct neighbor_node *nn_ptr;
+            nn_ptr = the_torus->neighbors[d]->next;
+            while(nn_ptr != NULL) {
+                get_node_ip(*nn_ptr->info, dst_ip);
+                strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+                strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                forward_message(msg, 0);
+                nn_ptr = nn_ptr->next;
+            }
+        }
 
-		strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
-		strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-		forward_message(msg, 0);
 	}
 	return TRUE;
 }
 
 int do_update_torus(struct message msg) {
-	int i;
-	int nodes_num = 0;
+	int i, d;
+    size_t cpy_len = 0;
+	int num, neighbors_num = 0;
 
-	memcpy(&nodes_num, msg.data, sizeof(int));
-	if (nodes_num <= 0) {
-		printf("update_torus_node: torus nodes number is wrong\n");
-		return FALSE;
-	}
+    // allocate for the_torus if it's NULL
+    if(the_torus == NULL) {
+        the_torus = new_torus_node();
+    }
 
-	node_info nodes[nodes_num];
+    // get torus partitons info from msg
+    memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
+    cpy_len += sizeof(struct torus_partitions);
 
-	for (i = 0; i < nodes_num; ++i) {
-		memcpy(&nodes[i],
-				(void*) (msg.data + sizeof(int) + sizeof(node_info) * i),
-				sizeof(node_info));
-	}
+    #ifdef WRITE_LOG 
+        char buf[1024];
+        sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+                the_partition.p_y, the_partition.p_z);
+        write_log(TORUS_NODE_LOG, buf);
+    #endif
 
-	// construct a torus node from several nodes
-	the_torus_node.info = nodes[0];
-	set_neighbors_num(&the_torus_node, nodes_num - 1);
-	for (i = 1; i < nodes_num; ++i) {
-		torus_node *new_node = new_torus_node();
-		if (new_node == NULL) {
-			return FALSE;
-		}
-		new_node->info = nodes[i];
-		the_torus_node.neighbors[i - 1] = new_node;
-	}
+    // get local torus node from msg
+    memcpy(&the_torus->info, (void *)(msg.data + cpy_len), sizeof(node_info));
+    cpy_len += sizeof(node_info);
+
+    // get neighbors info from msg 
+    for(d = 0; d < DIRECTIONS; d++) {
+        num = 0;
+        memcpy(&num, (void *)(msg.data + cpy_len), sizeof(int));
+        cpy_len += sizeof(int); 
+
+        for(i = 0; i < num; i++) {
+            // allocate space for the_torus's neighbor at direction d
+            torus_node *new_node = new_torus_node();
+            if (new_node == NULL) {
+                return FALSE;
+            }
+            memcpy(&new_node->info, (void *)(msg.data + cpy_len), sizeof(node_info));
+            cpy_len += sizeof(node_info);
+
+            add_neighbor_info(the_torus, d, &new_node->info);
+        }
+        neighbors_num += num;
+    }
+
+    // set the_torus's neighbors_num
+	set_neighbors_num(the_torus, neighbors_num);
+
 	return TRUE;
 }
 
@@ -313,7 +339,7 @@ int do_update_skip_list(struct message msg) {
 
 	level = (nodes_num / 2) - 1;
 	index = 0;
-	sln_ptr = the_skip_list.header;
+	sln_ptr = the_skip_list->header;
 
 	for (i = level; i >= 0; i--) {
 		if (get_cluster_id(nodes[index]) != -1) {
@@ -346,7 +372,7 @@ int do_traverse_skip_list(struct message msg) {
 	//char buf[1024];
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	skip_list_node *cur_sln, *forward, *backward;
-	cur_sln = the_skip_list.header;
+	cur_sln = the_skip_list->header;
 	forward = cur_sln->level[0].forward;
 	backward = cur_sln->level[0].backward;
 
@@ -392,16 +418,20 @@ int do_traverse_skip_list(struct message msg) {
 
 int do_update_skip_list_node(struct message msg) {
 	int i;
+    size_t cpy_len = 0;
 	// analysis node info from message
 	memcpy(&i, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
 
 	node_info f_node, b_node;
-	memcpy(&f_node, (void*) (msg.data + sizeof(int)), sizeof(node_info));
-	memcpy(&b_node, (void*) (msg.data + sizeof(int) + sizeof(node_info)),
-			sizeof(node_info));
+	memcpy(&f_node, (void*) (msg.data + cpy_len), sizeof(node_info));
+    cpy_len += sizeof(node_info);
+
+	memcpy(&b_node, (void*) (msg.data + cpy_len), sizeof(node_info));
+    cpy_len += sizeof(node_info);
 
 	skip_list_node *sln_ptr, *new_sln;
-	sln_ptr = the_skip_list.header;
+	sln_ptr = the_skip_list->header;
 	if (get_cluster_id(f_node) != -1) {
 		new_sln = new_skip_list_node(0, &f_node);
 
@@ -426,14 +456,18 @@ int do_update_skip_list_node(struct message msg) {
 }
 int do_update_forward(struct message msg) {
 	int i;
-	// analysis node info from message
+    size_t cpy_len = 0;
+
+	// get node info from message
 	memcpy(&i, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
 
 	node_info f_node;
-	memcpy(&f_node, (void*) (msg.data + sizeof(int)), sizeof(node_info));
+	memcpy(&f_node, (void*) (msg.data + cpy_len), sizeof(node_info));
+    cpy_len += sizeof(node_info);
 
 	skip_list_node *sln_ptr, *new_sln;
-	sln_ptr = the_skip_list.header;
+	sln_ptr = the_skip_list->header;
 	if (get_cluster_id(f_node) != -1) {
 		new_sln = new_skip_list_node(0, &f_node);
 
@@ -449,14 +483,18 @@ int do_update_forward(struct message msg) {
 
 int do_update_backward(struct message msg) {
 	int i;
-	// analysis node info from message
+    size_t cpy_len = 0;
+
+	// get node info from message
 	memcpy(&i, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
 
 	node_info b_node;
-	memcpy(&b_node, (void*) (msg.data + sizeof(int)), sizeof(node_info));
+	memcpy(&b_node, (void*) (msg.data + cpy_len), sizeof(node_info));
+    cpy_len += sizeof(node_info);
 
 	skip_list_node *sln_ptr, *new_sln;
-	sln_ptr = the_skip_list.header;
+	sln_ptr = the_skip_list->header;
 	if (get_cluster_id(b_node) != -1) {
 		new_sln = new_skip_list_node(0, &b_node);
 
@@ -472,29 +510,32 @@ int do_update_backward(struct message msg) {
 
 int do_new_skip_list(struct message msg) {
 	int level;
-	skip_list_node *sln_ptr;
-	// analysis node info from message
-	memcpy(&level, msg.data, sizeof(int));
-	node_info leader;
-	memcpy(&leader, msg.data + sizeof(int), sizeof(node_info));
+    size_t cpy_len = 0;
 
-	the_skip_list = *new_skip_list(level);
-	sln_ptr = the_skip_list.header;
-	sln_ptr->leader = leader;
-	sln_ptr->height = level;
-	the_skip_list.level = level;
+	// get node info from message
+	skip_list_node *sln_ptr;
+	node_info leader;
+
+	memcpy(&level, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+	memcpy(&leader, msg.data + cpy_len, sizeof(node_info));
+    cpy_len += sizeof(node_info);
+
+    if(the_skip_list == NULL) {
+        the_skip_list = new_skip_list(level);
+    }
+    sln_ptr = the_skip_list->header;
+    sln_ptr->leader = leader;
+    sln_ptr->height = level;
+    the_skip_list->level = level;
 	return TRUE;
 }
 
-int forward_search(struct message msg, int d) {
+int forward_search(struct interval intval[], struct message msg, int d) {
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 
-    // get query from message
-	struct interval intval[MAX_DIM_NUM];
-	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
-
-	struct coordinate lower_id = get_node_id(the_torus_node.info);
-	struct coordinate upper_id = get_node_id(the_torus_node.info);
+	struct coordinate lower_id = get_node_id(the_torus->info);
+	struct coordinate upper_id = get_node_id(the_torus->info);
 	switch (d) {
 	case 0:
 		lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
@@ -510,8 +551,8 @@ int forward_search(struct message msg, int d) {
 		break;
 	}
 
-	node_info *lower_neighbor = get_neighbor_by_id(the_torus_node, lower_id);
-	node_info *upper_neighbor = get_neighbor_by_id(the_torus_node, upper_id);
+	node_info *lower_neighbor = get_neighbor_by_id(the_torus, lower_id);
+	node_info *upper_neighbor = get_neighbor_by_id(the_torus, upper_id);
 
     #ifdef WRITE_LOG 
         char buf[1024];
@@ -536,8 +577,8 @@ int forward_search(struct message msg, int d) {
 	if ((lower_overlap != 0) || (upper_overlap != 0)) {
 
 		//current torus node is the first node on dimension d
-		if ((the_torus_node.info.dims[d].low < lower_neighbor->dims[d].low)
-				&& (the_torus_node.info.dims[d].low
+		if ((the_torus->info.dims[d].low < lower_neighbor->dims[d].low)
+				&& (the_torus->info.dims[d].low
 						< upper_neighbor->dims[d].low)) {
 			if (get_distance(intval[d], lower_neighbor->dims[d])
 					< get_distance(intval[d], upper_neighbor->dims[d])) {
@@ -545,9 +586,9 @@ int forward_search(struct message msg, int d) {
 			}
 			lower_neighbor = NULL;
 
-		} else if ((the_torus_node.info.dims[d].high
+		} else if ((the_torus->info.dims[d].high
 				> lower_neighbor->dims[d].high)
-				&& (the_torus_node.info.dims[d].high
+				&& (the_torus->info.dims[d].high
 						> upper_neighbor->dims[d].high)) {
 			if (get_distance(intval[d], upper_neighbor->dims[d])
 					< get_distance(intval[d], lower_neighbor->dims[d])) {
@@ -579,7 +620,7 @@ int forward_search(struct message msg, int d) {
 
 	if (lower_neighbor != NULL) {
 		struct message new_msg;
-		get_node_ip(the_torus_node.info, src_ip);
+		get_node_ip(the_torus->info, src_ip);
 		get_node_ip(*lower_neighbor, dst_ip);
 		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
@@ -590,7 +631,7 @@ int forward_search(struct message msg, int d) {
 	}
 	if (upper_neighbor != NULL) {
 		struct message new_msg;
-		get_node_ip(the_torus_node.info, src_ip);
+		get_node_ip(the_torus->info, src_ip);
 		get_node_ip(*upper_neighbor, dst_ip);
 		fill_message((OP)msg.op, src_ip, dst_ip, msg.stamp, msg.data, &new_msg);
 
@@ -602,22 +643,23 @@ int forward_search(struct message msg, int d) {
 	return TRUE;
 }
 
-int search_rtree(struct message msg) {
-
+int search_rtree(int op, int id, struct interval intval[]) {
+    if(the_torus_rtree == NULL) {
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "torus rtree didn't load.\n");
+        #endif
+        return FALSE;
+    }
     #ifdef WRITE_LOG
         write_log(TORUS_NODE_LOG, "begin search torus rtree!\n");
     #endif
 
-    int i, op, id;
-    data_type plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
-	struct interval intval[MAX_DIM_NUM];
-	memcpy(&op, msg.data + sizeof(int) * 1, sizeof(int));
-	memcpy(&id, msg.data + sizeof(int) * 2, sizeof(int));
-	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
+    int i;
+    double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
 
     for (i = 0; i < MAX_DIM_NUM; i++) {
-        plow[i] = intval[i].low;
-        phigh[i] = intval[i].high;
+        plow[i] = (double)intval[i].low;
+        phigh[i] = (double)intval[i].high;
     }
     
     // query rtree of the torus node
@@ -636,21 +678,36 @@ int do_search_torus_node(struct message msg) {
 	char stamp[STAMP_SIZE];
 
     // get query from message
-	int count;
+	int count, op, id, cpy_len = 0;
 	struct interval intval[MAX_DIM_NUM];
+
+    // get requst stamp from msg
+	strncpy(stamp, msg.stamp, STAMP_SIZE);
+
+    // get forward count from msg
 	memcpy(&count, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+
+    // increase count and write back to msg
 	count++;
 	memcpy(msg.data, &count, sizeof(int));
-	strncpy(stamp, msg.stamp, STAMP_SIZE);
-    
-	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
+
+    // get query string from msg
+    // query op
+	memcpy(&op, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+    // query id
+	memcpy(&id, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+    // query string
+	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
 
 	request *req_ptr = find_request(req_list, stamp);
 
 	if (NULL == req_ptr) {
 		req_ptr = insert_request(req_list, stamp);
 
-		if (1 == overlaps(intval, the_torus_node.info.dims)) {
+		if (1 == overlaps(intval, the_torus->info.dims)) {
 			message new_msg;
 			// only for test
 			//when receive query and search skip list node finish send message to collect-result node
@@ -662,7 +719,7 @@ int do_search_torus_node(struct message msg) {
             #ifdef WRITE_LOG
                 char buf[1024];
                 write_log(TORUS_NODE_LOG, "search torus success!\n\t");
-                print_node_info(the_torus_node.info);
+                print_node_info(the_torus->info);
 
                 int len = 0;
                 len = sprintf(buf, "query:");
@@ -679,16 +736,16 @@ int do_search_torus_node(struct message msg) {
                 write_log(CTRL_NODE_LOG, buf);
 
                 len = 0;
-                len = sprintf(buf, "%s:", the_torus_node.info.ip);
+                len = sprintf(buf, "%s:", the_torus->info.ip);
                 for (i = 0; i < MAX_DIM_NUM; ++i) {
                     #ifdef INT_DATA
                         len += sprintf(buf + len, "[%d, %d] ",
-                                the_torus_node.info.dims[i].low,
-                                the_torus_node.info.dims[i].high);
+                                the_torus->info.dims[i].low,
+                                the_torus->info.dims[i].high);
                     #else
                         len += sprintf(buf + len, "[%.10f, %.10f] ",
-                                the_torus_node.info.dims[i].low,
-                                the_torus_node.info.dims[i].high);
+                                the_torus->info.dims[i].low,
+                                the_torus->info.dims[i].high);
                     #endif
                 }
                 sprintf(buf + len, "\n%s:search torus success. %d\n\n", msg.dst_ip,
@@ -697,16 +754,16 @@ int do_search_torus_node(struct message msg) {
             #endif
 
 			for (i = 0; i < MAX_DIM_NUM; i++) {
-				forward_search(msg, i);
+				forward_search(intval, msg, i);
 			}
 			//TODO do rtree search
 
-            search_rtree(msg);
+            search_rtree(op, id, intval);
 
 		} else {
 			for (i = 0; i < MAX_DIM_NUM; i++) {
-				if (interval_overlap(intval[i], the_torus_node.info.dims[i]) != 0) {
-					forward_search(msg, i);
+				if (interval_overlap(intval[i], the_torus->info.dims[i]) != 0) {
+					forward_search(intval, msg, i);
 					break;
 				}
 			}
@@ -732,10 +789,10 @@ int do_search_skip_list_node(struct message msg) {
 	message new_msg;
 
     //get current skip list node  ip address
-	get_node_ip(the_skip_list.header->leader, src_ip);
+	get_node_ip(the_skip_list->header->leader, src_ip);
 
 	skip_list_node *sln_ptr;
-	sln_ptr = the_skip_list.header;
+	sln_ptr = the_skip_list->header;
 
 	if (0 == interval_overlap(sln_ptr->leader.dims[2], intval[2])) { // node searched
 		if (FALSE == gen_request_stamp(stamp)) {
@@ -816,7 +873,7 @@ int do_search_skip_list_node(struct message msg) {
 
 	} else if (-1 == interval_overlap(sln_ptr->leader.dims[2], intval[2])) { // node is on the forward of skip list
 		int visit_forward = 0;
-		for (i = the_skip_list.level; i >= 0; --i) {
+		for (i = the_skip_list->level; i >= 0; --i) {
 			if ((sln_ptr->level[i].forward != NULL)
 					&& (interval_overlap(
 							sln_ptr->level[i].forward->leader.dims[2],
@@ -838,7 +895,7 @@ int do_search_skip_list_node(struct message msg) {
 
 	} else {							// node is on the backward of skip list
 		int visit_backward = 0;
-		for (i = the_skip_list.level; i >= 0; --i) {
+		for (i = the_skip_list->level; i >= 0; --i) {
 			if ((sln_ptr->level[i].backward != NULL)
 					&& (interval_overlap(
 							sln_ptr->level[i].backward->leader.dims[2],
@@ -948,7 +1005,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_torus_node(the_torus_node);
+		print_torus_node(*the_torus);
 		break;
 
 	case UPDATE_PARTITION:
@@ -1000,7 +1057,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_skip_list_node(&the_skip_list);
+		print_skip_list_node(the_skip_list);
 		break;
 
 	case UPDATE_SKIP_LIST_NODE:
@@ -1018,7 +1075,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_skip_list_node(&the_skip_list);
+		print_skip_list_node(the_skip_list);
 		break;
 
 	case SEARCH_SKIP_LIST_NODE:
@@ -1053,7 +1110,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_skip_list_node(&the_skip_list);
+		print_skip_list_node(the_skip_list);
 		break;
 
 	case UPDATE_BACKWARD:
@@ -1071,7 +1128,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_skip_list_node(&the_skip_list);
+		print_skip_list_node(the_skip_list);
 		break;
 
 	case NEW_SKIP_LIST:
@@ -1089,7 +1146,7 @@ int process_message(int socketfd, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-		print_skip_list_node(&the_skip_list);
+		print_skip_list_node(the_skip_list);
 		break;
 
 	case TRAVERSE_SKIP_LIST:
@@ -1142,7 +1199,9 @@ int main(int argc, char **argv) {
 	should_run = 1;
 
 	// new a torus node
-	the_torus_node = *new_torus_node();
+	the_torus = NULL; // = new_torus_node();
+
+	the_skip_list = NULL; //*new_skip_list_node();
 
 	// create a new request list
 	req_list = new_request();
@@ -1150,16 +1209,16 @@ int main(int argc, char **argv) {
 	// create a new query list(collect results)
 	query_list = new_query();
 
-	//the_skip_list = *new_skip_list_node();
 
 	// load rtree
-	the_torus_rtree = rtree_load();
+    the_torus_rtree = NULL;
+	/*the_torus_rtree = rtree_load();
     if(the_torus_rtree == NULL){
         write_log(TORUS_NODE_LOG, "load rtree failed.\n");
         //exit(1);
     }
 	printf("load rtree.\n");
-	write_log(TORUS_NODE_LOG, "load rtree.\n");
+	write_log(TORUS_NODE_LOG, "load rtree.\n");*/
 
 
 	server_socket = new_server();
