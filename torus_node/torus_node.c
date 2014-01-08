@@ -107,6 +107,33 @@ int get_cluster_id(node_info info) {
 	return info.cluster_id;
 }
 
+int add_neighbor_info(torus_node *node_ptr, int d, node_info *neighbor_ptr) {
+    struct neighbor_node *nn_ptr;
+    nn_ptr = (struct neighbor_node *) malloc(sizeof(struct neighbor_node));
+    if(nn_ptr == NULL) {
+        printf("add_neighbor_info: malloc neighbor_node failed\n");
+        return FALSE;
+    }
+    nn_ptr->info = neighbor_ptr;
+    nn_ptr->next = NULL;
+
+    // if insert the first neighbor node at direction
+    if(node_ptr->neighbors[d] == NULL) {
+        node_ptr->neighbors[d] = (struct neighbor_node*) malloc(sizeof(struct neighbor_node));
+        if(node_ptr->neighbors[d] == NULL) {
+            printf("add_neighbor_info: malloc for neighbor node info failed.\n");
+            return FALSE;
+        }
+        node_ptr->neighbors[d]->info = NULL;
+        node_ptr->neighbors[d]->next = NULL;
+    }
+
+    nn_ptr->next = node_ptr->neighbors[d]->next;
+    node_ptr->neighbors[d]->next = nn_ptr;
+
+    return TRUE;
+}
+
 void set_neighbors_num(torus_node *node_ptr, int neighbors_num) {
 	if (!node_ptr) {
 		printf("set_neighbors_num: node_ptr is null pointer.\n");
@@ -116,36 +143,63 @@ void set_neighbors_num(torus_node *node_ptr, int neighbors_num) {
 	node_ptr->neighbors_num = neighbors_num;
 }
 
-int get_neighbors_num(torus_node node) {
-	return node.neighbors_num;
+int get_neighbors_num_d(torus_node *node_ptr, int d) {
+    int count = 0;
+    if(node_ptr->neighbors[d] != NULL) {
+        struct neighbor_node *nn_ptr;
+        nn_ptr = node_ptr->neighbors[d]->next;
+        while(nn_ptr != NULL) {
+            count++;
+            nn_ptr = nn_ptr->next;
+        }
+    }
+    return count;
 }
 
-node_info *get_neighbor_by_id(torus_node node, struct coordinate node_id){
-	int i, x, y, z;
-	int neighbors_num = get_neighbors_num(node);
-	for (i = 0; i < neighbors_num; ++i) {
-        x = node.neighbors[i]->info.node_id.x;
-        y =  node.neighbors[i]->info.node_id.y; 
-        z =  node.neighbors[i]->info.node_id.z; 
-		if ((node_id.x == x) && (node_id.y == y) && (node_id.z == z)) {
-            return &node.neighbors[i]->info;
-		}
+int get_neighbors_num(torus_node *node_ptr) {
+	return node_ptr->neighbors_num;
+}
+
+node_info *get_neighbor_by_id(torus_node *node_ptr, struct coordinate node_id){
+	int d, x, y, z;
+	//int neighbors_num = get_neighbors_num(node);
+	for (d = 0; d < DIRECTIONS; ++d) {
+        if(node_ptr->neighbors[d] != NULL) {
+            struct neighbor_node *nn_ptr;
+            nn_ptr = node_ptr->neighbors[d]->next;
+            while(nn_ptr != NULL) {
+                x = nn_ptr->info->node_id.x;
+                y = nn_ptr->info->node_id.y; 
+                z = nn_ptr->info->node_id.z; 
+                if ((node_id.x == x) && (node_id.y == y) && (node_id.z == z)) {
+                    return nn_ptr->info;
+                }
+                nn_ptr = nn_ptr->next;
+            }
+        }
 	}
     return NULL;
 }
 
 void print_neighbors(torus_node node) {
-	int i;
-	int neighbors_num = get_neighbors_num(node);
-	for (i = 0; i < neighbors_num; ++i) {
-		if (node.neighbors[i] != NULL) {
-			printf("\tneighbors:");
-            #ifdef WRITE_LOG
-                write_log(TORUS_NODE_LOG, "\tneighbor:");
-            #endif
+	//int neighbors_num = get_neighbors_num(node);
 
-			print_node_info(node.neighbors[i]->info);
-		}
+    printf("neighbors:\n");
+    #ifdef WRITE_LOG
+        write_log(TORUS_NODE_LOG, "neighbor:\n");
+    #endif
+
+	int d;
+	for (d = 0; d < DIRECTIONS; ++d) {
+        if(node.neighbors[d] != NULL) {
+            struct neighbor_node *nn_ptr;
+            nn_ptr = node.neighbors[d]->next;
+            while(nn_ptr != NULL) {
+                printf("\t");
+                print_node_info(*nn_ptr->info);
+                nn_ptr = nn_ptr->next;
+            }
+        }
 	}
 }
 
@@ -158,10 +212,12 @@ torus_node *new_torus_node() {
 	}
 	init_node_info(&new_torus->info);
 	set_neighbors_num(new_torus, 0);
-	int i;
-	for (i = 0; i < MAX_NEIGHBORS; ++i) {
-		new_torus->neighbors[i] = NULL;
-	}
+
+    int i;
+    for(i = 0; i < DIRECTIONS; i++) {
+        new_torus->neighbors[i] = NULL;
+    }
+
 	return new_torus;
 }
 

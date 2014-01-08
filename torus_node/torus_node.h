@@ -30,12 +30,18 @@ void set_cluster_id(node_info *node_ptr, int cluster_id);
 
 int get_cluster_id(node_info node);
 
+// add neighbor info 
+int add_neighbor_info(torus_node *node_ptr, int d, node_info *neighbor_ptr);
+
 // set the neighbors num of a torus node
 void set_neighbors_num(torus_node *node_ptr, int neighbors_num);
 
-int get_neighbors_num(torus_node node);
+// get neighbors num at direction d
+int get_neighbors_num_d(torus_node *node_ptr, int d);
 
-node_info *get_neighbor_by_id(torus_node node, struct coordinate node_id);
+int get_neighbors_num(torus_node *node_ptr);
+
+node_info *get_neighbor_by_id(torus_node *node_ptr, struct coordinate node_id);
 
 void print_neighbors(torus_node node);
 
