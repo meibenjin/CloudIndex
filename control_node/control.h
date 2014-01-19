@@ -15,6 +15,7 @@
 
 #define TORUS_IP_LIST "../etc/torus_ip_list"
 
+
 torus_cluster *cluster_list;
 
 // skip list (multiple level linked list for torus cluster)
@@ -26,7 +27,9 @@ int torus_nodes_num;
 torus_cluster *new_torus_cluster();
 
 torus_cluster *find_torus_cluster(torus_cluster *list, int cluster_id);
+
 torus_cluster *insert_torus_cluster(torus_cluster *list, torus_s *torus_ptr);
+
 int remove_torus_cluster(torus_cluster *list, int cluster_id);
 
 int set_partitions(torus_partitions *torus_p, int p_x, int p_y, int p_z);

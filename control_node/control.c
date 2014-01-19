@@ -7,11 +7,14 @@
 
 #include"control.h"
 
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<sys/time.h>
 #include<time.h>
 #include<unistd.h>
+#include<errno.h>
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -783,6 +786,7 @@ int traverse_skip_list(const char *entry_ip) {
 
 int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 	int i, index, new_level, update_num;
+    size_t cpy_len = 0;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	skip_list_node *sln_ptr, *new_sln;
 
@@ -808,7 +812,9 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 	strncpy(msg.dst_ip, node_ptr->ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);
 	memcpy(msg.data, &new_level, sizeof(int));
-	memcpy(msg.data + sizeof(int), node_ptr, sizeof(node_info));
+    cpy_len += sizeof(int);
+	memcpy(msg.data + cpy_len, node_ptr, sizeof(node_info));
+
 	if (TRUE == forward_message(msg, 1)) {
 		printf("new skip list node %s ... success\n", node_ptr->ip);
 	} else {
@@ -855,9 +861,11 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 				msg.op = UPDATE_BACKWARD;
 				get_node_ip(sln_ptr->level[i].forward->leader, dst_ip);
 				strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                cpy_len = 0;
 				memcpy(msg.data, &i, sizeof(int));
-				memcpy(msg.data + sizeof(int), (void *) node_ptr,
-						sizeof(struct node_info));
+                cpy_len += sizeof(int);
+				memcpy(msg.data + cpy_len, (void *) node_ptr,sizeof(struct node_info));
+
 				if (TRUE == forward_message(msg, 1)) {
 					printf("update skip list node %s's backward ... success\n",
 							dst_ip);
@@ -875,9 +883,10 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 				msg.op = UPDATE_FORWARD;
 				get_node_ip(sln_ptr->leader, dst_ip);
 				strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                cpy_len = 0;
 				memcpy(msg.data, &i, sizeof(int));
-				memcpy(msg.data + sizeof(int), (void *) node_ptr,
-						sizeof(struct node_info));
+                cpy_len += sizeof(int);
+				memcpy(msg.data + cpy_len, (void *) node_ptr, sizeof(struct node_info));
 				if (TRUE == forward_message(msg, 1)) {
 					printf("update skip list node %s's forward ... success\n",
 							dst_ip);
@@ -892,8 +901,9 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 
     char buf[DATA_SIZE];
     memset(buf, 0, DATA_SIZE);
-    size_t cpy_len = 0;
+    //size_t cpy_len = 0;
 
+    cpy_len = 0;
     memcpy(buf, &update_num, sizeof(int));
     cpy_len += sizeof(int);
 
@@ -901,6 +911,7 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
         memcpy(buf + cpy_len, (void *) &update_nodes[i], sizeof(struct node_info));
         cpy_len += sizeof(struct node_info);
     }
+    free(update_nodes);
 
 	if (FALSE == send_data(UPDATE_SKIP_LIST, node_ptr->ip, buf, cpy_len)) {
 		return FALSE;
@@ -953,6 +964,114 @@ int search_skip_list_node(int query_op, int query_id, struct interval intval[], 
 	return TRUE;
 }
 
+int send_file(char *entry_ip) {
+	int socketfd, ret = TRUE;
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		ret = FALSE;
+	}
+
+	socketfd = new_client_socket(entry_ip);
+	if (FALSE == socketfd) {
+		ret = FALSE;
+	}
+
+    struct message msg;
+    msg.op = RECEIVE_DATA;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
+    send_message(socketfd, msg);
+
+    FILE *fp = fopen("./range_query.bak", "r");
+    if(fp == NULL) {
+        printf("open range_query failed.\n");
+        ret = FALSE;
+    } else {
+        int block_len = 0;
+        char buf[SOCKET_BUF_SIZE];
+        memset(buf, 0, SOCKET_BUF_SIZE);
+        int len = 0;
+        int count = 0;
+        
+        while((block_len = fread(buf, sizeof(char), SOCKET_BUF_SIZE, fp)) > 0) {
+            count++;
+            len = send(socketfd, (void *) buf, block_len, 0);
+            if(len < 0) {
+                printf("%d, %d\n", errno, count);
+                break;
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+        fclose(fp);
+    }
+
+	close(socketfd);
+
+    return ret;
+}
+
+int performance_test(char *entry_ip) {
+    int i, ret = FALSE;
+    int socketfd;
+
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		ret = FALSE;
+	}
+
+
+    struct message msg;
+    msg.op = PERFORMANCE_TEST;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "hello server", DATA_SIZE);
+	struct reply_message reply_msg;
+    struct timespec start, end, s, e;
+    printf("start send data to server\n");
+    double elasped = 0L, el = 0L;
+    for(i = 0; i < 10000; i++) {
+        clock_gettime(CLOCK_REALTIME, &s);
+        socketfd = new_client_socket(entry_ip);
+        if (FALSE == socketfd) {
+            ret = FALSE;
+        }
+        clock_gettime(CLOCK_REALTIME, &e);
+        el += 1000000000L * (e.tv_sec - s.tv_sec) + (e.tv_nsec - s.tv_nsec);
+        clock_gettime(CLOCK_REALTIME, &start);
+        if (TRUE == send_message(socketfd, msg)) {
+            /*if (TRUE == receive_reply(socketfd, &reply_msg)) {
+                if (SUCCESS == reply_msg.reply_code) {
+                    count++;
+                    ret = TRUE;
+                } else {
+                    ret = FALSE;
+                }
+            } else {
+                ret = FALSE;
+            }*/
+            ret = TRUE;
+        } else {
+            break;
+            ret = FALSE;
+        }
+        clock_gettime(CLOCK_REALTIME, &end);
+        elasped  += 1000000000L * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec);
+        //printf("%d\n", count);
+        close(socketfd);
+    }
+    printf("finish send data to server\n");
+    printf("send data to server elapsed %f ms\n", (double) elasped/ 1000000.0);
+    printf("create socketfd elapsed %f ms\n", (double) el/ 1000000.0);
+    return ret;
+}
+
 int main(int argc, char **argv) {
 	/*if (argc < 4) {
 	 printf("usage: %s x y z\n", argv[0]);
@@ -976,8 +1095,8 @@ int main(int argc, char **argv) {
 	}
 
 	char entry_ip[IP_ADDR_LENGTH];
+    //int cnt = 5;
 
-    int cnt = 3;
     // create a new torus by torus partition info
     struct torus_s *torus_ptr;
     torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
@@ -1003,8 +1122,10 @@ int main(int argc, char **argv) {
     }
 
 	printf("\n\n");
-	//print_torus_cluster(cluster_list);
-	//printf("\n\n");
+	print_torus_cluster(cluster_list);
+	printf("\n\n");
+
+	int count = 0, i;
 
 	FILE *fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
@@ -1012,14 +1133,13 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	int count = 0, i;
 	while (!feof(fp)) {
         int query_op, query_id;
         struct interval intval[MAX_DIM_NUM];
-        printf("%d.begin search: ", count++);
+        printf("%d.begin search: ", ++count);
 
         fscanf(fp, "%d %d", &query_op, &query_id);
-        printf("%d %d", query_op, query_id);
+        printf("%d %d ", query_op, query_id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].low);
@@ -1039,13 +1159,23 @@ int main(int argc, char **argv) {
                 printf("%lf ", intval[i].high);
             #endif
         }
+        fscanf(fp, "\n");
         printf("\n");
 
         search_skip_list_node(query_op, query_id, intval, entry_ip);
 		printf("search finish.\n");
-		//sleep(1);
+        usleep(50000);
 	}
 	fclose(fp);
+
+    /*for(i = 0; i < 1000; i++) {
+        printf("begin send file.\n");
+        send_file(entry_ip);
+        printf("send file finish.\n");
+        //sleep(1);
+    }*/
+
+    //performance_test(entry_ip);
 
 	return 0;
 }
