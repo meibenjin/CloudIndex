@@ -7,11 +7,6 @@
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<time.h>
-
 extern "C" {
 #include"server.h"
 #include"logs/log.h"
@@ -21,6 +16,15 @@ extern "C" {
 };
 
 #include"torus_rtree.h"
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<time.h>
+#include<sys/epoll.h>
+#include<pthread.h>
+#include<errno.h>
+
 
 //define torus server 
 /*****************************************************************************/
@@ -37,8 +41,18 @@ struct skip_list *the_skip_list;
 
 struct request *req_list;
 
+pthread_mutex_t mutex;
+int g_index = 0;
+pthread_cond_t condition;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
+
+struct task{
+    int fd;
+    struct task *next;
+};
+
+struct task *recv_data_head, *recv_data_tail;
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -536,6 +550,8 @@ int forward_search(struct interval intval[], struct message msg, int d) {
 
 	struct coordinate lower_id = get_node_id(the_torus->info);
 	struct coordinate upper_id = get_node_id(the_torus->info);
+
+    //TODO get the neighbors of current torus node
 	switch (d) {
 	case 0:
 		lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
@@ -779,12 +795,25 @@ int do_search_torus_node(struct message msg) {
 
 int do_search_skip_list_node(struct message msg) {
 	int i;
+    size_t cpy_len = 0;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	char stamp[STAMP_SIZE];
 
     // get query from message
+    int count, query_op, query_id;
 	struct interval intval[MAX_DIM_NUM];
-	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(struct interval) * MAX_DIM_NUM);
+
+	memcpy((void *)&count, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &query_op, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &query_id, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(interval) * MAX_DIM_NUM;
 
 	message new_msg;
 
@@ -801,8 +830,9 @@ int do_search_skip_list_node(struct message msg) {
 
 		// only for test
 		//when receive query and search skip list node finish send message to collect-result node
-		fill_message(RECEIVE_QUERY, src_ip, result_ip, stamp, "", &new_msg);
-		forward_message(new_msg, 0); // end test
+		fill_message(RECEIVE_QUERY, src_ip, result_ip, stamp, msg.data, &new_msg);
+		forward_message(new_msg, 0);
+        // end test
 
         #ifdef WRITE_LOG
             char buf[1024];
@@ -926,26 +956,30 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 }
 
 int do_receive_result(struct message msg) {
-	struct timespec query_start, query_end;
-	clock_gettime(CLOCK_REALTIME, &query_end);
+	struct timespec query_end;
+    double end_time = 0.0;
+	clock_gettime(CLOCK_MONOTONIC, &query_end);
 
 	char stamp[STAMP_SIZE];
 	char ip[IP_ADDR_LENGTH];
-	int i, count;
-	long qtime;
+	int i, count, query_op, query_id;
+    size_t cpy_len = 0;
+
 	interval intval[MAX_DIM_NUM];
 	memcpy(stamp, msg.stamp, STAMP_SIZE);
 	memcpy(ip, msg.src_ip, IP_ADDR_LENGTH);
 	memcpy(&count, msg.data, sizeof(int));
-	memcpy(intval, msg.data + sizeof(int) * 3, sizeof(interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(int);
 
-	struct query *query_ptr = find_query(query_list, stamp);
-	if(query_ptr == NULL) {
-		printf("can't find this query!\n");
-		return FALSE;
-	}
-	query_start = query_ptr->start;
-	qtime = get_elasped_time(query_start, query_end);
+	memcpy((void *) &query_op, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &query_id, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(struct interval) * MAX_DIM_NUM;
+
 
 	char file_name[1024];
 	sprintf(file_name, "/root/result/%s", stamp);
@@ -965,8 +999,8 @@ int do_receive_result(struct message msg) {
 	}
 	fprintf(fp, "\n");
 
-	fprintf(fp, "query time:%f us\n", (double) qtime / 1000.0);
-
+    end_time = (double)(1000000L * query_end.tv_sec + query_end.tv_nsec/1000);
+	fprintf(fp, "end query time:%f us\n", end_time);
 	fprintf(fp, "%s:%d\n\n", ip, count);
 	fclose(fp);
 
@@ -975,11 +1009,131 @@ int do_receive_result(struct message msg) {
 
 int do_receive_query(struct message msg) {
 	struct timespec query_start;
-	clock_gettime(CLOCK_REALTIME, &query_start);
+    double start_time = 0.0;
+	clock_gettime(CLOCK_MONOTONIC, &query_start);
 
-	insert_query(query_list, msg.stamp, query_start);
+	char stamp[STAMP_SIZE];
+	char ip[IP_ADDR_LENGTH];
+	int i, count, query_op, query_id;
+    size_t cpy_len = 0;
+
+	interval intval[MAX_DIM_NUM];
+	memcpy(stamp, msg.stamp, STAMP_SIZE);
+	memcpy(ip, msg.src_ip, IP_ADDR_LENGTH);
+	memcpy(&count, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &query_op, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &query_id, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
+    cpy_len += sizeof(struct interval) * MAX_DIM_NUM;
+
+	char file_name[1024];
+	sprintf(file_name, "/root/result/%s", stamp);
+	FILE *fp = fopen(file_name, "ab+");
+	if (fp == NULL) {
+		printf("can't open file %s\n", file_name);
+		return FALSE;
+	}
+
+	fprintf(fp, "query:");
+	for (i = 0; i < MAX_DIM_NUM; i++) {
+        #ifdef INT_DATA
+            fprintf(fp, "[%d, %d] ", intval[i].low, intval[i].high);
+        #else
+            fprintf(fp, "[%.10f, %.10f] ", intval[i].low, intval[i].high);
+        #endif
+	}
+	fprintf(fp, "\n");
+
+    start_time = (double)(1000000L * query_start.tv_sec + query_start.tv_nsec/1000);
+	fprintf(fp, "start query time:%f us\n\n", start_time);
+	fclose(fp);
+
+	//insert_query(query_list, msg.stamp, query_start);
 
 	return TRUE;
+}
+
+void *do_receive_data(void *args) {
+    //int ret = TRUE;
+    int socketfd = *(int*)args;
+    //int epfd = *(int*)args;
+    /*#ifdef WRITE_LOG
+        write_log(RESULT_LOG, "receive request receive data.\n");
+    #endif*/
+
+    
+    /*while(recv_data_head == NULL) {
+        pthread_cond_wait(&condition, &mutex);
+    }
+    int socketfd = recv_data_head->fd;
+
+    struct task *task_p = recv_data_head;
+    recv_data_head = recv_data_head->next;
+    free(task_p);*/
+
+    char file_name[30];
+    //pthread_mutex_lock(&mutex);
+    sprintf(file_name, "./files/receive_file");
+    //g_index++;
+    //pthread_mutex_unlock(&mutex);
+
+    FILE *fp = fopen(file_name, "a");
+    if(fp == NULL) {
+        printf("open receive_file to write failed.\n");
+        return NULL;
+    }
+
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    int length = 0, loop = 1;
+
+    while(loop) {
+        length = recv(socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            write_log(RESULT_LOG, "length 0\n");
+            loop = 0;
+        } else if(length < 0) {
+            if(errno == EAGAIN) {
+                write_log(RESULT_LOG, "recv eagain\n");
+                //regisiter event
+                //epoll_event event;
+                //event.data.fd = socketfd;
+                //event.events = EPOLLIN | EPOLLONESHOT;
+                //epoll_ctl(epfd, EPOLL_CTL_MOD, socketfd, &event);
+                //is_eagain = 1;
+                //loop = 0;
+            } else {
+                write_log(RESULT_LOG, "errno occur\n");
+            }
+            continue;
+        } else {
+            int block_len = fwrite(buf, sizeof(char), length, fp);
+            if(block_len < length)
+            {
+                write_log(RESULT_LOG, "write error\n");
+                printf("write file failed.\n");
+                break;
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+    fwrite("---------\n", sizeof(char), 10, fp);
+    fclose(fp);
+    close(socketfd);
+    return NULL;
+}
+
+int do_performance_test(struct message msg) {
+    if(strcmp(msg.data, "hello server") == 0){
+        return TRUE;
+    }
+    return FALSE;
 }
 
 int process_message(int socketfd, struct message msg) {
@@ -1173,10 +1327,60 @@ int process_message(int socketfd, struct message msg) {
 		do_receive_result(msg);
 		break;
 
+    case RECEIVE_DATA:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request receive data.\n");
+        #endif
+		/*reply_msg.op = (OP)msg.op;
+		reply_msg.reply_code = (REPLY_CODE)reply_code;
+		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
+		if (FALSE == send_reply(socketfd, reply_msg)) {
+			// TODO handle send reply failed
+			return FALSE;
+		}*/
+        do_receive_data((void*)&socketfd);
+        // use a thread to read data
+        //pthread_t recv_data_thread;
+        //pthread_create(&recv_data_thread, NULL, do_receive_data, (void *)&socketfd);
+        //pthread_join(recv_data_thread, NULL); 
+        /*struct task *new_task;
+        new_task = (struct task*) malloc(sizeof(struct task));
+        new_task->fd = socketfd;
+        new_task->next = NULL;
+
+        pthread_mutex_lock(&mutex);
+        if(recv_data_head == NULL) {
+            recv_data_head = new_task;
+            recv_data_tail = new_task;
+        }else {
+            recv_data_tail->next = new_task;
+            recv_data_tail = new_task;
+        }
+        pthread_cond_broadcast(&condition);
+        pthread_mutex_unlock(&mutex);*/
+
+        break;
+    case PERFORMANCE_TEST:
+        if( TRUE == do_performance_test(msg)) {
+            reply_msg.op = (OP)msg.op;
+            reply_msg.reply_code = (REPLY_CODE)reply_code;
+            strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
+            if (FALSE == send_reply(socketfd, reply_msg)) {
+                // TODO handle send reply failed
+                return FALSE;
+            }
+        }
+        break;
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
-
+        break;
 	}
+
+
+    // if op is RECEIVE_DATA close the fd by receive data thread
+    if(msg.op != RECEIVE_DATA) {
+        close(socketfd);
+    }
 
 	return TRUE;
 }
@@ -1195,7 +1399,7 @@ int main(int argc, char **argv) {
 	printf("start torus node.\n");
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
 
-	int server_socket;
+	int server_socket, i;
 	should_run = 1;
 
 	// new a torus node
@@ -1228,21 +1432,31 @@ int main(int argc, char **argv) {
 	printf("start server.\n");
 	write_log(TORUS_NODE_LOG, "start server.\n");
 
+    int rcv_buf = 256 * 1024;
+    setsockopt(server_socket,SOL_SOCKET,SO_RCVBUF,(const char*)&rcv_buf,sizeof(int)); 
+
 	// set server socket nonblocking
 	set_nonblocking(server_socket);
+
+    // init mutex condition and create threads
+    pthread_mutex_init(&mutex,NULL);
+    /*pthread_cond_init(&condition, NULL);
+    pthread_t recv_data_thread[4];
+    for(i = 0; i < 4; i++) {
+        pthread_create(&recv_data_thread[i], NULL, do_receive_data, NULL);
+    }*/
+
 
 	// epoll
 	int epfd;
 	struct epoll_event ev, events[MAX_EVENTS];
 	epfd = epoll_create(MAX_EVENTS);
-
 	ev.data.fd = server_socket;
-
 	ev.events = EPOLLIN;
-
 	epoll_ctl(epfd, EPOLL_CTL_ADD, server_socket, &ev);
 
-	int nfds, i;
+
+	int nfds;
 	while(should_run) {
 		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
 		for(i = 0; i < nfds; i++) {
@@ -1251,14 +1465,11 @@ int main(int argc, char **argv) {
 				while((conn_socket = accept_connection(server_socket)) > 0) {
 					set_nonblocking(conn_socket);
 
-					ev.events = EPOLLIN;
+                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 					ev.data.fd = conn_socket;
 					epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
 				}
-				if (conn_socket == FALSE) {
-					// TODO: handle accept connection failed
-					continue;
-				}
+
 			} else {
 				conn_socket = events[i].data.fd;
 				struct message msg;
@@ -1271,8 +1482,6 @@ int main(int argc, char **argv) {
 					//  TODO: handle receive message failed
 					printf("receive message failed.\n");
 				}
-				close(conn_socket);
-
 			}
 		}
 	}
