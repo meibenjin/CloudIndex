@@ -82,6 +82,8 @@ typedef enum OP {
 	TRAVERSE_SKIP_LIST,
 	RECEIVE_RESULT,
 	RECEIVE_QUERY,
+    RECEIVE_DATA, 
+    PERFORMANCE_TEST
 } OP;
 
 // interval of each dimension
