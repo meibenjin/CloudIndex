@@ -39,6 +39,7 @@ void set_neighbors_num(torus_node *node_ptr, int neighbors_num);
 // get neighbors num at direction d
 int get_neighbors_num_d(torus_node *node_ptr, int d);
 
+// get neighbors num of torus node 
 int get_neighbors_num(torus_node *node_ptr);
 
 node_info *get_neighbor_by_id(torus_node *node_ptr, struct coordinate node_id);
