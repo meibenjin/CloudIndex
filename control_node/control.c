@@ -325,6 +325,7 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 
 				set_cluster_id(&new_node->info, torus_ptr->cluster_id);
 				set_node_id(&new_node->info, i, j, k);
+                set_node_capacity(&new_node->info, DEFAULT_CAPACITY);
 				index++;
 			}
 		}
@@ -498,97 +499,6 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction) {
 	free(from->node_list);
 
 	return merged_torus;
-}
-
-/*int send_partition_info(const char *dst_ip, struct torus_partitions torus_p) {
-	int socketfd;
-	socketfd = new_client_socket(dst_ip);
-	if (FALSE == socketfd) {
-		return FALSE;
-	}
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-	struct message msg;
-	msg.op = UPDATE_PARTITION;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, &torus_p, sizeof(struct torus_partitions));
-
-	int ret;
-	struct reply_message reply_msg;
-	if (TRUE == send_message(socketfd, msg)) {
-		if (TRUE == receive_reply(socketfd, &reply_msg)) {
-			if (SUCCESS == reply_msg.reply_code) {
-				printf("%s: send partition info ...... finish.\n", dst_ip);
-				ret = TRUE;
-			} else {
-				printf("%s: send partition info ...... error occurred.\n",
-						dst_ip);
-				ret = FALSE;
-			}
-		} else {
-			printf("%s: receive reply ...... failed.\n", dst_ip);
-			ret = FALSE;
-		}
-	} else {
-		printf("%s: send partition info...... failed.\n", dst_ip);
-		ret = FALSE;
-	}
-	close(socketfd);
-	return ret;
-
-}*/
-
-int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
-	int socketfd;
-
-	socketfd = new_client_socket(dst_ip);
-	if (FALSE == socketfd) {
-		return FALSE;
-	}
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-
-	struct message msg;
-	msg.op = op;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, (void *) data, length);
-
-	int ret;
-	struct reply_message reply_msg;
-	if (TRUE == send_message(socketfd, msg)) {
-		if (TRUE == receive_reply(socketfd, &reply_msg)) {
-			if (SUCCESS == reply_msg.reply_code) {
-				printf("%s: send torus info ...... finish.\n", dst_ip);
-				ret = TRUE;
-			} else {
-				printf("%s: send torus info ...... error occurred.\n", dst_ip);
-				ret = FALSE;
-			}
-		} else {
-			printf("%s: receive reply ...... failed.\n", dst_ip);
-			ret = FALSE;
-		}
-	} else {
-		printf("%s: send torus info...... failed.\n", dst_ip);
-		ret = FALSE;
-	}
-
-	close(socketfd);
-	return ret;
 }
 
 int update_torus(torus_s *torus) {
@@ -955,11 +865,10 @@ int search_skip_list_node(int query_op, int query_id, struct interval intval[], 
             #ifdef INT_DATA
                 printf("[%d, %d] ", intval[i].low, intval[i].high);
             #else 
-                printf("[%.10f, %.10f] ", intval[i].low, intval[i].high);
+                printf("[%lf, %lf] ", intval[i].low, intval[i].high);
             #endif
 		}
 	}
-	printf("\n");
 
 	return TRUE;
 }
@@ -1032,7 +941,6 @@ int performance_test(char *entry_ip) {
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);
     strncpy(msg.data, "hello server", DATA_SIZE);
-	struct reply_message reply_msg;
     struct timespec start, end, s, e;
     printf("start send data to server\n");
     double elasped = 0L, el = 0L;
@@ -1046,16 +954,6 @@ int performance_test(char *entry_ip) {
         el += 1000000000L * (e.tv_sec - s.tv_sec) + (e.tv_nsec - s.tv_nsec);
         clock_gettime(CLOCK_REALTIME, &start);
         if (TRUE == send_message(socketfd, msg)) {
-            /*if (TRUE == receive_reply(socketfd, &reply_msg)) {
-                if (SUCCESS == reply_msg.reply_code) {
-                    count++;
-                    ret = TRUE;
-                } else {
-                    ret = FALSE;
-                }
-            } else {
-                ret = FALSE;
-            }*/
             ret = TRUE;
         } else {
             break;
@@ -1126,20 +1024,21 @@ int main(int argc, char **argv) {
 	printf("\n\n");
 
 	int count = 0, i;
-
-	FILE *fp = fopen("./range_query", "rb");
+    char data_file[MAX_FILE_NAME];
+    snprintf(data_file, MAX_FILE_NAME, "%s/data", TMP_DATA_DIR);
+	FILE *fp = fopen(data_file, "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
 		exit(1);
 	}
 
+    int op, id;
+    struct interval intval[MAX_DIM_NUM];
+    printf("begin read.\n");
 	while (!feof(fp)) {
-        int query_op, query_id;
-        struct interval intval[MAX_DIM_NUM];
-        printf("%d.begin search: ", ++count);
 
-        fscanf(fp, "%d %d", &query_op, &query_id);
-        printf("%d %d ", query_op, query_id);
+        fscanf(fp, "%d %d", &op, &id);
+        printf("%d %d %d ", ++count, op, id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].low);
@@ -1162,18 +1061,53 @@ int main(int argc, char **argv) {
         fscanf(fp, "\n");
         printf("\n");
 
-        search_skip_list_node(query_op, query_id, intval, entry_ip);
-		printf("search finish.\n");
-        usleep(50000);
+        search_skip_list_node(op, id, intval, entry_ip);
+        printf("\n");
+        //usleep(1000);
 	}
+    printf("finish read.\n");
 	fclose(fp);
 
-    /*for(i = 0; i < 1000; i++) {
-        printf("begin send file.\n");
-        send_file(entry_ip);
-        printf("send file finish.\n");
-        //sleep(1);
-    }*/
+	fp = fopen("./range_query", "rb");
+	if (fp == NULL) {
+		printf("can't open file\n");
+		exit(1);
+	}
+
+    count = 0;
+    printf("begin query.\n");
+	while (!feof(fp)) {
+
+        fscanf(fp, "%d %d", &op, &id);
+        printf("%d %d %d ", ++count, op, id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d", &intval[i].low);
+                printf("%d ", intval[i].low);
+            #else
+                fscanf(fp, "%lf", &intval[i].low);
+                printf("%lf ", intval[i].low);
+            #endif
+        }
+
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d", &intval[i].high);
+                printf("%d ", intval[i].high);
+            #else
+                fscanf(fp, "%lf", &intval[i].high);
+                printf("%lf ", intval[i].high);
+            #endif
+        }
+        fscanf(fp, "\n");
+        printf("\n");
+
+        search_skip_list_node(op, id, intval, entry_ip);
+        printf("\n");
+        //usleep(1000);
+	}
+    printf("finish query.\n");
+	fclose(fp);
 
     //performance_test(entry_ip);
 
