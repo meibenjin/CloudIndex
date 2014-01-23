@@ -15,7 +15,7 @@ echo $shell_script
 # first invoke free_python.py to setup passphraseless ssh to
 # all hosts in ip list file 
 
-`./free_login.py ${ip_list_file} ${user_name} ${user_pass}`
+#`./free_login.py ${ip_list_file} ${user_name} ${user_pass}`
 
 for i in $(cat ${ip_list_file})
 do 
