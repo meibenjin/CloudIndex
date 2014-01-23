@@ -84,6 +84,9 @@ int get_local_ip(char *ip);
 
 void print_message(struct message msg);
 
+// send info to dst_ip
+int send_data(OP op, const char *dst_ip, const char *data, size_t length);
+
 #endif /* SOCKET_SERVER_H_ */
 
 

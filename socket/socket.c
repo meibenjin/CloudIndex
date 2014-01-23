@@ -116,14 +116,12 @@ int accept_connection(int socketfd) {
 		return FALSE;
 	}
 
-	//printf("accept a connection:%s\n", inet_ntoa(client_addr.sin_addr));
-
 	return conn_socket;
 }
 
 int send_reply(int socketfd, struct reply_message reply_msg) {
 	if (SOCKET_ERROR
-			== send(socketfd, (void *) &reply_msg, sizeof(struct reply_message),
+			== send(socketfd, (void *)&reply_msg, sizeof(struct reply_message),
 					0)) {
 		// TODO do something if send failed
 		printf("send_reply: send reply failed.\n");
@@ -148,7 +146,7 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	return TRUE;
 }
 
-void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, message *msg){
+void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, struct message *msg){
 	msg->op = op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
@@ -164,10 +162,7 @@ int forward_message(struct message msg, int need_reply) {
 	}
 
 	int ret = FALSE;
-
 	if (TRUE == send_message(socketfd, msg)) {
-		printf("\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-
         #ifdef WRITE_LOG 
             //write log
             char buf[1024];
@@ -250,8 +245,56 @@ int get_local_ip(char *ip) {
 	return ret;
 }
 
+int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
+	int socketfd;
+
+	socketfd = new_client_socket(dst_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+	struct message msg;
+	msg.op = op;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+	memcpy(msg.data, (void *) data, length);
+
+	int ret;
+	struct reply_message reply_msg;
+	if (TRUE == send_message(socketfd, msg)) {
+		if (TRUE == receive_reply(socketfd, &reply_msg)) {
+			if (SUCCESS == reply_msg.reply_code) {
+				printf("%s: send torus info ...... finish.\n", dst_ip);
+				ret = TRUE;
+			} else {
+				printf("%s: send torus info ...... error occurred.\n", dst_ip);
+				ret = FALSE;
+			}
+		} else {
+			printf("%s: receive reply ...... failed.\n", dst_ip);
+			ret = FALSE;
+		}
+	} else {
+		printf("%s: send torus info...... failed.\n", dst_ip);
+		ret = FALSE;
+	}
+
+	close(socketfd);
+	return ret;
+}
+
 void print_message(struct message msg) {
 	printf("op:%d\n", msg.op);
 	printf("src:%s\n", msg.src_ip);
 	printf("dst:%s\n", msg.dst_ip);
 }
+
+
