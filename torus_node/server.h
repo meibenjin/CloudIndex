@@ -10,23 +10,27 @@
 
 #include"utils.h"
 
-request *new_request();
+// torus server request list
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+struct request *new_request();
 
-request *insert_request(request *list, const char *req_stamp);
+struct request *insert_request(struct request *list, const char *req_stamp);
 
-request *find_request(request *list, const char *req_stamp);
+struct request *find_request(struct request *list, const char *req_stamp);
 
-int remove_request(request *list, const char *req_stamp);
+int remove_request(struct request *list, const char *req_stamp);
 
 // generate a unique request id for each client request
 int gen_request_stamp(char *stamp);
+
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 // handle the traverse torus request from client
 int do_traverse_torus(struct message msg);
 
 int forward_to_neighbors(struct message msg);
 
-int search_rtree(int op, int id, struct interval intval[]);
+int operate_rtree(int op, int id, struct interval intval[]);
 
 int do_search_torus_node(struct message msg);
 
