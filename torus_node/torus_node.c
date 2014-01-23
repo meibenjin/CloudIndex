@@ -13,9 +13,6 @@
 #include"logs/log.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
-//
-
-#define TMP_DATA_DIR "/root/mbj/data"
 
 void init_node_info(node_info *info_ptr) {
 	if (!info_ptr) {
@@ -25,13 +22,13 @@ void init_node_info(node_info *info_ptr) {
 	set_node_ip(info_ptr, "0.0.0.0");
 	set_node_id(info_ptr, -1, -1, -1);
 	set_cluster_id(info_ptr, -1);
+    set_node_capacity(info_ptr, 0);
 
 	int i;
 	for(i = 0; i < MAX_DIM_NUM; ++i){
 		info_ptr->dims[i].low = 0;
 		info_ptr->dims[i].high = 0;
 	}
-
 }
 
 void init_torus_node(torus_node *node_ptr) {
@@ -63,6 +60,19 @@ int set_interval(node_info *node_ptr){
     }
     fclose(fp);
 	return TRUE;
+}
+
+void set_node_capacity(node_info *info_ptr, int c) {
+	if (!info_ptr) {
+		printf("set_node_capacity: node_ptr is null pointer.\n");
+		return;
+	}
+
+    info_ptr->capacity = c;
+}
+
+int get_node_capacity(node_info info) {
+    return info.capacity;
 }
 
 void set_node_ip(node_info *info_ptr, const char *ip) {
@@ -222,9 +232,6 @@ torus_node *new_torus_node() {
 }
 
 void print_torus_node(torus_node torus) {
-    #ifdef WRITE_LOG 
-        write_log(TORUS_NODE_LOG, "myself:");
-    #endif
 	print_node_info(torus.info);
 	print_neighbors(torus);
 	printf("\n");
@@ -232,13 +239,17 @@ void print_torus_node(torus_node torus) {
 
 void print_node_info(node_info node) {
 	int i;
+    int cid = node.cluster_id;
+    coordinate nid = node.node_id;
 
+    printf("[%d_%d%d%d]", cid, nid.x, nid.y, nid.z);
 	printf("%s:", node.ip);
+
 	for(i = 0; i < MAX_DIM_NUM; ++i){
         #ifdef INT_DATA
             printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
         #else 
-            printf("[%.10f, %.10f] ", node.dims[i].low, node.dims[i].high);
+            printf("[%lf, %lf] ", node.dims[i].low, node.dims[i].high);
         #endif
 	}
 	printf("\n");
@@ -246,12 +257,14 @@ void print_node_info(node_info node) {
     #ifdef WRITE_LOG 
         char buf[1024];
         memset(buf, 0, 1024);
-        int len = sprintf(buf, "%s:", node.ip);
+        int len = 0;
+        len = sprintf(buf, "[%d_%d%d%d]", cid, nid.x, nid.y, nid.z);
+        len += sprintf(buf + len, "%s:", node.ip);
         for(i = 0; i < MAX_DIM_NUM; ++i){
             #ifdef INT_DATA
                 len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
             #else 
-                len += sprintf(buf + len, "[%.10f, %.10f] ", node.dims[i].low, node.dims[i].high);
+                len += sprintf(buf + len, "[%lf, %lf] ", node.dims[i].low, node.dims[i].high);
             #endif
         }
         sprintf(buf+len, "\n");

@@ -13,12 +13,18 @@
 
 void init_node_info(node_info *node_ptr);
 
-extern void init_torus_node(torus_node *node_ptr);
+void init_torus_node(torus_node *node_ptr);
 
 int set_interval(node_info *node_ptr);
 
+// set torus node's capacity
+void set_node_capacity(node_info *info_ptr, int c);
+
+int get_node_capacity(node_info info);
+
 // set torus node ip
 void set_node_ip(node_info *node_ptr, const char *ip);
+
 void get_node_ip(node_info node, char *ip);
 
 // set the coordinate of a torus node
