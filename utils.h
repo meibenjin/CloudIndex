@@ -26,6 +26,8 @@
 #define MAX_DIM_NUM 3
 
 // limits for torus
+// a torus node's max capacity(pages)
+#define DEFAULT_CAPACITY 3782 
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
@@ -39,13 +41,21 @@
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
+#define RTREE_LOG "../logs/rtree.log"
+
+#define TMP_DATA_DIR "/root/mbj/data"
 
 //limits for epoll
 #define MAX_EVENTS 10000
 
-#define INT_DATA
-typedef int data_type;
-//typedef double data_type;
+//#define INT_DATA
+//typedef int data_type;
+typedef double data_type;
+
+// operation for rtree
+#define RTREE_INSERT 1
+#define RTREE_DELETE 0
+#define RTREE_QUERY 2
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -83,7 +93,8 @@ typedef enum OP {
 	RECEIVE_RESULT,
 	RECEIVE_QUERY,
     RECEIVE_DATA, 
-    PERFORMANCE_TEST
+    PERFORMANCE_TEST,
+    RELOAD_RTREE
 } OP;
 
 // interval of each dimension
@@ -104,6 +115,9 @@ typedef struct node_info {
 
 	// torus node coordinate
 	struct coordinate node_id;
+
+    // torus node's capacity(number of datas)
+    unsigned int capacity;
 
 } node_info;
 
@@ -188,13 +202,6 @@ typedef struct torus_cluster {
  * definitions for torus server 
  */
 
-// request info for torus node
-typedef struct request {
-	int first_run;
-	int receive_num;
-	char stamp[STAMP_SIZE];
-	struct request *next;
-} request;
 
 #endif /* UTILS_H_ */
 
