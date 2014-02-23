@@ -20,6 +20,7 @@ extern "C" {
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<sys/time.h>
 #include<time.h>
 #include<sys/epoll.h>
 #include<pthread.h>
@@ -648,25 +649,72 @@ int get_split_dimension() {
 }
 
 int rtree_split(char *dst_ip, double plow[], double phigh[]) {
+
+    char buffer[1024];
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
     MyVisitor vis;
     rtree_range_query(plow, phigh, the_torus_rtree, vis);
 
     std::vector<SpatialIndex::IData*> v = vis.GetResults();
     std::vector<SpatialIndex::IData*>::iterator it;
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "get split data spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+	int socketfd;
+
+	socketfd = new_client_socket(dst_ip);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = RELOAD_RTREE;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
+    send_message(socketfd, msg);
+
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    size_t cpy_len = sizeof(int);
+    int total_len = 0;
+    int count = 0;
+    Region region;
+
     for(it = v.begin(); it != v.end(); it++) {
         IShape *pS;
         (*it)->getShape(&pS);
         id_type id = (*it)->getIdentifier();
 
-        Region region;
+        // delete data from the_torus_rtree
+        //if(the_torus_rtree->deleteData(*pS, id) == false) {
+        //    return FALSE;
+        //}
+
         pS->getMBR(region);
         byte *r;
         uint32_t r_len;
         region.storeToByteArray(&r, r_len);
 
-        char buf[DATA_SIZE];
-        int cpy_len = 0;
-        memcpy(buf, &id, sizeof(id_type));
+        // data num
+        count++;
+        memcpy(buf + 0, &count, sizeof(int));
+
+        memcpy(buf + cpy_len, &id, sizeof(id_type));
         cpy_len += sizeof(id_type);
 
         memcpy(buf + cpy_len, &r_len, sizeof(uint32_t));
@@ -675,27 +723,66 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
         memcpy(buf + cpy_len, r, r_len);
         cpy_len += r_len;
 
-        if (FALSE == send_data(RELOAD_RTREE, dst_ip, buf, cpy_len)) {
-            return FALSE;
-        }
         delete[] r;
-
-        // delete data from the_torus_rtree
-        if(the_torus_rtree->deleteData(*pS, id) == false) {
-            return FALSE;
-        }
         delete pS;
+
+        if(cpy_len + 100 < SOCKET_BUF_SIZE) {
+            continue;
+        } else {
+            send(socketfd, (void *) buf, SOCKET_BUF_SIZE, 0);
+            //if (FALSE == send_data(RELOAD_RTREE, dst_ip, buf, cpy_len)) {
+            //    return FALSE;
+            //}
+
+            total_len += cpy_len;
+            count = 0;
+            cpy_len = sizeof(int);
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
     }
+    if(cpy_len > sizeof(int)) {
+        send(socketfd, (void *) buf, SOCKET_BUF_SIZE, 0);
+    }
+	close(socketfd);
+
+    total_len += cpy_len;
+    //if (FALSE == send_data(RELOAD_RTREE, dst_ip, buf, cpy_len)) {
+    //    return FALSE;
+    //}
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "total send %f k\n", (double) total_len/ 1000.0);
+    write_log(RESULT_LOG, buffer);
+    return TRUE;
+}
+
+
+int rtree_recreate(double plow[], double phigh[]){
+
+    MyVisitor vis;
+    rtree_range_query(plow, phigh, the_torus_rtree, vis);
+    std::vector<SpatialIndex::IData*> v = vis.GetResults();
+
+    // delete origional rtree 
+    rtree_delete(the_torus_rtree);
+
+    the_torus_rtree = rtree_bulkload(vis.GetResults());
     return TRUE;
 }
 
 int torus_split() {
-    //TODO implement splitting function
-
     // Step 1: append a new torus node and reset regions
-
     // get the optimal split dimension
+    char buffer[1024];
+
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
     int d = get_split_dimension();
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "get_split_dimension spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
 
     // append a new torus node
     torus_node *new_node = append_torus_node(d);
@@ -710,6 +797,7 @@ int torus_split() {
 
     
     // Step 2: update neighbor information
+    clock_gettime(CLOCK_REALTIME, &start);
 
     //copy torus partitions into buf(if necessary)
     size_t cpy_len = 0;
@@ -757,16 +845,41 @@ int torus_split() {
 
     // append new torus node info to the_torus at lower direction of dimension d
     add_neighbor_info(the_torus, 2*d, &new_node->info);
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "update neighbor information spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
     print_torus_node(*the_torus);
 
     // Step 3: copy rtree data to new torus node and delete local rtree data
-    double nlow[MAX_DIM_NUM], nhigh[MAX_DIM_NUM];
+    double nlow[MAX_DIM_NUM], nhigh[MAX_DIM_NUM], plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
     for (i = 0; i < MAX_DIM_NUM; i++) {
         nlow[i] = new_node->info.dims[i].low; 
         nhigh[i] = new_node->info.dims[i].high;
+        plow[i] = the_torus->info.dims[i].low;
+        phigh[i] = the_torus->info.dims[i].high;
     }
 
+    clock_gettime(CLOCK_REALTIME, &start);
     rtree_split(dst_ip, nlow, nhigh);
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "send split rtree spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+
+    clock_gettime(CLOCK_REALTIME, &start);
+    rtree_recreate(plow, phigh);
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "rtree recreate rtree spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
 
     return TRUE;
 }
@@ -809,27 +922,76 @@ int operate_rtree(int op, int id, struct interval intval[]) {
     return TRUE;
 }
 
-int do_rtree_load_data(struct message msg){
+int do_rtree_load_data(int socketfd, struct message msg){
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
 
-    Region r;
-    size_t cpy_len = 0;
-    byte buf[DATA_SIZE];
-    int dLen;
-    id_type id;
-    memcpy(&id, msg.data, sizeof(id_type));
-    cpy_len += sizeof(id_type);
-
-    memcpy(&dLen, msg.data + cpy_len, sizeof(uint32_t));
-    cpy_len += sizeof(uint32_t);
-
-    memcpy(buf, msg.data + cpy_len, dLen);
-    cpy_len += dLen;
-
-    r.loadFromByteArray(buf);
-
-    the_torus_rtree->insertData(dLen + 1, reinterpret_cast<const byte*>(buf), r, id);
-    size_t c = rtree_get_utilization(the_torus_rtree);
     char buffer[1024];
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    int length = 0, loop = 1;
+
+    std::vector<SpatialIndex::IData*> v;
+
+    int dlen, dnum;
+    id_type id;
+    byte bf[SOCKET_BUF_SIZE];
+    size_t cpy_len = 0;
+    Region region;
+
+    while(loop) {
+        length = recv(socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            loop = 0;
+        } else if(length < 0) {
+            continue;
+        } else {
+            cpy_len = 0;
+            memcpy(&dnum, buf, sizeof(int));
+            cpy_len += sizeof(int);
+
+            while(dnum--){
+                memcpy(&id, buf + cpy_len, sizeof(id_type));
+                cpy_len += sizeof(id_type);
+
+                memcpy(&dlen, buf + cpy_len, sizeof(uint32_t));
+                cpy_len += sizeof(uint32_t);
+
+                memset(bf, 0, SOCKET_BUF_SIZE);
+                memcpy(bf, buf + cpy_len, dlen);
+                cpy_len += dlen;
+
+                region.loadFromByteArray(bf);
+
+                SpatialIndex::IData *data = dynamic_cast<SpatialIndex::IData*>(new Data(sizeof(double), reinterpret_cast<byte*>(region.m_pLow), region, id));
+                v.push_back(data);
+            }
+            usleep(20);
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+	close(socketfd);
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "receive split data%f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "finish get split data\n");
+    write_log(RESULT_LOG, buffer);
+
+    //bulkload rtree;
+    the_torus_rtree = rtree_bulkload(v);
+
+    std::vector<SpatialIndex::IData*>::iterator it;
+    for (it = v.begin(); it != v.end(); it++) {
+        delete *it;
+    } 
+
+    size_t c = rtree_get_utilization(the_torus_rtree);
     memset(buffer, 0, 1024);
     sprintf(buffer, "%lu\n", c);
     write_log(RESULT_LOG, buffer);
@@ -868,17 +1030,33 @@ int do_search_torus_node(struct message msg) {
 
 	request *req_ptr = find_request(req_list, stamp);
 
+    //struct message new_msg;
+
 	if (NULL == req_ptr) {
-		req_ptr = insert_request(req_list, stamp);
+        if(op == RTREE_QUERY) {
+            req_ptr = insert_request(req_list, stamp);
+        }
 
 		if (1 == overlaps(intval, the_torus->info.dims)) {
 
 			// only for test
-			//when receive query and search skip list node finish send message to collect-result node
-			/*message new_msg;
-			fill_message(RECEIVE_RESULT, msg.dst_ip, result_ip, msg.stamp,
-					msg.data, &new_msg);
-			forward_message(new_msg, 0);			// end test */
+            /*
+             * when recieve query and search torus node finished
+             * record curent time and send to collect-result node
+             */
+            /*struct timespec query_end;
+            clock_gettime(CLOCK_REALTIME, &query_end);
+            new_msg.op = RECEIVE_RESULT;
+            strncpy(new_msg.src_ip, msg.src_ip, IP_ADDR_LENGTH);
+            strncpy(new_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+            strncpy(new_msg.stamp, stamp, STAMP_SIZE);
+            cpy_len = 0;
+            memcpy(new_msg.data, &count, sizeof(int));
+            cpy_len += sizeof(int);
+            memcpy(new_msg.data + cpy_len, intval, sizeof(struct interval) * MAX_DIM_NUM);
+            cpy_len += sizeof(interval) * MAX_DIM_NUM;
+            memcpy(new_msg.data + cpy_len, &query_end, sizeof(struct timespec));
+            forward_message(new_msg, 0);*/
 
             #ifdef WRITE_LOG
                 write_log(TORUS_NODE_LOG, "search torus success!\n\t");
@@ -918,9 +1096,11 @@ int do_search_torus_node(struct message msg) {
                 write_log(CTRL_NODE_LOG, buf);
             #endif
 
-			for (i = 0; i < MAX_DIM_NUM; i++) {
-				forward_search(intval, msg, i);
-			}
+            if(op == RTREE_QUERY) {
+                for (i = 0; i < MAX_DIM_NUM; i++) {
+                    forward_search(intval, msg, i);
+                }
+            }
 
 			// do rtree operation 
             operate_rtree(op, id, intval);
@@ -979,9 +1159,23 @@ int do_search_skip_list_node(struct message msg) {
 
 
 		// only for test
-		//when receive query and search skip list node finish send message to collect-result node
-		//fill_message(RECEIVE_QUERY, src_ip, result_ip, stamp, msg.data, &new_msg);
-		//forward_message(new_msg, 0);
+        /*
+         * when recieve query and search skip list node finished
+         * record curent time and send to collect-result node
+         */
+        /*struct timespec query_start;
+        clock_gettime(CLOCK_REALTIME, &query_start);
+        new_msg.op = RECEIVE_QUERY;
+        strncpy(new_msg.src_ip, msg.src_ip, IP_ADDR_LENGTH);
+        strncpy(new_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+        strncpy(new_msg.stamp, stamp, STAMP_SIZE);
+        cpy_len = 0;
+        memcpy(new_msg.data, &count, sizeof(int));
+        cpy_len += sizeof(int);
+        memcpy(new_msg.data + cpy_len, intval, sizeof(struct interval) * MAX_DIM_NUM);
+        cpy_len += sizeof(interval) * MAX_DIM_NUM;
+        memcpy(new_msg.data + cpy_len, &query_start, sizeof(struct timespec));
+		forward_message(new_msg, 0);*/
         // end test
 
         #ifdef WRITE_LOG
@@ -1009,48 +1203,51 @@ int do_search_skip_list_node(struct message msg) {
         fill_message((OP)SEARCH_TORUS_NODE, src_ip, msg.dst_ip, stamp, msg.data, &new_msg);
 		do_search_torus_node(new_msg);
 
-		//decide whether forward message to it's forward and backward
-		if (strcmp(msg.stamp, "") == 0) {
-			if ((sln_ptr->level[0].forward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[0].forward->leader.dims[2],
-							intval[2]) == 0)) {
-				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
-				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
-						&new_msg);
-				forward_message(new_msg, 1);
-			}
+        if(query_op == RTREE_QUERY) {
 
-			if ((sln_ptr->level[0].backward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[0].backward->leader.dims[2],
-							intval[2]) == 0)) {
-				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
-				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
-						&new_msg);
-				forward_message(new_msg, 1);
-			}
-		} else if (strcmp(msg.stamp, "forward") == 0) {
-			if ((sln_ptr->level[0].forward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[0].forward->leader.dims[2],
-							intval[2]) == 0)) {
-				get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
-				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
-						&new_msg);
-				forward_message(new_msg, 1);
-			}
-		} else {
-			if ((sln_ptr->level[0].backward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[0].backward->leader.dims[2],
-							intval[2]) == 0)) {
-				get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
-				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
-						&new_msg);
-				forward_message(new_msg, 1);
-			}
-		}
+            //decide whether forward message to it's forward and backward
+            if (strcmp(msg.stamp, "") == 0) {
+                if ((sln_ptr->level[0].forward != NULL)
+                        && (interval_overlap(
+                                sln_ptr->level[0].forward->leader.dims[2],
+                                intval[2]) == 0)) {
+                    get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
+                    fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
+                            &new_msg);
+                    forward_message(new_msg, 1);
+                }
+
+                if ((sln_ptr->level[0].backward != NULL)
+                        && (interval_overlap(
+                                sln_ptr->level[0].backward->leader.dims[2],
+                                intval[2]) == 0)) {
+                    get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
+                    fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
+                            &new_msg);
+                    forward_message(new_msg, 1);
+                }
+            } else if (strcmp(msg.stamp, "forward") == 0) {
+                if ((sln_ptr->level[0].forward != NULL)
+                        && (interval_overlap(
+                                sln_ptr->level[0].forward->leader.dims[2],
+                                intval[2]) == 0)) {
+                    get_node_ip(sln_ptr->level[0].forward->leader, dst_ip);
+                    fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
+                            &new_msg);
+                    forward_message(new_msg, 1);
+                }
+            } else {
+                if ((sln_ptr->level[0].backward != NULL)
+                        && (interval_overlap(
+                                sln_ptr->level[0].backward->leader.dims[2],
+                                intval[2]) == 0)) {
+                    get_node_ip(sln_ptr->level[0].backward->leader, dst_ip);
+                    fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
+                            &new_msg);
+                    forward_message(new_msg, 1);
+                }
+            }
+        }
 
 	} else if (-1 == interval_overlap(sln_ptr->leader.dims[2], intval[2])) { // node is on the forward of skip list
 		int visit_forward = 0;
@@ -1109,28 +1306,21 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 int do_receive_result(struct message msg) {
 	struct timespec query_end;
     double end_time = 0.0;
-	clock_gettime(CLOCK_MONOTONIC, &query_end);
 
 	char stamp[STAMP_SIZE];
 	char ip[IP_ADDR_LENGTH];
-	int i, count, query_op, query_id;
+	int i, count;
     size_t cpy_len = 0;
 
 	interval intval[MAX_DIM_NUM];
 	memcpy(stamp, msg.stamp, STAMP_SIZE);
 	memcpy(ip, msg.src_ip, IP_ADDR_LENGTH);
+
 	memcpy(&count, msg.data, sizeof(int));
     cpy_len += sizeof(int);
-
-	memcpy((void *) &query_op, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
-
-	memcpy((void *) &query_id, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
-
 	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
     cpy_len += sizeof(struct interval) * MAX_DIM_NUM;
-
+	memcpy(&query_end, msg.data + cpy_len, sizeof(struct timespec));
 
 	char file_name[1024];
 	sprintf(file_name, "/root/result/%s", stamp);
@@ -1161,27 +1351,21 @@ int do_receive_result(struct message msg) {
 int do_receive_query(struct message msg) {
 	struct timespec query_start;
     double start_time = 0.0;
-	clock_gettime(CLOCK_MONOTONIC, &query_start);
 
 	char stamp[STAMP_SIZE];
 	char ip[IP_ADDR_LENGTH];
-	int i, count, query_op, query_id;
+	int i, count;
     size_t cpy_len = 0;
 
 	interval intval[MAX_DIM_NUM];
 	memcpy(stamp, msg.stamp, STAMP_SIZE);
 	memcpy(ip, msg.src_ip, IP_ADDR_LENGTH);
+
 	memcpy(&count, msg.data, sizeof(int));
     cpy_len += sizeof(int);
-
-	memcpy((void *) &query_op, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
-
-	memcpy((void *) &query_id, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
-
 	memcpy(intval, msg.data + cpy_len, sizeof(struct interval) * MAX_DIM_NUM);
     cpy_len += sizeof(struct interval) * MAX_DIM_NUM;
+	memcpy(&query_start, msg.data + cpy_len, sizeof(struct timespec));
 
 	char file_name[1024];
 	sprintf(file_name, "/root/result/%s", stamp);
@@ -1204,8 +1388,6 @@ int do_receive_query(struct message msg) {
     start_time = (double)(1000000L * query_start.tv_sec + query_start.tv_nsec/1000);
 	fprintf(fp, "start query time:%f us\n\n", start_time);
 	fclose(fp);
-
-	//insert_query(query_list, msg.stamp, query_start);
 
 	return TRUE;
 }
@@ -1262,10 +1444,26 @@ int do_receive_data(int socketfd) {
 }
 
 int do_performance_test(struct message msg) {
+	struct timespec cur;
+    clock_gettime(CLOCK_REALTIME, &cur);
+    double start= 0.0;
+    start = (double)(1000000L * cur.tv_sec + cur.tv_nsec/1000);
+    char buf[30];
+    memset(buf, 0, 30);
+    snprintf(buf, 30, "%f\n", start);
+    write_log(RESULT_LOG, buf);
+
+
+    /*char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
     if(strcmp(msg.data, "hello server") == 0){
+        snprintf(buf, DATA_SIZE, "%s\n", msg.data);
+        write_log(RESULT_LOG, buf);
         return TRUE;
-    }
-    return FALSE;
+    }*/
+
+    return TRUE;
 }
 
 int process_message(int socketfd, struct message msg) {
@@ -1283,14 +1481,14 @@ int process_message(int socketfd, struct message msg) {
 			reply_code = FAILED;
 		}
 
-		reply_msg.op = (OP)msg.op;
+		/*reply_msg.op = (OP)msg.op;
 		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
 			return FALSE;
-		}
+		}*/
 		print_torus_node(*the_torus);
 		break;
 
@@ -1336,13 +1534,13 @@ int process_message(int socketfd, struct message msg) {
 		if (FALSE == do_update_skip_list(msg)) {
 			reply_code = FAILED;
 		}
-		reply_msg.op = (OP)msg.op;
+		/*reply_msg.op = (OP)msg.op;
 		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 		if (FALSE == send_reply(socketfd, reply_msg)) {
 			// TODO handle send reply failed
 			return FALSE;
-		}
+		}*/
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1448,7 +1646,7 @@ int process_message(int socketfd, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request receive query.\n");
         #endif
 
-		do_receive_query(msg);
+		//do_receive_query(msg);
 		break;
 
 	case RECEIVE_RESULT:
@@ -1456,7 +1654,7 @@ int process_message(int socketfd, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request receive result.\n");
         #endif
 
-		do_receive_result(msg);
+		//do_receive_result(msg);
 		break;
 
     case RECEIVE_DATA:
@@ -1481,16 +1679,16 @@ int process_message(int socketfd, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload rtree data.\n");
         #endif
-        if(FALSE == do_rtree_load_data(msg)) {
+        if(FALSE == do_rtree_load_data(socketfd, msg)) {
             reply_code = FAILED;
         }
-        reply_msg.op = (OP)msg.op;
+        /*reply_msg.op = (OP)msg.op;
         reply_msg.reply_code = (REPLY_CODE)reply_code;
         strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
         if (FALSE == send_reply(socketfd, reply_msg)) {
             // TODO handle send reply failed
             return FALSE;
-        }
+        }*/
         break;
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
@@ -1499,7 +1697,7 @@ int process_message(int socketfd, struct message msg) {
 
 
     // if op is RECEIVE_DATA close the fd by receive data thread
-    if(msg.op != RECEIVE_DATA) {
+    if(msg.op != RECEIVE_DATA && msg.op != RELOAD_RTREE) {
         close(socketfd);
     }
 
@@ -1544,6 +1742,7 @@ int main(int argc, char **argv) {
 
 	server_socket = new_server();
 	if (server_socket == FALSE) {
+        write_log(TORUS_NODE_LOG, "start server failed.\n");
         exit(1);
 	}
 	printf("start server.\n");
@@ -1562,7 +1761,6 @@ int main(int argc, char **argv) {
 	ev.data.fd = server_socket;
 	ev.events = EPOLLIN;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, server_socket, &ev);
-
 
 	int nfds;
 	while(should_run) {
