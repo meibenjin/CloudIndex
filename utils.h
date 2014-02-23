@@ -27,7 +27,8 @@
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 3782 
+#define DEFAULT_CAPACITY 500000 
+//#define DEFAULT_CAPACITY 3000 
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
@@ -37,7 +38,7 @@
 #define SKIPLIST_P 0.5
 
 // LOG file path
-#define WRITE_LOG
+//#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
