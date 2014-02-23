@@ -103,6 +103,22 @@ int set_nonblocking(int socketfd) {
     return TRUE;
 }
 
+int set_blocking(int socketfd) {
+    int opts;
+    opts = fcntl(socketfd, F_GETFL);
+    if(opts < 0) {
+        fprintf(stderr, "fcntl(socket, GETFL)\n");
+        return FALSE;
+    }
+
+    opts = opts & ~O_NONBLOCK;
+    if(fcntl(socketfd, F_SETFL, opts) < 0) {
+        fprintf(stderr, "fcntl(socket, SETFL, opts)\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
 int accept_connection(int socketfd) {
 	struct sockaddr_in client_addr;
 	socklen_t length = sizeof(client_addr);
@@ -268,9 +284,9 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	memcpy(msg.data, (void *) data, length);
 
 	int ret;
-	struct reply_message reply_msg;
+	//struct reply_message reply_msg;
 	if (TRUE == send_message(socketfd, msg)) {
-		if (TRUE == receive_reply(socketfd, &reply_msg)) {
+		/*if (TRUE == receive_reply(socketfd, &reply_msg)) {
 			if (SUCCESS == reply_msg.reply_code) {
 				printf("%s: send torus info ...... finish.\n", dst_ip);
 				ret = TRUE;
@@ -281,14 +297,57 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 		} else {
 			printf("%s: receive reply ...... failed.\n", dst_ip);
 			ret = FALSE;
-		}
+		}*/
+        printf("%s: send data...... finish.\n", dst_ip);
+        ret = TRUE;
 	} else {
-		printf("%s: send torus info...... failed.\n", dst_ip);
+		printf("%s: send data...... failed.\n", dst_ip);
 		ret = FALSE;
 	}
 
 	close(socketfd);
 	return ret;
+}
+
+int performance_test(char *entry_ip) {
+    int i, ret = FALSE;
+    int socketfd;
+
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		ret = FALSE;
+	}
+
+
+    struct message msg;
+    msg.op = PERFORMANCE_TEST;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "hello server", DATA_SIZE);
+    printf("start send data to server\n");
+    int count = 0;
+    for(i = 0; i < 500000; i++) {
+        socketfd = new_client_socket(entry_ip);
+        if (FALSE == socketfd) {
+            ret = FALSE;
+        }
+        if (TRUE == send_message(socketfd, msg)) {
+            count++;
+            if(count % 1000 == 0) {
+                printf("%d\n", count);
+            }
+            ret = TRUE;
+        } else {
+            break;
+            ret = FALSE;
+        }
+        //printf("%d\n", count);
+        close(socketfd);
+    }
+    printf("finish send data to server\n");
+    return ret;
 }
 
 void print_message(struct message msg) {

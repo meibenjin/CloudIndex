@@ -63,6 +63,8 @@ int new_server_socket();
 // set socket fd no blocking
 int set_nonblocking(int socketfd);
 
+int set_blocking(int socketfd);
+
 // accept a connection from client
 int accept_connection(int socketfd);
 
@@ -86,6 +88,9 @@ void print_message(struct message msg);
 
 // send info to dst_ip
 int send_data(OP op, const char *dst_ip, const char *data, size_t length);
+
+int performance_test(char *entry_ip);
+
 
 #endif /* SOCKET_SERVER_H_ */
 
