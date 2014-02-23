@@ -11,6 +11,9 @@
 #include<time.h>
 #include<sys/time.h>
 
+#include"utils.h"
+#include"socket/socket.h"
+
 void gen_range(int min, int max, float p) {
 	int low, high, step, i, randint;
 
@@ -47,6 +50,8 @@ int main(void) {
 	for(i = 0; i< 10000;i++){
 		gen_range(1, 100, 0.4);
 	}
+
+    performance_test("172.16.0.212");
 
 	/*struct timespec query_start, query_end;
     double start_time, end_time = 0.0;
