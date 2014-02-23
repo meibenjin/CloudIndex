@@ -811,7 +811,6 @@ int insert_skip_list_node(skip_list *list, node_info *node_ptr) {
 
     char buf[DATA_SIZE];
     memset(buf, 0, DATA_SIZE);
-    //size_t cpy_len = 0;
 
     cpy_len = 0;
     memcpy(buf, &update_num, sizeof(int));
@@ -924,51 +923,6 @@ int send_file(char *entry_ip) {
     return ret;
 }
 
-int performance_test(char *entry_ip) {
-    int i, ret = FALSE;
-    int socketfd;
-
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		ret = FALSE;
-	}
-
-
-    struct message msg;
-    msg.op = PERFORMANCE_TEST;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-    strncpy(msg.data, "hello server", DATA_SIZE);
-    struct timespec start, end, s, e;
-    printf("start send data to server\n");
-    double elasped = 0L, el = 0L;
-    for(i = 0; i < 10000; i++) {
-        clock_gettime(CLOCK_REALTIME, &s);
-        socketfd = new_client_socket(entry_ip);
-        if (FALSE == socketfd) {
-            ret = FALSE;
-        }
-        clock_gettime(CLOCK_REALTIME, &e);
-        el += 1000000000L * (e.tv_sec - s.tv_sec) + (e.tv_nsec - s.tv_nsec);
-        clock_gettime(CLOCK_REALTIME, &start);
-        if (TRUE == send_message(socketfd, msg)) {
-            ret = TRUE;
-        } else {
-            break;
-            ret = FALSE;
-        }
-        clock_gettime(CLOCK_REALTIME, &end);
-        elasped  += 1000000000L * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec);
-        //printf("%d\n", count);
-        close(socketfd);
-    }
-    printf("finish send data to server\n");
-    printf("send data to server elapsed %f ms\n", (double) elasped/ 1000000.0);
-    printf("create socketfd elapsed %f ms\n", (double) el/ 1000000.0);
-    return ret;
-}
 
 int main(int argc, char **argv) {
 	/*if (argc < 4) {
@@ -1024,51 +978,57 @@ int main(int argc, char **argv) {
 	printf("\n\n");
 
 	int count = 0, i;
+    int op, id;
+    struct interval intval[MAX_DIM_NUM];
+    FILE *fp;
+
     char data_file[MAX_FILE_NAME];
     snprintf(data_file, MAX_FILE_NAME, "%s/data", TMP_DATA_DIR);
-	FILE *fp = fopen(data_file, "rb");
+	fp = fopen(data_file, "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
 		exit(1);
 	}
 
-    int op, id;
-    struct interval intval[MAX_DIM_NUM];
     printf("begin read.\n");
 	while (!feof(fp)) {
 
         fscanf(fp, "%d %d", &op, &id);
-        printf("%d %d %d ", ++count, op, id);
+        count++;
+        //printf("%d %d %d ", ++count, op, id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].low);
-                printf("%d ", intval[i].low);
+                //printf("%d ", intval[i].low);
             #else
                 fscanf(fp, "%lf", &intval[i].low);
-                printf("%lf ", intval[i].low);
+                //printf("%lf ", intval[i].low);
             #endif
         }
 
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &intval[i].high);
-                printf("%d ", intval[i].high);
+                //printf("%d ", intval[i].high);
             #else
                 fscanf(fp, "%lf", &intval[i].high);
-                printf("%lf ", intval[i].high);
+                //printf("%lf ", intval[i].high);
             #endif
         }
         fscanf(fp, "\n");
-        printf("\n");
+        //printf("\n");
 
         search_skip_list_node(op, id, intval, entry_ip);
-        printf("\n");
+        //printf("\n");
+        if(count % 1000 == 0) {
+            printf("%d\n", count);
+        }
         //usleep(1000);
 	}
     printf("finish read.\n");
 	fclose(fp);
 
-	fp = fopen("./range_query", "rb");
+	/*fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
 		exit(1);
@@ -1107,7 +1067,7 @@ int main(int argc, char **argv) {
         //usleep(1000);
 	}
     printf("finish query.\n");
-	fclose(fp);
+	fclose(fp);*/
 
     //performance_test(entry_ip);
 
