@@ -1,0 +1,18 @@
+#!/bin/bash
+# this batch shell can execute shell script
+# on multiple hosts specified by ip list file
+
+user_name="root"
+
+root_dir=${HOME}/mbj/CloudIndex
+ip_list_file=${root_dir}/etc/torus_ip_list
+
+shell_script='yum -y install ntp'
+
+for i in $(cat ${ip_list_file})
+do 
+    remote_host="${user_name}@$i"
+    echo ${remote_host}
+    ssh ${remote_host} "${shell_script}"
+    echo "install ntp on ${remote_host}"
+done
