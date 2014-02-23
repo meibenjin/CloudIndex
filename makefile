@@ -42,8 +42,11 @@ server.o:
 log.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(LOGDIR)/log.c -I$(VPATH)
 
-test1:
-	$(CC) -g -o $(BIN)/$@ test.c
+test1: socket.o test1.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/socket.o $(BIN)/test1.o
+
+test1.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c test.c -I$(VPATH) 
 	
 .PHONY: clean
 clean:
