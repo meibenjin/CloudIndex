@@ -68,8 +68,8 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction);
 
 //int send_partition_info(const char *dst_ip, struct torus_partitions torus_p);
 
-// update all nodes and theirs neighbors info via socket
-int update_torus(torus_s *torus);
+// dispatch all nodes and theirs neighbors info via socket
+int dispatch_torus(torus_s *torus);
 
 // traverse the torus from entry ip
 int traverse_torus(const char *entry_ip);
@@ -85,9 +85,9 @@ int update_skip_list(skip_list *list);
 
 int traverse_skip_list(const char *entry_ip);
 
-int insert_skip_list_node(skip_list *list, node_info *node_ptr);
+int dispatch_skip_list(skip_list *list, node_info *node_ptr);
 
-int search_skip_list_node(int query_op, int query_id, struct interval intval[], const char *entry_ip);
+int query_torus(struct query_struct query, const char *entry_ip);
 
 
 #endif /* CONTROL_H_ */
