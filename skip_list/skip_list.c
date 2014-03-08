@@ -122,11 +122,11 @@ int insert_skip_list(skip_list *slist, node_info *node_ptr) {
 
 	sln_ptr = slist->header;
 	for (i = slist->level; i >= 0; --i) {
-		// dims[2] is default the time dimension
+		// region[2] is default the time dimension
 		while ((sln_ptr->level[i].forward != NULL)
 				&& (-1
-						== compare(sln_ptr->level[i].forward->leader.dims[2],
-								node_ptr->dims[2]))) {
+						== compare(sln_ptr->level[i].forward->leader.region[2],
+								node_ptr->region[2]))) {
 			sln_ptr = sln_ptr->level[i].forward;
 		}
 
@@ -159,8 +159,8 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 	for (i = slist->level; i >= 0; --i) {
 		while ((sln_ptr->level[i].forward != NULL)
 				&& (-1
-						== compare(sln_ptr->level[i].forward->leader.dims[2],
-								node_ptr->dims[2]))) {
+						== compare(sln_ptr->level[i].forward->leader.region[2],
+								node_ptr->region[2]))) {
 			sln_ptr = sln_ptr->level[i].forward;
 		}
 		if (i == 0) {
@@ -168,8 +168,8 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 		}
 		if ((sln_ptr->level[i].forward) != NULL
 				&& (0
-						== compare(sln_ptr->level[i].forward->leader.dims[2],
-								node_ptr->dims[2]))) {
+						== compare(sln_ptr->level[i].forward->leader.region[2],
+								node_ptr->region[2]))) {
 			sln_ptr->level[i].forward =
 					sln_ptr->level[i].forward->level[i].forward;
 			if (sln_ptr->level[i].forward != NULL) {
@@ -211,14 +211,14 @@ node_info *search_skip_list(skip_list *slist, interval time_interval) {
 	// find the torus node position
 	for (i = slist->level; i >= 0; --i) {
 		while ((sln_ptr->level[i].forward != NULL)
-				&& (0 != interval_overlap(sln_ptr->level[i].forward->leader.dims[2], time_interval))) {
+				&& (0 != interval_overlap(sln_ptr->level[i].forward->leader.region[2], time_interval))) {
 			sln_ptr = sln_ptr->level[i].forward;
 		}
 	}
 
 	sln_ptr = sln_ptr->level[0].forward;
 	if ((sln_ptr != NULL)
-			&& (0 == interval_overlap(sln_ptr->leader.dims[2], time_interval))) {
+			&& (0 == interval_overlap(sln_ptr->leader.region[2], time_interval))) {
 		return &sln_ptr->leader;
 	}
 	return NULL;
