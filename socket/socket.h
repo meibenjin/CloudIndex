@@ -48,17 +48,17 @@ typedef struct reply_message{
 }reply_message;
 
 // initial a socket address
-void init_socket_addr(struct sockaddr_in *socket_addr);
+void init_socket_addr(struct sockaddr_in *socket_addr, int port);
 
 /* create a new client socket
  * return: socket file descriptor
  */
-int new_client_socket(const char *ip);
+int new_client_socket(const char *ip, int port);
 
 /* create a new server socket
  * return: socket file descriptor
  */
-int new_server_socket();
+int new_server_socket(int port);
 
 // set socket fd no blocking
 int set_nonblocking(int socketfd);
@@ -85,6 +85,9 @@ int receive_message(int socketfd, struct message *msg);
 int get_local_ip(char *ip);
 
 void print_message(struct message msg);
+
+int recv_safe(int socketfd, void *data, size_t len, int flags);
+int send_safe(int socketfd, void *data, size_t len, int flags);
 
 // send info to dst_ip
 int send_data(OP op, const char *dst_ip, const char *data, size_t length);

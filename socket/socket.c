@@ -9,17 +9,19 @@
 #include<stdlib.h>
 #include<string.h>
 #include<errno.h>
+#include<time.h>
+#include<unistd.h>
 
 #include"socket.h"
 #include"logs/log.h"
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-void init_socket_addr(struct sockaddr_in *sock_addr) {
+void init_socket_addr(struct sockaddr_in *sock_addr, int port) {
 	bzero(sock_addr, sizeof(struct sockaddr_in));
 	sock_addr->sin_family = AF_INET;
 	sock_addr->sin_addr.s_addr = htons(INADDR_ANY);
-	sock_addr->sin_port = htons(LISTEN_PORT);
+	sock_addr->sin_port = htons(port);
 }
 
 int set_server_ip(struct sockaddr_in *sock_addr, const char *ip) {
@@ -34,11 +36,11 @@ int set_server_ip(struct sockaddr_in *sock_addr, const char *ip) {
 	return TRUE;
 }
 
-int new_client_socket(const char *ip) {
+int new_client_socket(const char *ip, int port) {
 	struct sockaddr_in client_addr;
 
 	//initial client address
-	init_socket_addr(&client_addr);
+	init_socket_addr(&client_addr, port);
 	if (FALSE == set_server_ip(&client_addr, ip)) {
 		return FALSE;
 	}
@@ -49,6 +51,9 @@ int new_client_socket(const char *ip) {
 		return FALSE;
 	}
 
+    int snd_buf = 48 * 1024;
+    setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, (const char*)&snd_buf, sizeof(int));
+
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
 			sizeof(struct sockaddr)) < 0) {
 		printf("%s: connect failed.\n", ip);
@@ -57,11 +62,11 @@ int new_client_socket(const char *ip) {
 	return client_socket;
 }
 
-int new_server_socket() {
+int new_server_socket(int port) {
 	struct sockaddr_in server_addr;
 
 	//initial server address
-	init_socket_addr(&server_addr);
+	init_socket_addr(&server_addr, port);
 
 	//create server socket. type: TCP stream protocol
 	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -78,6 +83,10 @@ int new_server_socket() {
 		fprintf(stderr, "%s: bind()\n", strerror(errno));
 		return FALSE;
 	}
+
+    // set tcp protocol recv buffer
+    int rcv_buf = 48 * 1024;
+    setsockopt(server_socket, SOL_SOCKET, SO_RCVBUF, (const char*)&rcv_buf, sizeof(int));
 
 	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0) {
 		fprintf(stderr, "%s: listen()\n", strerror(errno));
@@ -126,9 +135,8 @@ int accept_connection(int socketfd) {
 
 	// accept a socket connection from client
 	conn_socket = accept(socketfd, (struct sockaddr*) &client_addr, &length);
-
 	if (conn_socket < 0) {
-		fprintf(stderr, "%s: accept()\n", strerror(errno));
+		//fprintf(stderr, "%s: accept()\n", strerror(errno));
 		return FALSE;
 	}
 
@@ -172,7 +180,7 @@ void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *sta
 
 int forward_message(struct message msg, int need_reply) {
 	int socketfd;
-	socketfd = new_client_socket(msg.dst_ip);
+	socketfd = new_client_socket(msg.dst_ip, LISTEN_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -184,7 +192,6 @@ int forward_message(struct message msg, int need_reply) {
             char buf[1024];
             memset(buf, 0, 1024);
             sprintf(buf, "\tforward message: %s -> %s\n", msg.src_ip, msg.dst_ip);
-            write_log(TORUS_NODE_LOG, buf);
         #endif
 
 		if (need_reply) {
@@ -198,7 +205,9 @@ int forward_message(struct message msg, int need_reply) {
 			} else {
 				ret = FALSE;
 			}
-		}
+		} else {
+            ret = TRUE;
+        }
 	}
 	close(socketfd);
 
@@ -223,7 +232,7 @@ int receive_message(int socketfd, struct message *msg) {
 
 	ssize_t recv_len = -1;
 	recv_len = recv(socketfd, (void *) msg, sizeof(struct message), 0);
-	if (recv_len <= 0) {
+	if (recv_len < 0) {
 		fprintf(stderr, "%s: recv()\n", strerror(errno));
 		return FALSE;
 	}
@@ -261,10 +270,46 @@ int get_local_ip(char *ip) {
 	return ret;
 }
 
+int recv_safe(int socketfd, void *data, size_t len, int flags) {
+    size_t nrecv = 0;
+    int irecv = -1;
+    while (nrecv < len){
+        irecv = recv(socketfd, data + nrecv, len - nrecv, flags);
+        if(irecv < 0){
+            //usleep(10);
+            continue;
+        }else if(irecv == 0) {
+            nrecv = 0;
+            break;
+        }else {
+          nrecv += irecv;
+        } 
+    }
+    return nrecv;
+}
+
+int send_safe(int socketfd, void *data, size_t len, int flags) {
+    size_t nsend = 0;
+    int isend = -1;
+    while (nsend < len){
+        isend = send(socketfd, data + nsend, len - nsend, flags);
+        if(isend < 0){
+            //usleep(10);
+            continue;
+        }else if(isend == 0) {
+            nsend = 0;
+            break;
+        }else {
+          nsend += isend;
+        } 
+    }
+    return nsend;
+}
+
 int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	int socketfd;
 
-	socketfd = new_client_socket(dst_ip);
+	socketfd = new_client_socket(dst_ip, LISTEN_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -319,33 +364,29 @@ int performance_test(char *entry_ip) {
 		ret = FALSE;
 	}
 
+    socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+    if (FALSE == socketfd) {
+        ret = FALSE;
+    }
 
     struct message msg;
     msg.op = PERFORMANCE_TEST;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);
-    strncpy(msg.data, "hello server", DATA_SIZE);
+    strncpy(msg.data, "hello server!", DATA_SIZE);
+    //send_message(socketfd, msg);
+
     printf("start send data to server\n");
     int count = 0;
     for(i = 0; i < 500000; i++) {
-        socketfd = new_client_socket(entry_ip);
-        if (FALSE == socketfd) {
-            ret = FALSE;
+        send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+        count++;
+        if(count % 1000 == 0) {
+            printf("%d\n", count);
         }
-        if (TRUE == send_message(socketfd, msg)) {
-            count++;
-            if(count % 1000 == 0) {
-                printf("%d\n", count);
-            }
-            ret = TRUE;
-        } else {
-            break;
-            ret = FALSE;
-        }
-        //printf("%d\n", count);
-        close(socketfd);
     }
+    close(socketfd);
     printf("finish send data to server\n");
     return ret;
 }
