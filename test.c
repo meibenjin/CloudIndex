@@ -45,13 +45,13 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 
 
 int main(void) {
-	int i;
+	/*int i;
     srand(time(NULL));
 	for(i = 0; i< 10000;i++){
 		gen_range(1, 100, 0.4);
-	}
+	}*/
 
-    performance_test("172.16.0.212");
+    performance_test("172.16.0.166");
 
 	/*struct timespec query_start, query_end;
     double start_time, end_time = 0.0;
