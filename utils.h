@@ -11,12 +11,12 @@
 // limits for common
 #define MAX_FILE_NAME 255 
 
-
 // limits for socket
 #define IP_ADDR_LENGTH 20
 #define LISTEN_PORT 10086
-#define LISTEN_QUEUE_LENGTH 1024 
-#define REQUEST_LIST_LENGTH 20
+#define DATA_PORT 10087
+#define LISTEN_QUEUE_LENGTH 2000
+#define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024 
 #define DATA_SIZE 1000
 #define SOCKET_ERROR -1
@@ -28,7 +28,7 @@
 // limits for torus
 // a torus node's max capacity(pages)
 #define DEFAULT_CAPACITY 500000 
-//#define DEFAULT_CAPACITY 3000 
+//#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
@@ -47,7 +47,12 @@
 #define TMP_DATA_DIR "/root/mbj/data"
 
 //limits for epoll
-#define MAX_EVENTS 10000
+#define MAX_EVENTS 10000 
+#define EPOLL_NUM 6
+#define WORKER_PER_GROUP 1
+#define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
+#define CONN_MAXFD 65536 
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
 
 //#define INT_DATA
 //typedef int data_type;
@@ -80,14 +85,14 @@ typedef enum REPLY_CODE {
 //operations for torus nodes in communication 
 typedef enum OP {
 	// update torus node info
-	UPDATE_TORUS = 80,
+	CREATE_TORUS = 80,
 	UPDATE_PARTITION,
 	TRAVERSE_TORUS,
-    SEARCH_TORUS_NODE, 
+    QUERY_TORUS_NODE, 
+	QUERY_TORUS_CLUSTER,
 	NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
-	SEARCH_SKIP_LIST_NODE,
 	UPDATE_FORWARD,
 	UPDATE_BACKWARD,
 	TRAVERSE_SKIP_LIST,
@@ -112,7 +117,7 @@ typedef struct node_info {
 	// cluster id the node belongs to
 	int cluster_id;
 
-	struct interval dims[MAX_DIM_NUM];
+	struct interval region[MAX_DIM_NUM];
 
 	// torus node coordinate
 	struct coordinate node_id;
@@ -199,9 +204,24 @@ typedef struct torus_cluster {
     struct torus_cluster *next;
 } torus_cluster;
 
-/*
- * definitions for torus server 
- */
+// struct of a query, include insert, delete and query
+typedef struct query_struct {
+    int op;
+    int data_id;
+    int trajectory_id;
+    interval intval[MAX_DIM_NUM];
+} query_struct;
+
+// struct connections
+typedef struct connection_st {
+    int socketfd;
+    // which epoll fd this conn belongs to
+    int index; 
+    int used;
+    //read offset
+    int roff;
+    char rbuf[CONN_BUF_SIZE];
+}*connection_t;
 
 
 #endif /* UTILS_H_ */
