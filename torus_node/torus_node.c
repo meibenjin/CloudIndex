@@ -26,8 +26,8 @@ void init_node_info(node_info *info_ptr) {
 
 	int i;
 	for(i = 0; i < MAX_DIM_NUM; ++i){
-		info_ptr->dims[i].low = 0;
-		info_ptr->dims[i].high = 0;
+		info_ptr->region[i].low = 0;
+		info_ptr->region[i].high = 0;
 	}
 }
 
@@ -53,9 +53,9 @@ int set_interval(node_info *node_ptr){
     }
     for (i = 0; i < MAX_DIM_NUM; i++) {
         #ifdef INT_DATA
-            fscanf(fp, "%d %d", &node_ptr->dims[i].low, &node_ptr->dims[i].high);
+            fscanf(fp, "%d %d", &node_ptr->region[i].low, &node_ptr->region[i].high);
         #else
-            fscanf(fp, "%lf %lf", &node_ptr->dims[i].low, &node_ptr->dims[i].high);
+            fscanf(fp, "%lf %lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
         #endif
     }
     fclose(fp);
@@ -247,9 +247,9 @@ void print_node_info(node_info node) {
 
 	for(i = 0; i < MAX_DIM_NUM; ++i){
         #ifdef INT_DATA
-            printf("[%d, %d] ", node.dims[i].low, node.dims[i].high);
+            printf("[%d, %d] ", node.region[i].low, node.region[i].high);
         #else 
-            printf("[%lf, %lf] ", node.dims[i].low, node.dims[i].high);
+            printf("[%lf, %lf] ", node.region[i].low, node.region[i].high);
         #endif
 	}
 	printf("\n");
@@ -262,9 +262,9 @@ void print_node_info(node_info node) {
         len += sprintf(buf + len, "%s:", node.ip);
         for(i = 0; i < MAX_DIM_NUM; ++i){
             #ifdef INT_DATA
-                len += sprintf(buf + len, "[%d, %d] ", node.dims[i].low, node.dims[i].high);
+                len += sprintf(buf + len, "[%d, %d] ", node.region[i].low, node.region[i].high);
             #else 
-                len += sprintf(buf + len, "[%lf, %lf] ", node.dims[i].low, node.dims[i].high);
+                len += sprintf(buf + len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
             #endif
         }
         sprintf(buf+len, "\n");
