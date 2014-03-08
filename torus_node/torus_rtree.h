@@ -84,7 +84,7 @@ public:
 //StorageManager::IBuffer* storage_manager_buffer;
 
 // insert data into rtree
-int rtree_insert(int id, double plow[], double phigh[], ISpatialIndex *rtree);
+int rtree_insert(int t_id, int data_id, double plow[], double phigh[], ISpatialIndex *rtree);
 
 int rtree_range_query(double plow[], double phigh[], ISpatialIndex *rtree, MyVisitor& vis);
 

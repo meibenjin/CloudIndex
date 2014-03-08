@@ -25,24 +25,13 @@ MyDataStream::MyDataStream(std::vector<SpatialIndex::IData*> &data) : m_pNext(0)
 void MyDataStream::readNextEntry()
 {
     if(m_it != m_data.end()) {
-        IShape *pS;
-        (*m_it)->getShape(&pS);
-        id_type id = (*m_it)->getIdentifier();
-
-        Region region;
-        pS->getMBR(region);
-        //TODO maybe sizeof(double) is wrong
-        m_pNext = new RTree::Data(sizeof(double), reinterpret_cast<byte*>(region.m_pLow), region, id);
-        delete pS;
-
+        m_pNext = dynamic_cast<RTree::Data *>((*m_it)->clone());
         m_it++;
     }
 }
 
 void MyVisitor::visitNode(const INode& n)
 {
-    //if (n.isLeaf()) m_leafIO++;
-    //else m_indexIO++;
 }
 
 int MyVisitor::getNumberOfData() {
@@ -55,13 +44,13 @@ void MyVisitor::printData() {
     char buf[1024];
     for(it = GetResults().begin(); it != GetResults().end(); it++) {
         byte* pData = 0;
-        uint32_t cLen = 0;
-        (*it)->getData(cLen, &pData);
+        uint32_t len = 0;
+        (*it)->getData(len, &pData);
         //#ifdef WRITE_LOG 
             memset(buf, 0, 1024);
-            char *res = reinterpret_cast<char*>(pData);
-            sprintf(buf, "%s\n", res);
-            //sprintf(buf + len, "leaf:%lu index:%lu data:%lu\n", m_leafIO, m_indexIO, m_dataIO);
+            int t_id;
+            memcpy(&t_id, pData, sizeof(int));
+            sprintf(buf, "%d\n", t_id);
             write_log(RESULT_LOG, buf);
             delete[] pData;
         //#endif
@@ -72,18 +61,21 @@ void MyVisitor::visitData(std::vector<const SpatialIndex::IData*>& v)
 {
 }
 
-int rtree_insert(int id, double plow[], double phigh[], ISpatialIndex *rtree) {
+int rtree_insert(int t_id, int data_id, double plow[], double phigh[], ISpatialIndex *rtree) {
     if(rtree == NULL) {
         return FALSE;
     }
     try {
         Region r = Region(plow, phigh, MAX_DIM_NUM);
 
-        std::ostringstream os;
-        os << r;
-        std::string data = os.str();
+        //std::ostringstream os;
+        //os << t_id;
+        //std::string data = os.str();
+        byte data[5];
+        memset(data, 0, 5);
+        memcpy(data, &t_id, sizeof(t_id));
 
-        rtree->insertData(data.size() + 1, reinterpret_cast<const byte*>(data.c_str()), r, id);
+        rtree->insertData(sizeof(t_id) + 1, reinterpret_cast<const byte*>(data), r, data_id);
 
     } catch (Tools::Exception& e) {
 		std::cerr << "******ERROR******" << std::endl;
@@ -208,7 +200,7 @@ int rtree_query(double plow[], double phigh[], ISpatialIndex *rtree) {
             // this will find all data that intersect with the query range.
             Region r = Region(plow, phigh, MAX_DIM_NUM);
             rtree->intersectsWithQuery(r, vis);
-            //vis.printData();
+            vis.printData();
         } else if (queryType == 1) {
             // this will find the 10 nearest neighbors.
             Point p = Point(plow, MAX_DIM_NUM);
