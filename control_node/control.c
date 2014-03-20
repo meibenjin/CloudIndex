@@ -857,6 +857,36 @@ int query_torus(struct query_struct query, const char *entry_ip) {
 	return TRUE;
 }
 
+int query_oct_tree(struct query_struct query, const char *entry_ip) {
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+	struct message msg;
+	msg.op = QUERY_TORUS_CLUSTER;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+
+    size_t cpy_len = 0; 
+	int count = 0;
+	memcpy(msg.data, &count, sizeof(int));
+    cpy_len += sizeof(int);
+
+    memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
+    cpy_len += sizeof(struct query_struct);
+
+    if(FALSE == forward_message(msg, 0)) {
+        return FALSE;
+    }
+
+	return TRUE;
+}
+
 int send_file(char *entry_ip) {
 	int socketfd, ret = TRUE;
 
@@ -961,7 +991,8 @@ int main(int argc, char **argv) {
 	print_torus_cluster(cluster_list);
 	printf("\n\n");
 
-	int count = 0, i;
+    // rtree insert 
+	/*int count = 0, i;
     struct query_struct query;
     FILE *fp;
 
@@ -1003,6 +1034,55 @@ int main(int argc, char **argv) {
 
         query_torus(query, entry_ip);
         //printf("\n");
+        if(count % 1000 == 0) {
+            printf("%d\n", count);
+        }
+	}
+    printf("finish read.\n");
+	fclose(fp);*/
+
+	int count = 0, i;
+    struct query_struct query;
+    FILE *fp;
+
+    char data_file[MAX_FILE_NAME];
+    snprintf(data_file, MAX_FILE_NAME, "%s/data", TMP_DATA_DIR);
+	fp = fopen(data_file, "rb");
+	if (fp == NULL) {
+		printf("can't open file\n");
+		exit(1);
+	}
+
+    printf("begin read.\n");
+    //1 1   39.984702   116.318417  39744.120185    1
+    //1 2   39.984683   116.318450  39744.120255    1
+	while (!feof(fp)) {
+
+        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
+        //printf("%d ", query.data_id);
+        count++;
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d", &query.intval[i].low);
+                //printf("%d ", query.intval[i].low);
+            #else
+                double value;
+                fscanf(fp, "%lf", &value);
+                query.intval[i].low = value;
+                query.intval[i].high = value;
+                //printf("%lf ", query.intval[i].low);
+            #endif
+        }
+        fscanf(fp, "%d", &query.trajectory_id);
+        //printf("%d ", query.trajectory_id);
+
+        fscanf(fp, "\n");
+        //printf("\n");
+
+        if( FALSE == query_oct_tree(query, entry_ip)) {
+            printf("%d\n", count);
+            break;
+        }
         if(count % 1000 == 0) {
             printf("%d\n", count);
         }
