@@ -11,7 +11,7 @@ TESTDIR=./test
 BIN=./bin
 CC=gcc
 CXX=g++
-CFLAGS=-g -lrt -Wall
+CFLAGS= -lrt -Wall
 
 all: control start-node test1
 
