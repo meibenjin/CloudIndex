@@ -16,6 +16,7 @@ extern "C" {
 }; 
 
 #include"torus_rtree.h"
+#include"oct_tree/OctTree.h"
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -35,6 +36,8 @@ torus_node *the_torus;
 struct torus_partitions the_partition;
 
 ISpatialIndex* the_torus_rtree;
+
+OctTree *the_torus_oct_tree;
 
 // mark torus node is active or not 
 int should_run;
@@ -240,6 +243,17 @@ int do_create_torus(struct message msg) {
     // get local torus node from msg
     memcpy(&the_torus->info, (void *)(msg.data + cpy_len), sizeof(node_info));
     cpy_len += sizeof(node_info);
+
+    // set oct tree's region
+    if(the_torus_oct_tree == NULL) {
+        double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
+
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            plow[i] = (double)the_torus->info.region[i].low;
+            phigh[i] = (double)the_torus->info.region[i].high;
+        }
+        the_torus_oct_tree = new OctTree(plow, phigh);
+    }
 
     // get neighbors info from msg 
     for(d = 0; d < DIRECTIONS; d++) {
@@ -953,6 +967,38 @@ int operate_rtree(struct query_struct query) {
     return TRUE;
 }
 
+int operate_oct_tree(struct query_struct query) {
+    if(the_torus_rtree == NULL) {
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "torus oct tree didn't create.\n");
+        #endif
+        return FALSE;
+    }
+
+    int i;
+    double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
+
+    for (i = 0; i < MAX_DIM_NUM; i++) {
+        plow[i] = (double)query.intval[i].low;
+        phigh[i] = (double)query.intval[i].high;
+    }
+
+    // rtree operation 
+    if(query.op == RTREE_INSERT) {
+        pthread_mutex_lock(&mutex);
+		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, -1, -1);//后继指针都为空
+		if(the_torus_oct_tree->containPoint(point)){
+			the_torus_oct_tree->treeInsert(point);
+            //char buffer[1024];
+            //memset(buffer, 0, 1024);
+            //sprintf(buffer, "oct tree point count %d \n", g_NodeList.find(1)->second->n_ptCount);
+            //write_log(RESULT_LOG, buffer);
+		}
+        pthread_mutex_unlock(&mutex);
+    }
+    return TRUE;
+}
+
 int do_rtree_load_data(connection_t conn, struct message msg){
     struct timespec start, end;
     double elasped = 0L;
@@ -1141,7 +1187,10 @@ int do_query_torus_node(struct message msg) {
             }
 
 			// do rtree operation 
-            operate_rtree(query);
+            //operate_rtree(query);
+            
+			// do oct tree operation 
+            operate_oct_tree(query);
 
 		} else {
             //TODO need delete the line below in true env. 
@@ -1879,16 +1928,19 @@ int main(int argc, char **argv) {
 	// create a new request list
 	req_list = new_request();
 
-	// load rtree
+	// create rtree
     the_torus_rtree = NULL;
 	the_torus_rtree = rtree_create();
     if(the_torus_rtree == NULL){
-        write_log(TORUS_NODE_LOG, "load rtree failed.\n");
+        write_log(TORUS_NODE_LOG, "create rtree failed.\n");
         exit(1);
     }
-	printf("load rtree.\n");
-	write_log(TORUS_NODE_LOG, "load rtree.\n");
+	printf("create rtree.\n");
+	write_log(TORUS_NODE_LOG, "create rtree.\n");
 
+    // start oct_tree
+    // do nothing, all structure are stored in global hash_maps in OctTree;
+	the_torus_oct_tree = NULL;
 
 	server_socket = new_server(LISTEN_PORT);
 	if (server_socket == FALSE) {
