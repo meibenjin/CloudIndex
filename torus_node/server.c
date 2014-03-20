@@ -683,6 +683,7 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
 
 	int socketfd;
 
+    // create a data socket to send rtree data
 	socketfd = new_client_socket(dst_ip, DATA_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
@@ -700,15 +701,15 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
     strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
     strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
     strncpy(msg.stamp, "", STAMP_SIZE);
-    strncpy(msg.data, "hello, world", DATA_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
     send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
     // important: wait server close epoll mode
-    struct reply_message reply_msg;
+    /*struct reply_message reply_msg;
     if( TRUE == receive_reply(socketfd, &reply_msg)) {
         if (SUCCESS != reply_msg.reply_code) {
             return FALSE;
         }
-    }
+    }*/
 
     size_t cpy_len = sizeof(uint32_t);
     int total_len = 0; 
@@ -747,7 +748,6 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
             send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
-            //send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
             clock_gettime(CLOCK_REALTIME, &end);
             elasped += get_elasped_time(start, end);
 
@@ -759,7 +759,6 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
     }
     if(cpy_len > sizeof(uint32_t)) {
         send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
-        //send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
     }
 	close(socketfd);
 
@@ -932,6 +931,8 @@ int operate_rtree(struct query_struct query) {
 
     // rtree operation 
     if(query.op == RTREE_INSERT) {
+        // need lock when insert rtree
+        pthread_mutex_lock(&mutex);
         if(FALSE == rtree_insert(query.trajectory_id, query.data_id, plow, phigh, the_torus_rtree)) {
             return FALSE;
         }
@@ -939,6 +940,7 @@ int operate_rtree(struct query_struct query) {
         if(c >= the_torus->info.capacity){
             torus_split();
         }
+        pthread_mutex_unlock(&mutex);
     } else if(query.op == RTREE_DELETE) {
         if(FALSE == rtree_delete(query.data_id, plow, phigh, the_torus_rtree)) {
             return FALSE;
@@ -972,6 +974,8 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     while(loop) {
         length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
         if(length == 0) {
+            // client nomally closed
+            close_connection(conn);
             loop = 0;
         } else {
             length = 0;
@@ -1005,7 +1009,6 @@ int do_rtree_load_data(connection_t conn, struct message msg){
             memset(buf, 0, SOCKET_BUF_SIZE);
         } 
     }
-    close(conn->socketfd);
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
@@ -1015,7 +1018,7 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     sprintf(buffer, "receive split data %f ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
-    //bulkload rtree;
+    //bulkload rtree
     the_torus_rtree = rtree_bulkload(v);
 
     std::vector<SpatialIndex::IData*>::iterator it;
@@ -1066,6 +1069,8 @@ int do_query_torus_node(struct message msg) {
     //struct message new_msg;
 
 	if (NULL == req_ptr) {
+        //TODO how can I delete the shit method to judge whether 
+        //the request has been handled or not
         if(query.op == RTREE_QUERY) {
             req_ptr = insert_request(req_list, stamp);
         }
@@ -1139,6 +1144,7 @@ int do_query_torus_node(struct message msg) {
             operate_rtree(query);
 
 		} else {
+            //TODO need delete the line below in true env. 
             if(query.op == RTREE_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     if (interval_overlap(query.intval[i], the_torus->info.region[i]) != 0) {
@@ -1485,36 +1491,6 @@ int do_receive_data(int socketfd) {
     return TRUE;
 }
 
-void *do_performance_test_long(void *args) {
-    int socketfd = *(int *)args;
-    struct message msg;
-    int length = 0, loop = 1;
-
-    while(loop) {
-        length = recv_safe(socketfd, &msg, sizeof(struct message), 0);
-        if(length == 0) {
-            loop = 0;
-        } else if(length < 0) {
-            continue;
-        } else {
-            static int count = 1;
-            time_t start;
-            start = time(NULL);
-            char buf[30];
-            memset(buf, 0, 30);
-            snprintf(buf, 30, "%ld %d\n", start, count);
-
-            pthread_mutex_lock(&mutex);
-            count++;
-            write_log(RESULT_LOG, buf);
-            pthread_mutex_unlock(&mutex);
-        }
-    }
-
-    close(socketfd);
-    return NULL;
-}
-
 int do_performance_test(struct message msg) {
     static int count = 1;
     //pthread_mutex_lock(&mutex);
@@ -1577,6 +1553,7 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
         #endif
+
 		do_traverse_torus(msg);
 		break;
 
@@ -1584,6 +1561,7 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "\nreceive request search torus node.\n");
         #endif
+
 		do_query_torus_node(msg);
 		break;
 
@@ -1592,9 +1570,7 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request update skip list.\n");
         #endif
 
-		if (FALSE == do_update_skip_list(msg)) {
-			reply_code = FAILED;
-		}
+		do_update_skip_list(msg);
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1603,9 +1579,7 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request update skip list node.\n");
         #endif
 
-		if (FALSE == do_update_skip_list_node(msg)) {
-			reply_code = FAILED;
-		}
+		do_update_skip_list_node(msg);
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1613,9 +1587,8 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
         #endif
-		if( FALSE == do_query_torus_cluster(msg)) {
-            reply_code = FAILED;
-        }
+
+		do_query_torus_cluster(msg);
 		break;
 
 	case UPDATE_FORWARD:
@@ -1623,9 +1596,7 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request update skip list node's forward field.\n");
         #endif
 
-		if (FALSE == do_update_forward(msg)) {
-			reply_code = FAILED;
-		}
+		do_update_forward(msg);
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1634,9 +1605,7 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request update skip list node's backward field.\n");
         #endif
 
-		if (FALSE == do_update_backward(msg)) {
-			reply_code = FAILED;
-		}
+		do_update_backward(msg);
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1644,9 +1613,7 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request new skip list.\n");
         #endif
-		if (FALSE == do_new_skip_list(msg)) {
-			reply_code = FAILED;
-		}
+		do_new_skip_list(msg);
 		print_skip_list_node(the_skip_list);
 		break;
 
@@ -1681,32 +1648,33 @@ int process_message(connection_t conn, struct message msg) {
         do_receive_data(conn->socketfd);
         break;
     case PERFORMANCE_TEST:
-        //write_log(TORUS_NODE_LOG, "here\n");
-        /*pthread_t work_thread;
-        pthread_create(&work_thread, NULL, do_performance_test_long, &socketfd);
-        pthread_join(work_thread, NULL);*/
-        if(FALSE == do_performance_test(msg)) {
-            reply_code = FAILED;
-        }
-        //do_performance_test_long(&socketfd);
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request performance test.\n");
+        #endif
+
+        do_performance_test(msg);
         break;
+
     case RELOAD_RTREE:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload rtree data.\n");
         #endif
 
-		reply_msg.op = (OP)msg.op;
+        // reply to client for RTREE_LOAD requet is necessary because 
+        // the client should receive this reply before send more data
+        // if not, the following data from client will send to epoll
+		/*reply_msg.op = (OP)msg.op;
 		reply_msg.reply_code = (REPLY_CODE)reply_code;
 		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
 
 		if (FALSE == send_reply(conn->socketfd, reply_msg)) {
 			// TODO handle send reply failed
 			return FALSE;
-		}
-        if(FALSE == do_rtree_load_data(conn, msg)) {
-            reply_code = FAILED;
-        }
+		}*/
+
+        do_rtree_load_data(conn, msg);
         break;
+
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
         break;
@@ -1739,9 +1707,9 @@ int handle_read_event(connection_t conn) {
         while(beg + msg_size <= conn->roff) {
             memcpy(&msg, conn->rbuf + beg, msg_size);
             //process message
-            pthread_mutex_lock(&mutex);
+            //pthread_mutex_lock(&mutex);
             process_message(conn, msg);
-            pthread_mutex_unlock(&mutex);
+            //pthread_mutex_unlock(&mutex);
             beg = beg + msg_size;
         }
         int left = conn->roff - beg;
@@ -1805,14 +1773,14 @@ void *listen_epoll(void *args) {
 }
 
 void close_connection(connection_t conn) {
-    if(conn->used != 0) {
+    //if(conn->used != 0) {
         struct epoll_event ev;
 
         conn->used = 0;
         conn->roff = 0;
         epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
         close(conn->socketfd);
-    }
+    //}
 }
 
 void *work_epoll(void *args){
@@ -1837,11 +1805,11 @@ void *work_epoll(void *args){
                     continue;
                 }
 
-                if(conn->used != 0) {
+                //if(conn->used != 0) {
                     ev.events = EPOLLIN | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
                     epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                }
+                //}
 			}
 		}
 	}
@@ -1855,7 +1823,7 @@ void *data_transform(void *args) {
 	struct epoll_event ev, event;
 	epfd = epoll_create(MAX_EVENTS);
 	ev.data.fd = data_socket;
-	ev.events = EPOLLIN;
+	ev.events = EPOLLIN | EPOLLET;
 	epoll_ctl(epfd, EPOLL_CTL_ADD, data_socket, &ev);
 
 	int nfds;
@@ -1870,7 +1838,7 @@ void *data_transform(void *args) {
                     g_conn_table[conn_socket].used = 1;
 
                     set_nonblocking(conn_socket);
-                    ev.events = EPOLLIN | EPOLLONESHOT;
+                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
@@ -1887,7 +1855,6 @@ void *data_transform(void *args) {
 					//  TODO: handle receive message failed
 					printf("receive message failed.\n");
 				}
-                //close_connection(&g_conn_table[conn_socket]);
             }
 		} 
 	}
@@ -1982,47 +1949,6 @@ int main(int argc, char **argv) {
     for (i = 0; i < EPOLL_NUM; i++) {
         close(worker_epfd[i]);
     }
-
-
-	/*int epfd;
-	struct epoll_event ev, events[MAX_EVENTS];
-	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = data_socket;
-	ev.events = EPOLLIN;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, data_socket, &ev);
-
-	int nfds;
-    int conn_socket;
-    struct message msg;
-
-	while(should_run) {
-		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
-		for(i = 0; i < nfds; i++) {
-			if(events[i].data.fd == data_socket) {
-				while((conn_socket = accept_connection(data_socket)) > 0) {
-					set_nonblocking(conn_socket);
-
-                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-					ev.data.fd = conn_socket;
-					epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
-				}
-            } else if(events[i].events && EPOLLIN) {
-				conn_socket = events[i].data.fd;
-				memset(&msg, 0, sizeof(struct message));
-
-				// receive message through the conn_socket
-				if (TRUE == receive_message(conn_socket, &msg)) {
-					process_msg(conn_socket, msg);
-				} else {
-					//  TODO: handle receive message failed
-					printf("receive message failed.\n");
-				}
-                //close_connection(&data_conn);
-			}
-		} 
-	}
-
-    close(epfd);*/
 
     close(server_socket);
 
