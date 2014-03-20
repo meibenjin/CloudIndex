@@ -8,7 +8,6 @@
 #ifndef TORUS_RTREE_H_
 #define TORUS_RTREE_H_
 
-
 #include<cstring>
 // include library header file.
 #include "spatialindex/SpatialIndex.h"

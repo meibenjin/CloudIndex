@@ -15,15 +15,13 @@ extern "C" {
 
 IStorageManager* memfile;
 
-MyDataStream::MyDataStream(std::vector<SpatialIndex::IData*> &data) : m_pNext(0)
-{
+MyDataStream::MyDataStream(std::vector<SpatialIndex::IData*> &data) : m_pNext(0) {
     m_data = data;
     m_it = m_data.begin();
     readNextEntry();
 }
 
-void MyDataStream::readNextEntry()
-{
+void MyDataStream::readNextEntry() {
     if(m_it != m_data.end()) {
         m_pNext = dynamic_cast<RTree::Data *>((*m_it)->clone());
         m_it++;
@@ -253,7 +251,7 @@ ISpatialIndex* rtree_bulkload(std::vector<SpatialIndex::IData*> &data) {
 
         //recreate new rtree
         id_type indexIdentifier;
-        rtree = RTree::createAndBulkLoadNewRTree(RTree::BLM_STR, stream, *memfile, 0.7, 20, 20, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
+        rtree = RTree::createAndBulkLoadNewRTree(RTree::BLM_STR, stream, *memfile, 0.7, 100, 100, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
 
     } catch (Tools::Exception& e){
 		std::cerr << "******ERROR******" << std::endl;
@@ -272,8 +270,7 @@ int rtree_delete(ISpatialIndex *rtree) {
     return TRUE;
 }
 
-ISpatialIndex* rtree_create()
-{
+ISpatialIndex* rtree_create() {
     ISpatialIndex *rtree;
 	try {
         // Create a new storage manager with the provided base name and a 4K page size.
@@ -288,7 +285,7 @@ ISpatialIndex* rtree_create()
         // Create a new, empty, RTree with dimensionality 2, minimum load 70%, using "file" as
         // the StorageManager and the RSTAR splitting policy.
         id_type indexIdentifier;
-        rtree = RTree::createNewRTree(*memfile, 0.7, 20, 20, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
+        rtree = RTree::createNewRTree(*memfile, 0.7, 100, 100, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
 
     } catch (Tools::Exception& e) {
 		std::cerr << "******ERROR******" << std::endl;
@@ -315,7 +312,7 @@ int rtree_insert_test() {
         // Create a new, empty, RTree with dimensionality 2, minimum load 70%, using "file" as
         // the StorageManager and the RSTAR splitting policy.
         id_type indexIdentifier;
-        rtree = RTree::createNewRTree(*memfile, 0.7, 20, 20, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
+        rtree = RTree::createNewRTree(*memfile, 0.7, 100, 100, MAX_DIM_NUM, SpatialIndex::RTree::RV_RSTAR, indexIdentifier);
 
         id_type id;
 		uint32_t op;
