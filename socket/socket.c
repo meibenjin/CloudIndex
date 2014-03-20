@@ -51,7 +51,7 @@ int new_client_socket(const char *ip, int port) {
 		return FALSE;
 	}
 
-    int snd_buf = 48 * 1024;
+    int snd_buf = 32 * 1024;
     setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, (const char*)&snd_buf, sizeof(int));
 
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
@@ -85,7 +85,7 @@ int new_server_socket(int port) {
 	}
 
     // set tcp protocol recv buffer
-    int rcv_buf = 48 * 1024;
+    int rcv_buf = 32 * 1024;
     setsockopt(server_socket, SOL_SOCKET, SO_RCVBUF, (const char*)&rcv_buf, sizeof(int));
 
 	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0) {
