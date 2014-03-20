@@ -8,6 +8,9 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+// lock for rtree
+#define HAVE_PTHREAD_H 1
+
 // limits for common
 #define MAX_FILE_NAME 255 
 
@@ -15,7 +18,7 @@
 #define IP_ADDR_LENGTH 20
 #define LISTEN_PORT 10086
 #define DATA_PORT 10087
-#define LISTEN_QUEUE_LENGTH 2000
+#define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024 
 #define DATA_SIZE 1000
@@ -27,7 +30,7 @@
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 500000 
+#define DEFAULT_CAPACITY 640000 
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
