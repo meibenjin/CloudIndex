@@ -216,5 +216,6 @@ extern hash_set<IDTYPE> g_tid;
 
 extern hash_map<IDTYPE, Traj*> g_TrajList;
 
+// only used for oct tree split
 extern hash_map<int, OctTNode*> node_list;
 extern hash_map<IDTYPE, OctPoint*> point_list;
