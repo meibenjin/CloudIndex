@@ -224,6 +224,4 @@ void OctTree::copy(OctTNode *n_pt){
 			}
 		}
 	}
-
-
 }
