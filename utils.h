@@ -30,7 +30,7 @@
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 640000 
+#define DEFAULT_CAPACITY 20000 
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
@@ -103,7 +103,10 @@ typedef enum OP {
 	RECEIVE_QUERY,
     RECEIVE_DATA, 
     PERFORMANCE_TEST,
-    RELOAD_RTREE
+    RELOAD_RTREE,
+    LOAD_OCT_TREE_POINTS,
+    LOAD_OCT_TREE_NODES,
+    LOAD_OCT_TREE_TRAJECTORYS
 } OP;
 
 // interval of each dimension
