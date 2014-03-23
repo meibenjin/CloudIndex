@@ -676,7 +676,7 @@ int get_split_dimension() {
     return d;
 }
 
-int rtree_split(char *dst_ip, double plow[], double phigh[]) {
+int rtree_split(const char *dst_ip, double plow[], double phigh[]) {
 
     char buffer[1024];
     struct timespec start, end, s, e;
@@ -757,7 +757,8 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
         clock_gettime(CLOCK_REALTIME, &e);
         el += get_elasped_time(s, e);
 
-        if(cpy_len + 100 < SOCKET_BUF_SIZE) {
+        uint32_t next_len = sizeof(uint32_t) * 2 + package_len;
+        if(cpy_len + next_len < SOCKET_BUF_SIZE) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
@@ -802,6 +803,318 @@ int rtree_recreate(double plow[], double phigh[]){
     rtree_delete(the_torus_rtree);
 
     the_torus_rtree = rtree_bulkload(vis.GetResults());
+    return TRUE;
+}
+
+//send_oct_nodes(hash_map &hn, dst_ip); 
+//send_oct_points(hash_map &hp, dst_ip); 
+//send_oct_trajectorys(hash_map &ht, dst_ip); 
+//send_oct_point(Point &, );
+//hash_map<int,OctTNode*> node_list;
+//hash_map<IDTYPE,OctPoint*> point_list;
+int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
+
+    char buffer[1024];
+    struct timespec start, end, s, e;
+    double elasped = 0L, el;
+
+	int socketfd;
+
+    // create a data socket to send rtree data
+	socketfd = new_client_socket(dst_ip, DATA_PORT);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = LOAD_OCT_TREE_POINTS;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
+    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+    // begin to send oct tree points to dst_ip
+    
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    // the first sizeof(uint32_t) bytes save the number of points in buf
+    size_t cpy_len = sizeof(uint32_t);
+    int total_len = 0; 
+    uint32_t points_num = 0;
+
+
+    hash_map<int, OctPoint *>::iterator it;
+    for(it = points.begin(); it != points.end(); it++) {
+        clock_gettime(CLOCK_REALTIME, &s);
+
+        byte *package_ptr;
+        uint32_t package_len;
+
+        it->second->storeToByteArray(&package_ptr, package_len);
+
+        /* one or more points will be filled into buf
+         * points_num used to mark the num of points in buf now
+         * note: points_num use 0 ~ sizeof(uint32_t) of buf
+         */
+        points_num++;
+        memcpy(buf + 0, &points_num, sizeof(uint32_t));
+
+        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        cpy_len += sizeof(uint32_t);
+
+        memcpy(buf + cpy_len, package_ptr, package_len);
+        cpy_len += package_len;
+
+        delete[] package_ptr;
+
+        clock_gettime(CLOCK_REALTIME, &e);
+        el += get_elasped_time(s, e);
+
+        if(cpy_len + package_len < SOCKET_BUF_SIZE) {
+            continue;
+        } else {
+            clock_gettime(CLOCK_REALTIME, &start);
+            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            clock_gettime(CLOCK_REALTIME, &end);
+            elasped += get_elasped_time(start, end);
+
+            total_len += cpy_len;
+            points_num = 0;
+            cpy_len = sizeof(uint32_t);
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+    if(cpy_len > sizeof(uint32_t)) {
+        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+    }
+	close(socketfd);
+
+    total_len += cpy_len;
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "total send %f k\n", (double) total_len/ 1000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "package split oct tree points spend %f ms\n", (double) el/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "send split oct tree points spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    return TRUE;
+}
+
+int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
+
+    char buffer[1024];
+    struct timespec start, end, s, e;
+    double elasped = 0L, el;
+
+	int socketfd;
+
+    // create a data socket to send rtree data
+	socketfd = new_client_socket(dst_ip, DATA_PORT);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = LOAD_OCT_TREE_NODES;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
+    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+    // begin to send oct tree points to dst_ip
+    
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    // the first sizeof(uint32_t) bytes save the number of nodes in buf
+    size_t cpy_len = sizeof(uint32_t);
+    int total_len = 0; 
+    uint32_t nodes_num = 0;
+
+
+    hash_map<int, OctTNode *>::iterator it;
+    for(it = nodes.begin(); it != nodes.end(); it++) {
+        clock_gettime(CLOCK_REALTIME, &s);
+
+        byte *package_ptr;
+        uint32_t package_len;
+
+        it->second->storeToByteArray(&package_ptr, package_len);
+
+        /* one or more points will be filled into buf
+         * nodes_num used to mark the num of points in buf now
+         * note: nodes_num use 0 ~ sizeof(uint32_t) of buf
+         */
+        nodes_num++;
+        memcpy(buf + 0, &nodes_num, sizeof(uint32_t));
+
+        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        cpy_len += sizeof(uint32_t);
+
+        memcpy(buf + cpy_len, package_ptr, package_len);
+        cpy_len += package_len;
+
+        delete[] package_ptr;
+
+        clock_gettime(CLOCK_REALTIME, &e);
+        el += get_elasped_time(s, e);
+
+        if(cpy_len + package_len < SOCKET_BUF_SIZE) {
+            continue;
+        } else {
+            clock_gettime(CLOCK_REALTIME, &start);
+            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            clock_gettime(CLOCK_REALTIME, &end);
+            elasped += get_elasped_time(start, end);
+
+            total_len += cpy_len;
+            nodes_num = 0;
+            cpy_len = sizeof(uint32_t);
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+    if(cpy_len > sizeof(uint32_t)) {
+        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+    }
+	close(socketfd);
+
+    total_len += cpy_len;
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "total send %f k\n", (double) total_len/ 1000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "package split oct tree nodes spend %f ms\n", (double) el/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "send split oct tree nodes spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    return TRUE;
+}
+
+int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
+
+    char buffer[1024];
+    struct timespec start, end, s, e;
+    double elasped = 0L, el;
+
+	int socketfd;
+
+    // create a data socket to send rtree data
+	socketfd = new_client_socket(dst_ip, DATA_PORT);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = LOAD_OCT_TREE_TRAJECTORYS;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    strncpy(msg.data, "", DATA_SIZE);
+    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+    // begin to send oct tree points to dst_ip
+    
+    char buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    // the first sizeof(uint32_t) bytes save the number of trajectorys in buf
+    size_t cpy_len = sizeof(uint32_t);
+    int total_len = 0; 
+    uint32_t trajs_num = 0;
+
+
+    hash_map<IDTYPE, Traj *>::iterator it;
+    for(it = trajs.begin(); it != trajs.end(); it++) {
+        clock_gettime(CLOCK_REALTIME, &s);
+
+        byte *package_ptr;
+        uint32_t package_len;
+
+        it->second->storeToByteArray(&package_ptr, package_len);
+
+        /* one or more trajs will be filled into buf
+         * trajs_num used to mark the num of points in buf now
+         * note: trajs_num use 0 ~ sizeof(uint32_t) of buf
+         */
+        trajs_num++;
+        memcpy(buf + 0, &trajs_num, sizeof(uint32_t));
+
+        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        cpy_len += sizeof(uint32_t);
+
+        memcpy(buf + cpy_len, package_ptr, package_len);
+        cpy_len += package_len;
+
+        delete[] package_ptr;
+
+        clock_gettime(CLOCK_REALTIME, &e);
+        el += get_elasped_time(s, e);
+
+        if(cpy_len + package_len < SOCKET_BUF_SIZE) {
+            continue;
+        } else {
+            clock_gettime(CLOCK_REALTIME, &start);
+            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            clock_gettime(CLOCK_REALTIME, &end);
+            elasped += get_elasped_time(start, end);
+
+            total_len += cpy_len;
+            trajs_num = 0;
+            cpy_len = sizeof(uint32_t);
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+    if(cpy_len > sizeof(uint32_t)) {
+        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+    }
+	close(socketfd);
+
+    total_len += cpy_len;
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "total send %f k\n", (double) total_len/ 1000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "package split oct tree trajectorys spend %f ms\n", (double) el/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "send split oct tree trajectorys spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
     return TRUE;
 }
 
@@ -870,6 +1183,7 @@ int torus_split() {
             cpy_len += sizeof(node_info);
         }
     }
+
     char dst_ip[IP_ADDR_LENGTH];
     memset(dst_ip, 0, IP_ADDR_LENGTH);
     get_node_ip(new_node->info, dst_ip);
@@ -989,6 +1303,9 @@ int operate_oct_tree(struct query_struct query) {
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, -1, -1);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
 			the_torus_oct_tree->treeInsert(point);
+            if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
+                torus_split();
+            }
             //char buffer[1024];
             //memset(buffer, 0, 1024);
             //sprintf(buffer, "oct tree point count %d \n", g_NodeList.find(1)->second->n_ptCount);
@@ -1014,7 +1331,7 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     int length = 0, loop = 1;
     std::vector<SpatialIndex::IData *> v;
 
-    char buf[SOCKET_BUF_SIZE];
+    byte buf[SOCKET_BUF_SIZE];
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
@@ -1082,6 +1399,145 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     memset(buffer, 0, 1024);
     sprintf(buffer, "%ld %d\n", now, count);
     write_log(RESULT_LOG, buffer);
+    return TRUE;
+}
+
+int do_load_oct_tree_points(connection_t conn, struct message msg) {
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
+
+    uint32_t package_num;
+    int length = 0, loop = 1;
+    byte buf[SOCKET_BUF_SIZE], *ptr;
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    while(loop) {
+        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            // client nomally closed
+            close_connection(conn);
+            loop = 0;
+        } else {
+            length = 0;
+            ptr = buf; 
+            memcpy(&package_num, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            while(package_num--){
+                OctPoint *point = new OctPoint();
+                point->loadFromByteArray(ptr);
+                g_PtList.insert(pair<IDTYPE, OctPoint*>(point->p_id, point));
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+
+    char buffer[1024];
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "receive split oct tree points spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    return TRUE;
+}
+
+int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
+
+    uint32_t package_num;
+    int length = 0, loop = 1, type = -1, node_id = -1, max_n_id = -1;
+    byte buf[SOCKET_BUF_SIZE], *ptr;
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    while(loop) {
+        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            // client nomally closed
+            close_connection(conn);
+            loop = 0;
+        } else {
+            length = 0;
+            ptr = buf; 
+            memcpy(&package_num, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            while(package_num--){
+                memcpy(&type, ptr, sizeof(int));
+
+                if( type == LEAF) {
+                    OctLeafNode *leaf = new OctLeafNode();
+                    leaf->loadFromByteArray(ptr);
+                    node_id = leaf->n_id;
+                    g_NodeList.insert(pair<int, OctTNode *>(node_id, leaf));
+                } else if(type == IDX) {
+                    OctIdxNode *idx = new OctIdxNode();
+                    idx->loadFromByteArray(ptr);
+                    node_id = idx->n_id;
+                    g_NodeList.insert(pair<int, OctTNode *>(node_id, idx));
+                }
+
+                if( node_id > max_n_id) {
+                    max_n_id = node_id;
+                }
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+
+    // TODO set max_n_id to oct tree
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+
+    char buffer[1024];
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "receive split oct tree nodes spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    return TRUE;
+}
+
+int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
+    struct timespec start, end;
+    double elasped = 0L;
+    clock_gettime(CLOCK_REALTIME, &start);
+
+    uint32_t package_num;
+    int length = 0, loop = 1;
+    byte buf[SOCKET_BUF_SIZE], *ptr;
+    memset(buf, 0, SOCKET_BUF_SIZE);
+
+    while(loop) {
+        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            // client nomally closed
+            close_connection(conn);
+            loop = 0;
+        } else {
+            length = 0;
+            ptr = buf; 
+            memcpy(&package_num, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            while(package_num--){
+                Traj *traj= new Traj();
+                traj->loadFromByteArray(ptr);
+                g_TrajList.insert(pair<IDTYPE, Traj *>(traj->t_id, traj));
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elasped = get_elasped_time(start, end);
+
+    char buffer[1024];
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "receive split oct tree trajectorys spend %f ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
     return TRUE;
 }
 
@@ -1722,6 +2178,15 @@ int process_message(connection_t conn, struct message msg) {
 		}*/
 
         do_rtree_load_data(conn, msg);
+        break;
+    case LOAD_OCT_TREE_POINTS:
+        do_load_oct_tree_points(conn, msg);
+        break;
+    case LOAD_OCT_TREE_NODES:
+        do_load_oct_tree_nodes(conn, msg);
+        break;
+    case LOAD_OCT_TREE_TRAJECTORYS:
+        do_load_oct_tree_trajectorys(conn, msg);
         break;
 
 	default:
