@@ -744,7 +744,7 @@ int rtree_split(char *dst_ip, double plow[], double phigh[]) {
         clock_gettime(CLOCK_REALTIME, &e);
         el += get_elasped_time(s, e);
 
-        if(cpy_len + 100 < SOCKET_BUF_SIZE) {
+        if(cpy_len + package_len < SOCKET_BUF_SIZE) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
