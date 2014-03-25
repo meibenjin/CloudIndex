@@ -868,8 +868,8 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
         points_num++;
         memcpy(buf + 0, &points_num, sizeof(uint32_t));
 
-        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
-        cpy_len += sizeof(uint32_t);
+        //memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        //cpy_len += sizeof(uint32_t);
 
         memcpy(buf + cpy_len, package_ptr, package_len);
         cpy_len += package_len;
@@ -970,8 +970,8 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
         nodes_num++;
         memcpy(buf + 0, &nodes_num, sizeof(uint32_t));
 
-        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
-        cpy_len += sizeof(uint32_t);
+        //memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        //cpy_len += sizeof(uint32_t);
 
         memcpy(buf + cpy_len, package_ptr, package_len);
         cpy_len += package_len;
@@ -1072,8 +1072,8 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
         trajs_num++;
         memcpy(buf + 0, &trajs_num, sizeof(uint32_t));
 
-        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
-        cpy_len += sizeof(uint32_t);
+        //memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        //cpy_len += sizeof(uint32_t);
 
         memcpy(buf + cpy_len, package_ptr, package_len);
         cpy_len += package_len;
