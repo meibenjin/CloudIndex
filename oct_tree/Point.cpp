@@ -25,7 +25,7 @@ bool OctPoint::isNear(IDTYPE pid){
 }
 
 uint32_t OctPoint::getByteArraySize() {
-	return (sizeof(IDTYPE) * 4 + sizeof(double) * 4 + sizeof(short) * 1);
+	return (sizeof(int) * 4 + sizeof(double) * 4 + sizeof(short) * 1);
 }
 
 void OctPoint::storeToByteArray(byte **data, uint32_t &len) {
@@ -33,27 +33,27 @@ void OctPoint::storeToByteArray(byte **data, uint32_t &len) {
 	*data = new byte[len];
 	byte *ptr = *data;
 
-	memcpy(ptr, &p_id, sizeof(IDTYPE));
-	ptr += sizeof(IDTYPE);
+	memcpy(ptr, &p_id, sizeof(int));
+	ptr += sizeof(int);
 	memcpy(ptr, &p_time, sizeof(double));
 	ptr += sizeof(double);
 	memcpy(ptr, &p_level, sizeof(short));
 	ptr += sizeof(short);
 	memcpy(ptr, p_xyz, sizeof(double) * 3);
 	ptr += sizeof(double) * 3;
-	memcpy(ptr, &p_tid, sizeof(IDTYPE));
-	ptr += sizeof(IDTYPE);
-	memcpy(ptr, &pre, sizeof(IDTYPE));
-	ptr += sizeof(IDTYPE);
-	memcpy(ptr, &next, sizeof(IDTYPE));
+	memcpy(ptr, &p_tid, sizeof(int));
+	ptr += sizeof(int);
+	memcpy(ptr, &pre, sizeof(int));
+	ptr += sizeof(int);
+	memcpy(ptr, &next, sizeof(int));
 	//ptr += sizeof(int);
 
 }
 
 void OctPoint::loadFromByteArray(const byte *ptr) {
 
-	memcpy(&p_id, ptr, sizeof(IDTYPE));
-	ptr += sizeof(IDTYPE);
+	memcpy(&p_id, ptr, sizeof(int));
+	ptr += sizeof(int);
 	memcpy(&p_time, ptr, sizeof(double));
 	ptr += sizeof(double);
 	memcpy(&p_level, ptr, sizeof(short));
@@ -90,7 +90,7 @@ void Traj::storeToByteArray(byte **data, uint32_t &len) {
 	memcpy(ptr, &t_head, sizeof(IDTYPE));
 	ptr += sizeof(IDTYPE);
 	memcpy(ptr, &t_tail, sizeof(IDTYPE));
-	//ptr += sizeof(int);
+	//ptr += sizeof(IDTYPE);
 }
 
 void Traj::loadFromByteArray(const byte *ptr) {
@@ -98,8 +98,6 @@ void Traj::loadFromByteArray(const byte *ptr) {
 	ptr += sizeof(IDTYPE);
 	memcpy(&t_head, ptr, sizeof(IDTYPE));
 	ptr += sizeof(IDTYPE);
-	memcpy(&t_tail, ptr, sizeof(int));
+	memcpy(&t_tail, ptr, sizeof(IDTYPE));
 	//ptr += sizeof(int);
 }
-
-

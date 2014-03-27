@@ -1,9 +1,3 @@
-
-extern "C" {
-#include "utils.h"
-#include "logs/log.h"
-};
-
 #include <cstdio>
 #include <cmath>
 #include <string>
@@ -13,7 +7,7 @@ extern "C" {
 #include <sstream>
 #include <cassert>
 #include <cstring>
-#include <set> 
+#include <set>
 #include <algorithm>
 #include <ext/hash_map>
 #include <ext/hash_set>
@@ -54,6 +48,14 @@ public:
 	OctPoint() {
 	}
 	;
+	OctPoint(OctPoint *p)
+	{
+	        p_id = p->p_id;
+	        memcpy(p_xyz,p->p_xyz,sizeof(double)*3);
+	        p_tid = p->p_tid;
+	        pre = p->pre;
+	        next = p->next;
+	}
 	OctPoint(IDTYPE pid, double time, double *xyz, IDTYPE tid, IDTYPE pre,
 	IDTYPE next);
 
@@ -74,7 +76,9 @@ public:
 };
 class Traj {
 public:
-	IDTYPE t_id;IDTYPE t_head;IDTYPE t_tail; //tail point in the trajectory
+	IDTYPE t_id;
+	IDTYPE t_head;
+	IDTYPE t_tail; //tail point in the trajectory
 public:
 	Traj(void) {
 	}
@@ -108,10 +112,11 @@ public:
 	virtual ~OctTNode() {
 	}
 	;
-	void calOverlap(double domLow[], double domHigh[]);
+	bool calOverlap(const double *low, const double *high);
 	//change the domLow/high to overlap domLow/high with this node
 
 	bool containPoint(OctPoint *pt);
+	bool containPoint(OctPoint *pt,double *low,double *high);
 	bool containPoint(OctPoint *pt, int child_id);
 	bool containPoint(double* xyz, int idx);
 	void octsplit(double* slow, double* shigh, char idx, double* low,
@@ -130,6 +135,9 @@ public:
 		cout << "base adjust!" << endl;
 	}
 	;
+	virtual void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector){
+		cout << "base rangequery!" << endl;
+	};
 
 public:
 	uint32_t getByteArraySize();
@@ -147,6 +155,7 @@ public:
 	;
 	OctIdxNode(int nid, NodeType type, double* low, double* high, int father);
 	void nodeInsert(OctPoint *pt);
+	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 };
 
 class OctLeafNode: public OctTNode {
@@ -158,6 +167,8 @@ public:
 	~OctLeafNode() {
 	}
 	;
+
+	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void nodeInsert(OctPoint *pt);
 	void nodeSplit();
 	void geneChildRelativeLocation(OctPoint *pt, int *l);
@@ -196,12 +207,16 @@ public:
 	;
 	void treeInsert(OctPoint *pt); //return p_id
 	int countNode();
-	vector<IDTYPE> rangeQuery(double queryLow[], double queryHigh[]); //return the ids of points in the area
 
 	bool containPoint(OctPoint *pt);
 	void treeSplit(bool getLow);
 	void setDom(double *low, double *high, bool getLow, int &condition);
 	void copy(OctTNode *root);
+
+	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
+	void insertBetweenServer();
+        void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point);
+        int pointInWhichNode(OctPoint *pt);
 };
 
 extern hash_map<IDTYPE, OctPoint*> g_PtList;
@@ -216,6 +231,6 @@ extern hash_set<IDTYPE> g_tid;
 
 extern hash_map<IDTYPE, Traj*> g_TrajList;
 
-// only used for oct tree split
 extern hash_map<int, OctTNode*> node_list;
 extern hash_map<IDTYPE, OctPoint*> point_list;
+extern hash_map<IDTYPE,Traj*> traj_list;
