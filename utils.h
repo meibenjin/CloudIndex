@@ -106,7 +106,8 @@ typedef enum OP {
     RELOAD_RTREE,
     LOAD_OCT_TREE_POINTS,
     LOAD_OCT_TREE_NODES,
-    LOAD_OCT_TREE_TRAJECTORYS
+    LOAD_OCT_TREE_TRAJECTORYS,
+    TRAJ_QUERY
 } OP;
 
 // interval of each dimension
