@@ -245,6 +245,7 @@ int do_create_torus(struct message msg) {
     cpy_len += sizeof(node_info);
 
     // set oct tree's region
+    // important!
     if(the_torus_oct_tree == NULL) {
         double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
 
@@ -1126,7 +1127,14 @@ int torus_split() {
     struct timespec start, end;
     double elasped = 0L;
     clock_gettime(CLOCK_REALTIME, &start);
-    int d = get_split_dimension();
+
+    //int d = get_split_dimension();
+    double low[MAX_DIM_NUM], high[MAX_DIM_NUM];
+    int d; 
+    // get best cut dimension, 1 means getLow
+    // low and high is the split region
+    the_torus_oct_tree->setDom(low, high, 1, d);
+
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
     memset(buffer, 0, 1024);
@@ -1139,10 +1147,12 @@ int torus_split() {
     // reset the regions(both current node and new append torus node
     int i;
     for (i = 0; i < MAX_DIM_NUM; i++) {
-        new_node->info.region[i] = the_torus->info.region[i];
+        new_node->info.region[i].low = low[i];
+        new_node->info.region[i].high = high[i];
     }
-    the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
-    new_node->info.region[d].high = (new_node->info.region[d].low + new_node->info.region[d].high) * 0.5;
+    //TODO update the_torus region
+    //the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
+    //new_node->info.region[d].high = (new_node->info.region[d].low + new_node->info.region[d].high) * 0.5;
 
     
     // Step 2: update neighbor information
@@ -1153,12 +1163,15 @@ int torus_split() {
     char buf[DATA_SIZE];
     memcpy(buf, (void *)&the_partition, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
-    // copy neighbors info into buf 
+
+    // copy the torus node's neighbors info 
     // then send to new torus node
     memcpy(buf + cpy_len,(void *) &new_node->info, sizeof(node_info));
     cpy_len += sizeof(node_info);
     for(i = 0; i < DIRECTIONS; i++) {
         int num = get_neighbors_num_d(the_torus, i);
+
+        // 2*d + 1 represent torus node's upper direction 
         if(i == 2 * d + 1) {
             num++;
         }
@@ -1174,11 +1187,13 @@ int torus_split() {
                 nn_ptr = nn_ptr->next;
             }
         }
+
         // copy the_torus info into buf at dimension d
-        // d is the dimension, (include 2 directions)
+        // d is the dimension, (include 2 directions d low and d high)
         // 2*d represent torus node's lower direction
         // 2*d + 1 represent torus node's upper direction 
         if(i == 2 * d + 1) {
+            // append the_torus node info to new_torus's upper direction of dimension d
             memcpy(buf + cpy_len, &the_torus->info, sizeof(node_info));
             cpy_len += sizeof(node_info);
         }
@@ -1204,37 +1219,21 @@ int torus_split() {
 
     print_torus_node(*the_torus);
 
-    // Step 3: copy rtree data to new torus node and delete local rtree data
-    double nlow[MAX_DIM_NUM], nhigh[MAX_DIM_NUM], plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
-    for (i = 0; i < MAX_DIM_NUM; i++) {
-        nlow[i] = new_node->info.region[i].low; 
-        nhigh[i] = new_node->info.region[i].high;
-        plow[i] = the_torus->info.region[i].low;
-        phigh[i] = the_torus->info.region[i].high;
-    }
-
+    // Step 3: copy oct tree to new torus node and update local oct tree
     clock_gettime(CLOCK_REALTIME, &start);
-    rtree_split(dst_ip, nlow, nhigh);
+
+    // split oct_tree
+    the_torus_oct_tree->treeSplit(true);
+    // send split oct tree
+    send_oct_points(dst_ip, point_list);
+    send_oct_nodes(dst_ip, node_list);
+    send_oct_trajectorys(dst_ip, traj_list);
+    //TODO delete split oct tree data in hash_maps
+
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
     memset(buffer, 0, 1024);
-    sprintf(buffer, "send split rtree spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-
-    clock_gettime(CLOCK_REALTIME, &start);
-    rtree_recreate(plow, phigh);
-    //rtree_query(plow, phigh, the_torus_rtree);
-    clock_gettime(CLOCK_REALTIME, &end);
-    elasped = get_elasped_time(start, end);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "rtree recreate rtree spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-    size_t c = rtree_get_utilization(the_torus_rtree);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "%lu\n", c);
+    sprintf(buffer, "send split oct tree spend %f ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
     return TRUE;
@@ -1281,6 +1280,144 @@ int operate_rtree(struct query_struct query) {
     return TRUE;
 }
 
+// get pre point of pt in trajectory pt->t_id by range query
+int traj_range_query(double *low, double *high, IDTYPE t_id, vector<OctPoint*> &pt_vector) {
+    int i;
+    struct query_struct query;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        query.intval[i].low = low[i];
+        query.intval[i].high = high[i];
+    }
+    query.trajectory_id = t_id;
+    query.data_id = -1;
+    query.op = RTREE_QUERY;
+
+    int socketfd;
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	char dst_ip[IP_ADDR_LENGTH];
+
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = TRAJ_QUERY;
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    memcpy(msg.data, &query, sizeof(struct query_struct));
+
+    byte buf[SOCKET_BUF_SIZE], *ptr;
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    int has_point = 0;
+
+    for( i = 0; i < DIRECTIONS; i++) {
+        if(the_torus->neighbors[i] != NULL) {
+            struct neighbor_node *nn_ptr;
+            nn_ptr = the_torus->neighbors[i]->next;
+            while(nn_ptr != NULL) {
+                node_info *node = nn_ptr->info;
+                if (1 == overlaps(query.intval, node->region)) {
+
+                    strncpy(dst_ip, node->ip, IP_ADDR_LENGTH);
+                    // create a data socket to send rtree data
+                    socketfd = new_client_socket(dst_ip, DATA_PORT);
+                    if (FALSE == socketfd) {
+                        return FALSE;
+                    }
+                    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+                    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+
+                    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+                    // get return points vector
+                    if(recv_safe(socketfd, buf, SOCKET_BUF_SIZE, 0) == SOCKET_BUF_SIZE) {
+                        ptr = buf;
+                        memcpy(&has_point, ptr, sizeof(int));
+                        ptr += sizeof(int);
+                        if(1 == has_point) {
+                            OctPoint *point = new OctPoint();
+                            point->loadFromByteArray(ptr);
+                            pt_vector.push_back(point);
+                        }
+                    }
+                    memset(buf, 0, SOCKET_BUF_SIZE);
+                }
+                nn_ptr = nn_ptr->next;
+            }
+        }
+    } 
+    return TRUE;
+}
+
+int oct_tree_insert(OctPoint *pt) {
+	OctTNode *root = g_NodeList.find(the_torus_oct_tree->tree_root)->second;
+	if (root->containPoint(pt)) {
+		//1.以这个点做rangequery
+		//2.到于查到的点，不在本节点，且tid与这个点相同，需要做面上的插值
+		//3.更新两个server的前后继值
+		//4.更新两个server上的trajectory状态
+		//这个点所在Trajectory不存在
+		if (g_TrajList.find(pt->p_tid) == g_TrajList.end()) {
+
+			vector<OctPoint*> pt_vector;
+			double range[3] = { 1.0, 1.0, 1.0 };  //需要定义一下，以这个点为中心的一个范围
+			double low[3], high[3];
+			for (int i = 0; i < 3; i++) {
+				low[i] = pt->p_xyz[i] - range[i];
+				high[i] = pt->p_xyz[i] + range[i];
+			}
+			//benjin rangequery
+            traj_range_query(low, high, pt->p_tid, pt_vector);//得到包含与其相邻点的vector  ToDo Benjin
+			//rangeQuery(low, high, pt_vector);  
+			for (size_t i = 0; i < pt_vector.size(); i++) {
+				if (pt_vector[i]->p_tid == pt->p_tid &&   //相同Traj
+						pt_vector[i]->p_xyz[2] < pt->p_xyz[2] && //在其前
+						pt_vector[i]->next == 0                         //next为空
+								) {
+					OctPoint *point_new = new OctPoint();
+					g_ptNewCount++;
+					the_torus_oct_tree->geneBorderPoint(pt_vector[i], pt, point_new);      //求出与面的交点
+
+					point_new->p_id = -g_ptNewCount;
+					point_new->p_tid = pt->p_tid;                  //补全信息
+					pt->pre = point_new->p_id;
+					point_new->next = pt->p_id;
+					point_new->pre = 0;                          //更新相关的next和pre
+
+					g_PtList.insert(
+							pair<IDTYPE, OctPoint*>(point_new->p_id,
+									point_new));
+
+					Traj *t = new Traj(pt->p_tid, pt->p_id, pt->p_id); // 新建一个trajectory
+					g_TrajList.insert(pair<int, Traj*>(pt->p_tid, t));
+
+					// TODO (liudehai#1#): 本金将这个点发到邻居server，
+					//邻居server data域里 并 更新所在Traj的tail
+
+				}
+			}
+		}
+
+		else {
+			// 找到所在Trajectory的尾部，并更新相关信息
+			Traj *tmp = g_TrajList.find(pt->p_tid)->second;
+			/*
+			 *near函数用来判断是否是同一个点，这一步用来压缩输入数据用
+			 if(pt->isNear(tmp->t_tail)){
+			 return;
+			 }
+			 */
+			g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
+			pt->pre = tmp->t_tail;
+			tmp->t_tail = pt->p_id;
+		}
+	} else {
+		cout << "point not in this oct-tree!" << endl;
+	}
+    return TRUE;
+}
+
 int operate_oct_tree(struct query_struct query) {
     if(the_torus_rtree == NULL) {
         #ifdef WRITE_LOG
@@ -1302,7 +1439,8 @@ int operate_oct_tree(struct query_struct query) {
         pthread_mutex_lock(&mutex);
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, -1, -1);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
-			the_torus_oct_tree->treeInsert(point);
+            oct_tree_insert(point);
+			//the_torus_oct_tree->treeInsert(point);
             if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
                 torus_split();
             }
@@ -2011,6 +2149,40 @@ int do_performance_test(struct message msg) {
     return TRUE;
 }
 
+int do_trajectory_query(connection_t conn, struct message msg) {
+    struct query_struct query;
+    int has_point = 0;
+    memcpy(&query, msg.data, sizeof(query_struct));
+
+    OctPoint *point = NULL;
+    hash_map<IDTYPE, Traj*>::iterator it;
+    it = g_TrajList.find(query.trajectory_id);
+    if(it != g_TrajList.end()) {
+        has_point = 1;
+        Traj *traj = it->second;
+        // TODO tail or head
+        point = g_PtList.find(traj->t_tail)->second;
+    } 
+
+    int cpy_len = 0;
+    byte buf[SOCKET_BUF_SIZE];
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    memcpy(buf, &has_point, sizeof(int));
+    cpy_len += sizeof(int);
+
+    if(1 == has_point) {
+        byte *package_ptr;
+        uint32_t package_len;
+        point->storeToByteArray(&package_ptr, package_len);
+        memcpy(buf + cpy_len, package_ptr, package_len);
+        cpy_len += package_len;
+
+        delete[] package_ptr;
+    }
+    send_safe(conn->socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+    return TRUE;
+}
+
 int process_message(connection_t conn, struct message msg) {
 
 	struct reply_message reply_msg;
@@ -2189,6 +2361,12 @@ int process_message(connection_t conn, struct message msg) {
         do_load_oct_tree_trajectorys(conn, msg);
         break;
 
+    case TRAJ_QUERY:
+        //conn->used = 0;
+        do_trajectory_query(conn, msg);
+        //conn->used = 1;
+        break;
+
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
         break;
@@ -2287,14 +2465,14 @@ void *listen_epoll(void *args) {
 }
 
 void close_connection(connection_t conn) {
-    //if(conn->used != 0) {
+    if(conn->used != 0) {
         struct epoll_event ev;
 
         conn->used = 0;
         conn->roff = 0;
         epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
         close(conn->socketfd);
-    //}
+    }
 }
 
 void *work_epoll(void *args){
@@ -2319,11 +2497,11 @@ void *work_epoll(void *args){
                     continue;
                 }
 
-                //if(conn->used != 0) {
+                if(conn->used != 0) {
                     ev.events = EPOLLIN | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
                     epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                //}
+                }
 			}
 		}
 	}
