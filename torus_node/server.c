@@ -747,8 +747,9 @@ int rtree_split(const char *dst_ip, double plow[], double phigh[]) {
         count++;
         memcpy(buf + 0, &count, sizeof(uint32_t));
 
-        memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
-        cpy_len += sizeof(uint32_t);
+        // package_len may be unused in do_rtree_load_data() need more test
+        //memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
+        //cpy_len += sizeof(uint32_t);
 
         memcpy(buf + cpy_len, package_ptr, package_len);
         cpy_len += package_len;
@@ -1462,7 +1463,7 @@ int do_rtree_load_data(connection_t conn, struct message msg){
 
     byte *data_ptr, *ptr;
     id_type data_id;
-    uint32_t package_num, package_len, data_len;
+    uint32_t package_num, data_len;// package_len;
     Region region;
     static int count = 0;
 
@@ -1486,8 +1487,8 @@ int do_rtree_load_data(connection_t conn, struct message msg){
             count += package_num;
             while(package_num--){
 
-                memcpy(&package_len, ptr, sizeof(uint32_t));
-                ptr += sizeof(uint32_t);
+                //memcpy(&package_len, ptr, sizeof(uint32_t));
+                //ptr += sizeof(uint32_t);
 
                 memcpy(&data_id, ptr, sizeof(id_type));
                 ptr += sizeof(id_type);
