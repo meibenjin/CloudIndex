@@ -28,8 +28,6 @@ const double eps = 1e-8;
 #define miniDistance 1e-8
 #define threshold 0.97
 
-typedef unsigned char byte;
-
 enum NodeType {
 	LEAF, IDX
 };
@@ -66,8 +64,8 @@ public:
 
 public:
 	uint32_t getByteArraySize();
-	void storeToByteArray(byte **data, uint32_t &len);
-	void loadFromByteArray(const byte *ptr);
+	void storeToByteArray(char **data, uint32_t &len);
+	void loadFromByteArray(const char *ptr);
 
 public:
 	static int getDataLen() {
@@ -89,8 +87,8 @@ public:
 	;
 public:
 	uint32_t getByteArraySize();
-	void storeToByteArray(byte **data, uint32_t &len);
-	void loadFromByteArray(const byte *ptr);
+	void storeToByteArray(char **data, uint32_t &len);
+	void loadFromByteArray(const char *ptr);
 };
 
 class OctTNode {
@@ -141,8 +139,8 @@ public:
 
 public:
 	uint32_t getByteArraySize();
-	void storeToByteArray(byte **pdata, uint32_t &len);
-	void loadFromByteArray(const byte *ptr);
+	void storeToByteArray(char **pdata, uint32_t &len);
+	void loadFromByteArray(const char *ptr);
 
 };
 class OctIdxNode: public OctTNode {
