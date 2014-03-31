@@ -28,10 +28,10 @@ uint32_t OctPoint::getByteArraySize() {
 	return (sizeof(int) * 4 + sizeof(double) * 4 + sizeof(short) * 1);
 }
 
-void OctPoint::storeToByteArray(byte **data, uint32_t &len) {
+void OctPoint::storeToByteArray(char **data, uint32_t &len) {
 	len = getByteArraySize();
-	*data = new byte[len];
-	byte *ptr = *data;
+	*data = new char[len];
+	char *ptr = *data;
 
 	memcpy(ptr, &p_id, sizeof(int));
 	ptr += sizeof(int);
@@ -50,7 +50,7 @@ void OctPoint::storeToByteArray(byte **data, uint32_t &len) {
 
 }
 
-void OctPoint::loadFromByteArray(const byte *ptr) {
+void OctPoint::loadFromByteArray(const char *ptr) {
 
 	memcpy(&p_id, ptr, sizeof(int));
 	ptr += sizeof(int);
@@ -80,10 +80,10 @@ uint32_t Traj::getByteArraySize() {
 	return (sizeof(IDTYPE) * 3);
 }
 
-void Traj::storeToByteArray(byte **data, uint32_t &len) {
+void Traj::storeToByteArray(char **data, uint32_t &len) {
 	len = getByteArraySize();
-	*data = new byte[len];
-	byte *ptr = *data;
+	*data = new char[len];
+	char *ptr = *data;
 
 	memcpy(ptr, &t_id, sizeof(IDTYPE));
 	ptr += sizeof(IDTYPE);
@@ -93,7 +93,7 @@ void Traj::storeToByteArray(byte **data, uint32_t &len) {
 	//ptr += sizeof(IDTYPE);
 }
 
-void Traj::loadFromByteArray(const byte *ptr) {
+void Traj::loadFromByteArray(const char *ptr) {
 	memcpy(&t_id, ptr, sizeof(IDTYPE));
 	ptr += sizeof(IDTYPE);
 	memcpy(&t_head, ptr, sizeof(IDTYPE));
