@@ -34,10 +34,10 @@ uint32_t OctTNode::getByteArraySize() {
 	return (sizeof(NodeType) + sizeof(int) * 11 + sizeof(double) * 3 * 2
 			+ sizeof(size_t) + sizeof(int) * data_size);
 }
-void OctTNode::storeToByteArray(byte **pdata, uint32_t &len) {
+void OctTNode::storeToByteArray(char **pdata, uint32_t &len) {
 	len = getByteArraySize();
-	*pdata = new byte[len];
-	byte *ptr = *pdata;
+	*pdata = new char[len];
+	char *ptr = *pdata;
 
 	memcpy(ptr, &n_type, sizeof(NodeType));
 	ptr += sizeof(NodeType);
@@ -66,7 +66,7 @@ void OctTNode::storeToByteArray(byte **pdata, uint32_t &len) {
 	}
 
 }
-void OctTNode::loadFromByteArray(const byte *ptr) {
+void OctTNode::loadFromByteArray(const char *ptr) {
 	memcpy(&n_type, ptr, sizeof(NodeType));
 	ptr += sizeof(NodeType);
 	memcpy(&n_id, ptr, sizeof(int));
