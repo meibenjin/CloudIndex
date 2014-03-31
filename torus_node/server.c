@@ -858,7 +858,7 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
     for(it = points.begin(); it != points.end(); it++) {
         clock_gettime(CLOCK_REALTIME, &s);
 
-        byte *package_ptr;
+        char *package_ptr;
         uint32_t package_len;
 
         it->second->storeToByteArray(&package_ptr, package_len);
@@ -960,7 +960,7 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
     for(it = nodes.begin(); it != nodes.end(); it++) {
         clock_gettime(CLOCK_REALTIME, &s);
 
-        byte *package_ptr;
+        char *package_ptr;
         uint32_t package_len;
 
         it->second->storeToByteArray(&package_ptr, package_len);
@@ -1062,7 +1062,7 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
     for(it = trajs.begin(); it != trajs.end(); it++) {
         clock_gettime(CLOCK_REALTIME, &s);
 
-        byte *package_ptr;
+        char *package_ptr;
         uint32_t package_len;
 
         it->second->storeToByteArray(&package_ptr, package_len);
@@ -1152,7 +1152,7 @@ int torus_split() {
         new_node->info.region[i].high = high[i];
     }
     //TODO update the_torus region
-    //the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
+    the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
     //new_node->info.region[d].high = (new_node->info.region[d].low + new_node->info.region[d].high) * 0.5;
 
     
@@ -1282,7 +1282,7 @@ int operate_rtree(struct query_struct query) {
 }
 
 // get pre point of pt in trajectory pt->t_id by range query
-int traj_range_query(double *low, double *high, IDTYPE t_id, vector<OctPoint*> &pt_vector) {
+int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vector<OctPoint*> &pt_vector) {
     int i;
     struct query_struct query;
     for(i = 0; i < MAX_DIM_NUM; i++) {
@@ -1303,12 +1303,22 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, vector<OctPoint*> &
 		return FALSE;
 	}
 
+    int cpy_len = 0;
     struct message msg;
     msg.op = TRAJ_QUERY;
     strncpy(msg.stamp, "", STAMP_SIZE);
     memcpy(msg.data, &query, sizeof(struct query_struct));
+    cpy_len += sizeof(struct query_struct);
 
-    byte buf[SOCKET_BUF_SIZE], *ptr;
+    // send the point to neighbor
+    char *package_ptr;
+    uint32_t package_len;
+
+    pt->storeToByteArray(&package_ptr, package_len);
+    memcpy(msg.data + cpy_len, package_ptr, package_len);
+    delete[] package_ptr;
+
+    char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
     int has_point = 0;
 
@@ -1369,7 +1379,7 @@ int oct_tree_insert(OctPoint *pt) {
 				high[i] = pt->p_xyz[i] + range[i];
 			}
 			//benjin rangequery
-            traj_range_query(low, high, pt->p_tid, pt_vector);//得到包含与其相邻点的vector  ToDo Benjin
+            traj_range_query(low, high, pt->p_tid, pt, pt_vector);//得到包含与其相邻点的vector  ToDo Benjin
 			//rangeQuery(low, high, pt_vector);  
 			for (size_t i = 0; i < pt_vector.size(); i++) {
 				if (pt_vector[i]->p_tid == pt->p_tid &&   //相同Traj
@@ -1393,9 +1403,8 @@ int oct_tree_insert(OctPoint *pt) {
 					Traj *t = new Traj(pt->p_tid, pt->p_id, pt->p_id); // 新建一个trajectory
 					g_TrajList.insert(pair<int, Traj*>(pt->p_tid, t));
 
-					// TODO (liudehai#1#): 本金将这个点发到邻居server，
+					// TODO (liudehai#1#): 本金将point_new
 					//邻居server data域里 并 更新所在Traj的tail
-
 				}
 			}
 		}
@@ -1548,7 +1557,7 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
 
     uint32_t package_num;
     int length = 0, loop = 1;
-    byte buf[SOCKET_BUF_SIZE], *ptr;
+    char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
@@ -1589,7 +1598,7 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
 
     uint32_t package_num;
     int length = 0, loop = 1, type = -1, node_id = -1, max_n_id = -1;
-    byte buf[SOCKET_BUF_SIZE], *ptr;
+    char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
@@ -1646,7 +1655,7 @@ int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
 
     uint32_t package_num;
     int length = 0, loop = 1;
-    byte buf[SOCKET_BUF_SIZE], *ptr;
+    char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
@@ -2153,7 +2162,13 @@ int do_performance_test(struct message msg) {
 int do_trajectory_query(connection_t conn, struct message msg) {
     struct query_struct query;
     int has_point = 0;
-    memcpy(&query, msg.data, sizeof(query_struct));
+
+    char *ptr = msg.data; 
+    memcpy(&query, ptr, sizeof(struct query_struct));
+    ptr += sizeof(struct query_struct);
+
+    OctPoint pt;
+    pt.loadFromByteArray(ptr);
 
     OctPoint *point = NULL;
     hash_map<IDTYPE, Traj*>::iterator it;
@@ -2163,6 +2178,17 @@ int do_trajectory_query(connection_t conn, struct message msg) {
         Traj *traj = it->second;
         // TODO tail or head
         point = g_PtList.find(traj->t_tail)->second;
+
+        OctPoint *new_point = new OctPoint();
+        the_torus_oct_tree->geneBorderPoint(point, &pt, new_point);
+
+        point->next = new_point->p_id;
+        new_point->pre = point->p_id;
+        new_point->next = 0;
+
+        g_ptNewCount++;
+        new_point->p_id = -g_ptNewCount;
+
     } 
 
     int cpy_len = 0;
@@ -2172,7 +2198,7 @@ int do_trajectory_query(connection_t conn, struct message msg) {
     cpy_len += sizeof(int);
 
     if(1 == has_point) {
-        byte *package_ptr;
+        char *package_ptr;
         uint32_t package_len;
         point->storeToByteArray(&package_ptr, package_len);
         memcpy(buf + cpy_len, package_ptr, package_len);
