@@ -1058,8 +1058,8 @@ int main(int argc, char **argv) {
     //1 2   39.984683   116.318450  39744.120255    1
 	while (!feof(fp)) {
 
-        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
-        //printf("%d ", query.data_id);
+        fscanf(fp, "%d %d ", &query.op, &query.data_id);
+        printf("%d ", query.data_id);
         count++;
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
@@ -1070,20 +1070,20 @@ int main(int argc, char **argv) {
                 fscanf(fp, "%lf", &value);
                 query.intval[i].low = value;
                 query.intval[i].high = value;
-                //printf("%lf ", query.intval[i].low);
+                printf("%lf ", query.intval[i].low);
             #endif
         }
         fscanf(fp, "%d", &query.trajectory_id);
-        //printf("%d ", query.trajectory_id);
+        printf("%d ", query.trajectory_id);
 
         fscanf(fp, "\n");
-        //printf("\n");
+        printf("\n");
 
         if( FALSE == query_oct_tree(query, entry_ip)) {
             printf("%d\n", count);
             break;
         }
-        if(count % 1000 == 0) {
+        if(count % 1 == 0) {
             printf("%d\n", count);
         }
 	}
