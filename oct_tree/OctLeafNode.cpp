@@ -1,4 +1,5 @@
 #include "OctTree.h"
+#include "utils.h"
 
 OctLeafNode::OctLeafNode(int nid, NodeType type, double* low, double* high,
 		int father) {
@@ -235,6 +236,17 @@ void OctLeafNode::calMid(double* low, double* high, double* xyz) {
 }
 
 void OctLeafNode::geneMidpoint(IDTYPE pid1, IDTYPE pid2, int condition) {
+    /*FILE *fp;
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    char buffer[1024];
+    strcpy(buffer, "leaf node split here 1\n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);*/
+
 	int l1 = geneChildRelativeLocation(pid1);
 	int l2 = geneChildRelativeLocation(pid2);
 	double time = (g_PtList.find(pid1)->second->p_time
@@ -263,7 +275,6 @@ void OctLeafNode::geneMidpoint(IDTYPE pid1, IDTYPE pid2, int condition) {
 		g_PtList.insert(pair<int, OctPoint*>(pid, pt));
 
 		g_ptNewCount++;
-
 		int child_id = geneChildRelativeLocation(pid);
 		if (-1 == n_children[child_id]) {
 			int nid = g_nodeCount + 1;
@@ -443,6 +454,16 @@ void OctLeafNode::nodeSplit() {
 		//judge pre,pre_next
 		//next,next,pre    intersect?
 		int condition;
+        /*FILE *fp;
+        fp = fopen(RESULT_LOG, "ab+");
+        if (fp == NULL) {
+            printf("log: open file %s error.\n", RESULT_LOG);
+            return;
+        }
+        char buffer[1024];
+        sprintf(buffer, "pre %d next %d condition %d\n", pre, next, condition);
+        fwrite(buffer, strlen(buffer), 1, fp);
+        fclose(fp);*/
 		if (pre != 0 && data.find(pre) != data.end() && (condition =
 				judgeBetween(pre, pre_next)) > 1) {
 			geneMidpoint(pre, pre_next, condition);
