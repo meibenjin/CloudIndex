@@ -1,4 +1,5 @@
 #include "OctTree.h"
+#include "utils.h"
 
 hash_map<IDTYPE, OctPoint*> g_PtList;
 IDTYPE g_ptCount = 0;  //without delete
@@ -193,6 +194,16 @@ void OctTree::setDom(double *low, double *high, bool getLow, int &condition) {
 }
 
 void OctTree::treeSplit(bool getLow) {
+    FILE *fp;
+    char buffer[1024];
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    strcpy(buffer, "leaf node split here 1\n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 	//find which axis to cut
 	int x_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	int y_axis[8] = { 0, 1, 4, 5, 2, 3, 6, 7 };
@@ -205,6 +216,15 @@ void OctTree::treeSplit(bool getLow) {
 	for (int i = 0; i < 8; i++) {
 		root->n_children[i] = g_NodeList.find(tree_root)->second->n_children[i];
 	}
+
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    strcpy(buffer, "leaf node split here 2\n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 
 	for (int j = 0; j < 4; j++) {
 		switch (condition) {
@@ -237,7 +257,26 @@ void OctTree::treeSplit(bool getLow) {
 	}
 
 	node_list.insert(pair<int, OctTNode*>(1, root));
+
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    strcpy(buffer, "leaf node split here 3\n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
+
 	copy(root);
+
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    strcpy(buffer, "leaf node split here 4\n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 
 }
 
@@ -257,7 +296,17 @@ bool comparePointTime(IDTYPE p1, IDTYPE p2) {
 }
 
 void OctTree::copy(OctTNode *n_pt) {
+    FILE *fp;
+    char buffer[1024];
 	if (n_pt->n_type == LEAF) {
+        fp = fopen(RESULT_LOG, "ab+");
+        if (fp == NULL) {
+            printf("log: open file %s error.\n", RESULT_LOG);
+            return;
+        }
+        strcpy(buffer, "copy leaf node here 1\n");
+        fwrite(buffer, strlen(buffer), 1, fp);
+        fclose(fp);
 		//OctTNode *tmp = g_NodeList.at(root->n_id);
 		node_list.insert(pair<int, OctTNode*>(n_pt->n_id, n_pt)); //增加到新的server的hash_map上
 		g_NodeList.erase(n_pt->n_id);                   //本机server上NodeList相应的删除
@@ -391,41 +440,24 @@ void OctTree::copy(OctTNode *n_pt) {
 							point_new_next->p_id;
 				}
 			}
-
-			/*
-			 if( pre != 0 && n_pt->data.find(pre)== n_pt->data.end() )//边界点，另一个点在其它Leaf上
-			 {
-			 OctPoint *point;
-			 if( g_PtList.find(pre) != g_PtList.end() )
-			 {
-			 point = g_PtList.find(pre)->second;
-			 }
-			 else
-			 {
-			 point = point_list.find(pre)->second;
-			 }
-			 //int point_in_which = pointInWhichNode(point);//next节点在哪一个leaf node中
-
-			 OctPoint *point_new = new OctPoint();
-			 g_ptNewCount++;
-
-			 point_new->p_id = -g_ptNewCount;
-			 point_new->p_tid = tmp->p_tid;                  //补全信息
-			 tmp->pre = point_new->p_id;
-			 point_new->next = tmp->p_id;
-			 point_new->pre = 0;                                  //更新相关的next和pre
-
-			 geneBorderPoint(point,tmp,point_new);//求出与面的交点
-			 point_list.insert( pair<IDTYPE,OctPoint*>(point_new->p_id,point_new) );//加入到新的hashmap里
-			 //更新traj
-			 if(  comparePointTime(  point_new->p_id, traj_list.find(tmp->p_tid)->second->t_head)  )
-			 {
-			 traj_list.find(tmp->p_tid)->second->t_head = point_new->p_id;
-			 }
-			 }
-			 */
 		}
+        fp = fopen(RESULT_LOG, "ab+");
+        if (fp == NULL) {
+            printf("log: open file %s error.\n", RESULT_LOG);
+            return;
+        }
+        strcpy(buffer, "copy leaf node here 2\n");
+        fwrite(buffer, strlen(buffer), 1, fp);
+        fclose(fp);
 	} else {
+        fp = fopen(RESULT_LOG, "ab+");
+        if (fp == NULL) {
+            printf("log: open file %s error.\n", RESULT_LOG);
+            return;
+        }
+        strcpy(buffer, "copy leaf node here 3\n");
+        fwrite(buffer, strlen(buffer), 1, fp);
+        fclose(fp);
 		//OctTNode *tmp = g_NodeList.at(root->n_id);
 		node_list.insert(pair<int, OctTNode*>(n_pt->n_id, n_pt));
 		for (int i = 0; i < 8; i++) {

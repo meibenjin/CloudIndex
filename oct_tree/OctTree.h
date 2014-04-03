@@ -24,7 +24,7 @@ using namespace __gnu_cxx;
 const double eps = 1e-8;
 
 #define IDTYPE int
-#define nodeLimit 2000
+#define nodeLimit 8 
 #define miniDistance 1e-8
 #define threshold 0.97
 
