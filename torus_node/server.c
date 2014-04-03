@@ -1139,7 +1139,7 @@ int torus_split() {
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
     memset(buffer, 0, 1024);
-    sprintf(buffer, "get_split_dimension spend %f ms\n", (double) elasped/ 1000000.0);
+    sprintf(buffer, "get_split_dimension spend %d %f ms\n", d, (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
     // append a new torus node
@@ -1224,6 +1224,7 @@ int torus_split() {
     clock_gettime(CLOCK_REALTIME, &start);
 
     // split oct_tree
+    write_log(RESULT_LOG, "here 1\n");
     the_torus_oct_tree->treeSplit(true);
     // send split oct tree
     send_oct_points(dst_ip, point_list);
@@ -1332,7 +1333,7 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
 
                     strncpy(dst_ip, node->ip, IP_ADDR_LENGTH);
                     // create a data socket to send rtree data
-                    socketfd = new_client_socket(dst_ip, DATA_PORT);
+                    socketfd = new_client_socket(dst_ip, LISTEN_PORT);
                     if (FALSE == socketfd) {
                         return FALSE;
                     }
@@ -1369,6 +1370,7 @@ int oct_tree_insert(OctPoint *pt) {
 		//3.更新两个server的前后继值
 		//4.更新两个server上的trajectory状态
 		//这个点所在Trajectory不存在
+        int traj_exist = 0;
 		if (g_TrajList.find(pt->p_tid) == g_TrajList.end()) {
 
 			vector<OctPoint*> pt_vector;
@@ -1386,6 +1388,7 @@ int oct_tree_insert(OctPoint *pt) {
 						pt_vector[i]->p_xyz[2] < pt->p_xyz[2] && //在其前
 						pt_vector[i]->next == 0                         //next为空
 								) {
+                    traj_exist = 1;
 					OctPoint *point_new = new OctPoint();
 					g_ptNewCount++;
 					the_torus_oct_tree->geneBorderPoint(pt_vector[i], pt, point_new);      //求出与面的交点
@@ -1407,6 +1410,15 @@ int oct_tree_insert(OctPoint *pt) {
 					//邻居server data域里 并 更新所在Traj的tail
 				}
 			}
+            if(traj_exist == 0) {
+                write_log(RESULT_LOG, "here 1\n");
+                root->nodeInsert(pt);
+                g_ptCount++;
+                write_log(RESULT_LOG, "here 2\n");
+                Traj *t = new Traj(pt->p_tid, pt->p_id, pt->p_id); // 新建一个trajectory
+                g_TrajList.insert(pair<int, Traj*>(pt->p_tid, t));
+                write_log(RESULT_LOG, "here 3\n");
+            }
 		}
 
 		else {
@@ -1421,6 +1433,12 @@ int oct_tree_insert(OctPoint *pt) {
 			g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
 			pt->pre = tmp->t_tail;
 			tmp->t_tail = pt->p_id;
+            root->nodeInsert(pt);
+            g_ptCount++;
+            char buffer[1024];
+            memset(buffer, 0, 1024);
+            sprintf(buffer, "count %d %d\n",  g_ptCount, g_ptNewCount);
+            write_log(RESULT_LOG, buffer);
 		}
 	} else {
 		cout << "point not in this oct-tree!" << endl;
@@ -1450,7 +1468,10 @@ int operate_oct_tree(struct query_struct query) {
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, -1, -1);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
             oct_tree_insert(point);
-			//the_torus_oct_tree->treeInsert(point);
+            char buffer[1024];
+            memset(buffer, 0, 1024);
+            sprintf(buffer, "oct tree point %d %d %lf %lf %lf\n", point->p_id, point->p_tid, point->p_xyz[0], point->p_xyz[1], point->p_xyz[2]);
+            write_log(RESULT_LOG, buffer);
             if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
                 torus_split();
             }
@@ -2379,17 +2400,29 @@ int process_message(connection_t conn, struct message msg) {
         do_rtree_load_data(conn, msg);
         break;
     case LOAD_OCT_TREE_POINTS:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request reload oct tree points.\n");
+        #endif
         do_load_oct_tree_points(conn, msg);
         break;
     case LOAD_OCT_TREE_NODES:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request reload oct tree nodes.\n");
+        #endif
         do_load_oct_tree_nodes(conn, msg);
         break;
     case LOAD_OCT_TREE_TRAJECTORYS:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request reload oct tree trajectorys.\n");
+        #endif
         do_load_oct_tree_trajectorys(conn, msg);
         break;
 
     case TRAJ_QUERY:
         //conn->used = 0;
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request query oct tree trajectory.\n");
+        #endif
         do_trajectory_query(conn, msg);
         //conn->used = 1;
         break;
