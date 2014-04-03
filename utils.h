@@ -30,7 +30,7 @@
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 20000 
+#define DEFAULT_CAPACITY 16 
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
@@ -41,7 +41,7 @@
 #define SKIPLIST_P 0.5
 
 // LOG file path
-//#define WRITE_LOG
+#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
@@ -51,7 +51,7 @@
 
 //limits for epoll
 #define MAX_EVENTS 10000 
-#define EPOLL_NUM 6
+#define EPOLL_NUM 1
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 #define CONN_MAXFD 65536 
