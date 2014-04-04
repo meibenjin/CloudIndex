@@ -24,7 +24,7 @@ using namespace __gnu_cxx;
 const double eps = 1e-8;
 
 #define IDTYPE int
-#define nodeLimit 8
+#define nodeLimit 8 
 #define miniDistance 1e-8
 #define threshold 0.97
 
@@ -57,12 +57,15 @@ public:
 	OctPoint(IDTYPE pid, double time, double *xyz, IDTYPE tid, IDTYPE pre,
 	IDTYPE next);
 
+    OctPoint *clone();
+
 	bool isNear(IDTYPE pid);
 	~OctPoint() {
 	}
 	;
 
 public:
+    void printIt();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **data, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
@@ -86,6 +89,7 @@ public:
 	}
 	;
 public:
+    void printIt();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **data, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
@@ -138,6 +142,7 @@ public:
 	};
 
 public:
+    void printIt();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **pdata, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
@@ -209,7 +214,7 @@ public:
 	bool containPoint(OctPoint *pt);
 	void treeSplit(bool getLow);
 	void setDom(double *low, double *high, bool getLow, int &condition);
-	void copy(OctTNode *root,bool *treeNewLow,bool *treeNewHigh);
+	void copy(OctTNode *root, double *treeNewLow, double *treeNewHigh);
 
 	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void insertBetweenServer();

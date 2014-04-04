@@ -1,4 +1,5 @@
 #include "OctTree.h"
+#include "utils.h"
 
 OctPoint::OctPoint(IDTYPE pid,double time,double *xyz, IDTYPE tid,IDTYPE pre,IDTYPE next){
 	p_id = pid;
@@ -11,6 +12,27 @@ OctPoint::OctPoint(IDTYPE pid,double time,double *xyz, IDTYPE tid,IDTYPE pre,IDT
 	this->next = next;
 
 }
+
+void OctPoint::printIt() {
+    FILE *fp;
+    char buffer[1024];
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    sprintf(buffer, "id:%d pre:%d next:%d x:%lf y:%lf z:%lf traj:%d\n", \
+            p_id, pre, next, p_xyz[0], p_xyz[1], p_xyz[2], p_tid);
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
+}
+
+OctPoint *OctPoint::clone(){
+    OctPoint *point = new OctPoint(p_id, p_time, p_xyz, p_tid, this->pre, this->next);
+    return point;
+}
+
+
 bool OctPoint::isNear(IDTYPE pid){
 	//if(pid==p_id)return false;
 	OctPoint *pt = g_PtList.find(pid)->second;
@@ -74,6 +96,19 @@ Traj::Traj(IDTYPE id,IDTYPE head_id,IDTYPE tail_id){
 	t_id = id;
 	t_tail = tail_id;
 	t_head = head_id;
+}
+
+void Traj::printIt() {
+    FILE *fp;
+    char buffer[1024];
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    sprintf(buffer, "tid:%d head:%d tail:%d\n", t_id, t_head, t_tail);
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 }
 
 uint32_t Traj::getByteArraySize() {
