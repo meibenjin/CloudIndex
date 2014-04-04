@@ -84,17 +84,17 @@ void OctTree::treeInsert(OctPoint *pt) {
 			for (size_t i = 0; i < pt_vector.size(); i++) {
 				if (pt_vector[i]->p_tid == pt->p_tid &&   //相同Traj
 						pt_vector[i]->p_xyz[2] < pt->p_xyz[2] && //在其前
-						pt_vector[i]->next == 0                         //next为空
+						pt_vector[i]->next == NONE                         //next为空
 								) {
 					OctPoint *point_new = new OctPoint();
 					g_ptNewCount++;
-					geneBorderPoint(pt_vector[i], pt, point_new);      //求出与面的交点
+					//geneBorderPoint(pt_vector[i], pt, point_new);      //求出与面的交点
 
 					point_new->p_id = -g_ptNewCount;
 					point_new->p_tid = pt->p_tid;                  //补全信息
 					pt->pre = point_new->p_id;
 					point_new->next = pt->p_id;
-					point_new->pre = 0;                          //更新相关的next和pre
+					point_new->pre = NONE;                          //更新相关的next和pre
 
 					g_PtList.insert(
 							pair<IDTYPE, OctPoint*>(point_new->p_id,
@@ -228,7 +228,7 @@ void OctTree::setDom(double *low, double *high, bool getLow, int &condition) {
 }
 
 void OctTree::treeSplit(bool getLow) {
-    FILE *fp;
+    /*FILE *fp;
     char buffer[1024];
     fp = fopen(RESULT_LOG, "ab+");
     if (fp == NULL) {
@@ -237,7 +237,7 @@ void OctTree::treeSplit(bool getLow) {
     }
     strcpy(buffer, "leaf node split here 1\n");
     fwrite(buffer, strlen(buffer), 1, fp);
-    fclose(fp);
+    fclose(fp);*/
 	//find which axis to cut
 	int x_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	int y_axis[8] = { 0, 1, 4, 5, 2, 3, 6, 7 };
@@ -251,15 +251,6 @@ void OctTree::treeSplit(bool getLow) {
 	for (int i = 0; i < 8; i++) {
 		root->n_children[i] = now->n_children[i];
 	}
-
-    fp = fopen(RESULT_LOG, "ab+");
-    if (fp == NULL) {
-        printf("log: open file %s error.\n", RESULT_LOG);
-        return;
-    }
-    strcpy(buffer, "leaf node split here 2\n");
-    fwrite(buffer, strlen(buffer), 1, fp);
-    fclose(fp);
 
 	for (int j = 0; j < 4; j++) {
 		switch (condition) {
@@ -307,27 +298,7 @@ void OctTree::treeSplit(bool getLow) {
 
 	node_list.insert(pair<int, OctTNode*>(1, root));
 
-    fp = fopen(RESULT_LOG, "ab+");
-    if (fp == NULL) {
-        printf("log: open file %s error.\n", RESULT_LOG);
-        return;
-    }
-    strcpy(buffer, "leaf node split here 3\n");
-    fwrite(buffer, strlen(buffer), 1, fp);
-    fclose(fp);
-
 	copy(root, low, high);
-
-
-    fp = fopen(RESULT_LOG, "ab+");
-    if (fp == NULL) {
-        printf("log: open file %s error.\n", RESULT_LOG);
-        return;
-    }
-    strcpy(buffer, "leaf node split here 4\n");
-    fwrite(buffer, strlen(buffer), 1, fp);
-    fclose(fp);
-
 }
 
 bool comparePointTime(IDTYPE p1, IDTYPE p2) {
@@ -337,7 +308,11 @@ bool comparePointTime(IDTYPE p1, IDTYPE p2) {
 	} else {
 		point1 = point_list.find(p1)->second;
 	}
-	point2 = g_PtList.find(p2)->second;
+	if (g_PtList.find(p2) != g_PtList.end()) {
+        point2 = g_PtList.find(p2)->second;
+    } else {
+        point2 = point_list.find(p2)->second;
+    }
 
 	if (point1->p_xyz[2] < point2->p_xyz[2]) {
 		return true;
@@ -346,18 +321,8 @@ bool comparePointTime(IDTYPE p1, IDTYPE p2) {
 }
 
 void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
-    FILE *fp;
-    char buffer[1024];
 	if (n_pt->n_type == LEAF) {//叶子节点的复制
-        fp = fopen(RESULT_LOG, "ab+");
-        if (fp == NULL) {
-            printf("log: open file %s error.\n", RESULT_LOG);
-            return;
-        }
-        strcpy(buffer, "fuck here 1\n");
-        fwrite(buffer, strlen(buffer), 1, fp);
-        fclose(fp);
-                //新的server上树的范围
+        //新的server上树的范围
 		//OctTNode *tmp = g_NodeList.at(root->n_id);
 		OctTNode *newnode = new OctLeafNode(n_pt->n_id,n_pt->n_type,n_pt->n_domLow,n_pt->n_domHigh,n_pt->n_father);
 		newnode->n_ptCount = n_pt->n_ptCount;
@@ -365,28 +330,18 @@ void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
 		node_list.insert(pair<int, OctTNode*>(newnode->n_id, newnode)); //增加到新的server的hash_map上
 		//g_NodeList.erase(n_pt->n_id);                   //本机server上NodeList相应的删除
 
-        printNodes();
+        //printNodes();
 		while (!n_pt->data.empty()) {//针对这个叶子节点中的data域，按每个Traj的顺序
 			hash_set<IDTYPE>::iterator top = n_pt->data.begin();
 			OctPoint *tmp = g_PtList.find(*top)->second->clone();
 
-                        //下面的if...else主要为了更新在新的server上这个点所在的Traj信息
-                        //如果traj_list没有这个点所在的traj,在新的server上新建一个头,尾为当前Piont的Traj
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 2\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
-
+            //下面的if...else主要为了更新在新的server上这个点所在的Traj信息
+            //如果traj_list没有这个点所在的traj,在新的server上新建一个头,尾为当前Piont的Traj
 			if (traj_list.find(tmp->p_tid) == traj_list.end()) {
 				Traj *trajectory = new Traj(tmp->p_tid, tmp->p_id, tmp->p_id);
 				traj_list.insert(pair<IDTYPE, Traj*>(tmp->p_tid, trajectory));
 			}
-			else//出现过
-			 {
+			else { //出现过
 				Traj *tt = traj_list.find(tmp->p_tid)->second;
 				if (!comparePointTime(tt->t_head, tmp->p_id)) //tmp点在trajectory  head之前
                                 {
@@ -397,16 +352,6 @@ void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
 					tt->t_tail = tmp->p_id;
 				}
 			}
-
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 3\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
-
 
 			IDTYPE pre = tmp->pre;
 			IDTYPE next = tmp->next;
@@ -421,217 +366,119 @@ void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
 				n_pt->data.erase(tmp->p_id);
 			}
 
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 4\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
+            //循环的继续的条件：1、这个点之前有点且在这个leaf中
+            //或者 2、这个点之后有点且在这个leaf中
+            while ((pre != NONE && n_pt->data.find(pre) != n_pt->data.end())
+                    || (next != NONE && n_pt->data.find(next) != n_pt->data.end()))
+            {
+                //是条件1
+                if (pre != NONE && n_pt->data.find(pre) != n_pt->data.end())
+                {
+                    //pre的时间早于traj_list的头
+                    if (comparePointTime(pre,traj_list.find(tmp->p_tid)->second->t_head))
+                    {
+                        //更新新的trajectory，点的信息是完整的，没有必要更新
+                        traj_list.find(tmp->p_tid)->second->t_head = pre;
+                    }
+                    point_list.insert(
+                            pair<IDTYPE, OctPoint*>(pre,
+                                g_PtList.find(pre)->second->clone()));
 
-                        //循环的继续的条件：1、这个点之前有点且在这个leaf中
-                        //或者 2、这个点之后有点且在这个leaf中
+                    newnode->data.insert(pre);
 
-			while ((pre != 0 && n_pt->data.find(pre) != n_pt->data.end())
-					|| (next != 0 && n_pt->data.find(next) != n_pt->data.end()))
-                        {
-                                //是条件1
-				if (pre != 0 && n_pt->data.find(pre) != n_pt->data.end())
-				{
-				        //pre的时间早于traj_list的头
-					if (comparePointTime(pre,traj_list.find(tmp->p_tid)->second->t_head))
-					{
-					        //更新新的trajectory，点的信息是完整的，没有必要更新
-						traj_list.find(tmp->p_tid)->second->t_head = pre;
-					}
-					point_list.insert(
-							pair<IDTYPE, OctPoint*>(pre,
-									g_PtList.find(pre)->second->clone()));
-
-                                        newnode->data.insert(pre);
-
+                    n_pt->data.erase(pre);  //为了在此过程中循环需要
 					pre_next = pre;
 					pre = g_PtList.find(pre)->second->pre; //更新pre标记，与结构无关
 					//g_PtList.erase(pre);  //为了发给另一个server
-					n_pt->data.erase(pre);  //为了在此过程中循环需要
 				}
 				//是条件2
-				if (next != 0 && n_pt->data.find(next) != n_pt->data.end()) {
-					if (comparePointTime(
-							traj_list.find(tmp->p_tid)->second->t_tail, next)) {
-						traj_list.find(tmp->p_tid)->second->t_tail = next;
-					}
-					point_list.insert(
-							pair<IDTYPE, OctPoint*>(next,
-									g_PtList.find(next)->second->clone()));
-                                        newnode->data.insert(next);
-					next_pre = next;
-					next = g_PtList.find(next)->second->next; //更新next标记，与结构无关
-					//g_PtList.erase(next);  //为了发给另一个server
-					n_pt->data.erase(next);  //为了在此过程中循环需要
+				if (next != NONE && n_pt->data.find(next) != n_pt->data.end()) {
+                    if (comparePointTime(
+                                traj_list.find(tmp->p_tid)->second->t_tail, next)) {
+                        traj_list.find(tmp->p_tid)->second->t_tail = next;
+                    }
+                    point_list.insert(
+                            pair<IDTYPE, OctPoint*>(next,
+                                g_PtList.find(next)->second->clone()));
+                    newnode->data.insert(next);
 
+                    n_pt->data.erase(next);  //为了在此过程中循环需要
+                    next_pre = next;
+                    next = g_PtList.find(next)->second->next; //更新next标记，与结构无关
+                    //g_PtList.erase(next);  //为了发给另一个server
 				}
 			}
 
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 5\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
-
 			//边界点，另一个点next在在另一个server的Leaf上,需要插值
-			if (next != 0 && n_pt->data.find(next) == n_pt->data.end()
+			if (next != NONE && n_pt->data.find(next) == n_pt->data.end()
        && !containPointNew(g_PtList.find(next)->second,treeNewLow,treeNewHigh) )
                         {
 				OctPoint *point;
-				//if (g_PtList.find(next) != g_PtList.end()) {
-                                point = g_PtList.find(next)->second;
-				//} else {
-				//	point = point_list.find(next)->second;
-				//}
-
+                point = g_PtList.find(next)->second;
+                //point->printIt();
 				OctPoint *point_new = new OctPoint();
+                OctPoint *point_new_pre = g_PtList.find(next_pre)->second;
 				g_ptNewCount++;
-				geneBorderPoint(tmp, point, point_new);  //求出与面的交点
+				geneBorderPoint(point_new_pre, point, point_new, treeNewLow, treeNewHigh);  //求出与面的交点
 
 				point_new->p_id = -g_ptNewCount;
-				point_new->p_tid = tmp->p_tid;                  //补全信息
+				point_new->p_tid = point_new_pre->p_tid;                  //补全信息
 				tmp->next = point_new->p_id;
-				point_new->pre = tmp->p_id;
-				point_new->next = 0;                             //更新相关的next和pre
+				point_new->pre = point_new_pre->p_id;
+				point_new->next = NONE;                             //更新相关的next和pre
 
-				point_list.insert(
-						pair<IDTYPE, OctPoint*>(point_new->p_id, point_new)); //加入到新的hashmap里
-                                newnode->data.insert(point_new->p_id);
+                //加入到新的hashmap里
+				point_list.insert(pair<IDTYPE, OctPoint*>(point_new->p_id, point_new)); 
+
+                newnode->data.insert(point_new->p_id);
+
 				//更新traj
 				if (comparePointTime(traj_list.find(tmp->p_tid)->second->t_tail,
-						point_new->p_id))
-                                {
-					traj_list.find(tmp->p_tid)->second->t_tail =
-							point_new->p_id;
+                            point_new->p_id))
+                {
+                    traj_list.find(tmp->p_tid)->second->t_tail = point_new->p_id;
 				}
+                traj_list.find(tmp->p_tid)->second->printIt();
 			}
 
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 6\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
-            printNodes();
-            printPoints();
+            //printNodes();
+            //printPoints();
 			//边界点，另一个点pre在在另一个server的Leaf上,需要插值
-            if (pre != 0 && n_pt->data.find(pre) == n_pt->data.end()
+            if (pre != NONE && n_pt->data.find(pre) == n_pt->data.end()
                     && !containPointNew(g_PtList.find(pre)->second,treeNewLow,treeNewHigh) )
             {
-                fp = fopen(RESULT_LOG, "ab+");
-                if (fp == NULL) {
-                    printf("log: open file %s error.\n", RESULT_LOG);
-                    return;
-                }
-                strcpy(buffer, "fuck fuck here fuck\n");
-                fwrite(buffer, strlen(buffer), 1, fp);
-                fclose(fp);
 				OctPoint *point;
-				//if (g_PtList.find(next) != g_PtList.end()) {
-                                point = g_PtList.find(pre)->second;
-				//} else {
-				//	point = point_list.find(next)->second;
-				//}
-                fp = fopen(RESULT_LOG, "ab+");
-                if (fp == NULL) {
-                    printf("log: open file %s error.\n", RESULT_LOG);
-                    return;
-                }
-                strcpy(buffer, "fuck fuck here 1\n");
-                fwrite(buffer, strlen(buffer), 1, fp);
-                fclose(fp);
+                point = g_PtList.find(pre)->second;
 
 				OctPoint *point_new = new OctPoint();
+                OctPoint *point_new_next = g_PtList.find(pre_next)->second;
 				g_ptNewCount++;
-				geneBorderPoint( point, tmp,point_new);  //求出与面的交点
+				geneBorderPoint( point, point_new_next, point_new, treeNewLow, treeNewHigh);  //求出与面的交点
 
 				point_new->p_id = -g_ptNewCount;
-				point_new->p_tid = tmp->p_tid;                  //补全信息
+				point_new->p_tid = point_new_next->p_tid;                  //补全信息
 				tmp->pre = point_new->p_id;
-				point_new->next = tmp->p_id;
-				point_new->pre = 0;                             //更新相关的next和pre
+				point_new->next = point_new_next->p_id;
+				point_new->pre = NONE;                             //更新相关的next和pre
 
-                fp = fopen(RESULT_LOG, "ab+");
-                if (fp == NULL) {
-                    printf("log: open file %s error.\n", RESULT_LOG);
-                    return;
-                }
-                strcpy(buffer, "fuck fuck here 2\n");
-                fwrite(buffer, strlen(buffer), 1, fp);
-                fclose(fp);
+                //加入到新的hashmap里
+				point_list.insert(pair<IDTYPE, OctPoint*>(point_new->p_id, point_new));
+                newnode->data.insert(point_new->p_id);
 
-				point_list.insert(
-						pair<IDTYPE, OctPoint*>(point_new->p_id, point_new)); //加入到新的hashmap里
-                                newnode->data.insert(point_new->p_id);
-
-                fp = fopen(RESULT_LOG, "ab+");
-                if (fp == NULL) {
-                    printf("log: open file %s error.\n", RESULT_LOG);
-                    return;
-                }
-                strcpy(buffer, "fuck fuck here 3\n");
-                fwrite(buffer, strlen(buffer), 1, fp);
-                fclose(fp);
 				//更新traj
                 if (comparePointTime(point_new->p_id,traj_list.find(tmp->p_tid)->second->t_head))
                 {
-                    traj_list.find(tmp->p_tid)->second->t_head =
-                        point_new->p_id;
+                    traj_list.find(tmp->p_tid)->second->t_head = point_new->p_id;
                 }
-
-                fp = fopen(RESULT_LOG, "ab+");
-                if (fp == NULL) {
-                    printf("log: open file %s error.\n", RESULT_LOG);
-                    return;
-                }
-                strcpy(buffer, "fuck fuck here 4\n");
-                fwrite(buffer, strlen(buffer), 1, fp);
-                fclose(fp);
             }
-            fp = fopen(RESULT_LOG, "ab+");
-            if (fp == NULL) {
-                printf("log: open file %s error.\n", RESULT_LOG);
-                return;
-            }
-            strcpy(buffer, "fuck here 7\n");
-            fwrite(buffer, strlen(buffer), 1, fp);
-            fclose(fp);
 		}
-        fp = fopen(RESULT_LOG, "ab+");
-        if (fp == NULL) {
-            printf("log: open file %s error.\n", RESULT_LOG);
-            return;
-        }
-        strcpy(buffer, "fuck here 8\n");
-        fwrite(buffer, strlen(buffer), 1, fp);
-        fclose(fp);
 	}
 	else//非叶子节点的复制
 	 {
-        fp = fopen(RESULT_LOG, "ab+");
-        if (fp == NULL) {
-            printf("log: open file %s error.\n", RESULT_LOG);
-            return;
-        }
-        strcpy(buffer, "copy leaf node here 3\n");
-        fwrite(buffer, strlen(buffer), 1, fp);
-        fclose(fp);
 		OctTNode *newnode = new OctIdxNode(n_pt->n_id,n_pt->n_type,n_pt->n_domLow,n_pt->n_domHigh,n_pt->n_father);
 		node_list.insert(pair<int, OctTNode*>(newnode->n_id, newnode));
 		for (int i = 0; i < 8; i++) {
-			if (n_pt->n_children[i] != -1) {
+			if (n_pt->n_children[i] != NONE) {
 				copy(g_NodeList.find(n_pt->n_children[i])->second, treeNewLow, treeNewHigh);
 			}
 		}
@@ -647,14 +494,14 @@ bool between(double start, double end, double mid) {
 }
 
 void OctTree::geneBorderPoint(OctPoint *pt1, OctPoint *pt2,
-		OctPoint *result_point) {
+		OctPoint *result_point, double *low, double *high) {
 	double result[3];
 	for (int i = 0; i < 3; i++) {
-		if (between(pt1->p_xyz[i], pt2->p_xyz[i], tree_domHigh[i])) {
-			result[i] = tree_domHigh[i]; //dimention 1
+		if (between(pt1->p_xyz[i], pt2->p_xyz[i], high[i])) {
+			result[i] = high[i]; //dimention 1
 			// (x1-x) / (x -x2) = p1 / p2  => x = (p2*x1+p1*x2)/(p1+p2)
-			double p1 = pt1->p_xyz[i] - tree_domHigh[i];
-			double p2 = tree_domHigh[i] - pt1->p_xyz[i];
+			double p1 = pt1->p_xyz[i] - high[i];
+			double p2 = high[i] - pt2->p_xyz[i];
 			double x1 = pt1->p_xyz[(i + 1) % 3];
 			double x2 = pt2->p_xyz[(i + 1) % 3];
 			double y1 = pt1->p_xyz[(i + 2) % 3];
@@ -663,11 +510,11 @@ void OctTree::geneBorderPoint(OctPoint *pt1, OctPoint *pt2,
 			result[(i + 2) % 3] = (p2 * y1 + p1 * y2) / (p1 + p2); //dimention 3
 
 			break;
-		} else if (between(pt1->p_xyz[i], pt2->p_xyz[i], tree_domLow[i])) {
-			result[i] = tree_domLow[i];                        //dimention 1
+		} else if (between(pt1->p_xyz[i], pt2->p_xyz[i], low[i])) {
+			result[i] = low[i];                        //dimention 1
 			// (x1-x) / (x -x2) = p1 / p2  => x = (p2*x1+p1*x2)/(p1+p2)
-			double p1 = pt1->p_xyz[i] - tree_domLow[i];
-			double p2 = tree_domLow[i] - pt1->p_xyz[i];
+			double p1 = pt1->p_xyz[i] - low[i];
+			double p2 = low[i] - pt2->p_xyz[i];
 			double x1 = pt1->p_xyz[(i + 1) % 3];
 			double x2 = pt2->p_xyz[(i + 1) % 3];
 			double y1 = pt1->p_xyz[(i + 2) % 3];
