@@ -41,13 +41,15 @@
 #define SKIPLIST_P 0.5
 
 // LOG file path
-#define WRITE_LOG
+//#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
 #define RTREE_LOG "../logs/rtree.log"
 
-#define TMP_DATA_DIR "/root/mbj/data"
+// Data file path
+#define DATA_DIR "/root/mbj/data"
+#define RANGE_FILE_NAME "range"
 
 //limits for epoll
 #define MAX_EVENTS 10000 
