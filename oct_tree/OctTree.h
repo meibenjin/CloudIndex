@@ -27,6 +27,7 @@ const double eps = 1e-8;
 #define nodeLimit 8 
 #define miniDistance 1e-8
 #define threshold 0.97
+#define NONE -1
 
 enum NodeType {
 	LEAF, IDX
@@ -218,9 +219,14 @@ public:
 
 	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void insertBetweenServer();
-        void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point);
+        void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point, double *low, double* high);
         int pointInWhichNode(OctPoint *pt);
 };
+
+void printNodes();
+
+void printPoints();
+void printTrajs();
 
 extern hash_map<IDTYPE, OctPoint*> g_PtList;
 extern IDTYPE g_ptCount;  //without delete
