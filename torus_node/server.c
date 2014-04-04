@@ -1232,6 +1232,55 @@ int torus_split() {
     send_oct_trajectorys(dst_ip, traj_list);
     //TODO delete split oct tree data in hash_maps
 
+    hash_map<int, OctPoint *>::iterator pit;
+    hash_map<int, OctTNode *>::iterator nit;
+    hash_map<int, Traj *>::iterator tit;
+    for(pit = point_list.begin(); pit != point_list.end(); pit++) {
+        OctPoint *point = pit->second;
+        delete point;
+    }
+    for(nit = node_list.begin(); nit != node_list.end(); nit++) {
+        OctTNode *node = nit->second;
+        delete node;
+    }
+
+    for(tit = traj_list.begin(); tit != traj_list.end(); tit++) {
+        Traj *traj = tit->second;
+        delete traj;
+    }
+
+    // recreate local oct tree
+    the_torus_oct_tree->treeSplit(false);
+
+    // delete origional oct tree
+    for(pit = g_PtList.begin(); pit != g_PtList.end(); pit++) {
+        OctPoint *point = pit->second;
+        delete point;
+    }
+    for(nit = g_NodeList.begin(); nit != g_NodeList.end(); nit++) {
+        OctTNode *node = nit->second;
+        delete node;
+    }
+    for(tit = g_TrajList.begin(); tit != g_TrajList.end(); tit++) {
+        Traj *traj = tit->second;
+        delete traj;
+    }
+
+    for(pit = point_list.begin(); pit != point_list.end(); pit++) {
+        g_PtList.insert(std::pair<IDTYPE, OctPoint *>(pit->second->p_id, pit->second));
+        point_list.erase(pit->second->p_id);
+    }
+    for(nit = node_list.begin(); nit != node_list.end(); nit++) {
+        g_NodeList.insert(std::pair<IDTYPE, OctTNode *>(nit->second->n_id, nit->second));
+        node_list.erase(nit->second->n_id);
+    }
+
+    for(tit = traj_list.begin(); tit != traj_list.end(); tit++) {
+        g_TrajList.insert(std::pair<IDTYPE, Traj *>(tit->second->t_id, tit->second));
+        traj_list.erase(tit->second->t_id);
+    }
+
+
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
     memset(buffer, 0, 1024);
@@ -1411,13 +1460,10 @@ int oct_tree_insert(OctPoint *pt) {
 				}
 			}
             if(traj_exist == 0) {
-                write_log(RESULT_LOG, "here 1\n");
                 root->nodeInsert(pt);
                 g_ptCount++;
-                write_log(RESULT_LOG, "here 2\n");
                 Traj *t = new Traj(pt->p_tid, pt->p_id, pt->p_id); // 新建一个trajectory
                 g_TrajList.insert(pair<int, Traj*>(pt->p_tid, t));
-                write_log(RESULT_LOG, "here 3\n");
             }
 		}
 
@@ -1435,10 +1481,6 @@ int oct_tree_insert(OctPoint *pt) {
 			tmp->t_tail = pt->p_id;
             root->nodeInsert(pt);
             g_ptCount++;
-            char buffer[1024];
-            memset(buffer, 0, 1024);
-            sprintf(buffer, "count %d %d\n",  g_ptCount, g_ptNewCount);
-            write_log(RESULT_LOG, buffer);
 		}
 	} else {
 		cout << "point not in this oct-tree!" << endl;
@@ -1468,17 +1510,21 @@ int operate_oct_tree(struct query_struct query) {
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, -1, -1);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
             oct_tree_insert(point);
-            char buffer[1024];
-            memset(buffer, 0, 1024);
-            sprintf(buffer, "oct tree point %d %d %lf %lf %lf\n", point->p_id, point->p_tid, point->p_xyz[0], point->p_xyz[1], point->p_xyz[2]);
-            write_log(RESULT_LOG, buffer);
+            //char buffer[1024];
+            //memset(buffer, 0, 1024);
+            //sprintf(buffer, "oct tree point %d %d %lf %lf %lf\n", point->p_id, point->p_tid, point->p_xyz[0], point->p_xyz[1], point->p_xyz[2]);
+            //write_log(RESULT_LOG, buffer);
             if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
                 torus_split();
             }
-            //char buffer[1024];
-            //memset(buffer, 0, 1024);
-            //sprintf(buffer, "oct tree point count %d \n", g_NodeList.find(1)->second->n_ptCount);
-            //write_log(RESULT_LOG, buffer);
+            /*static int count = 1;
+            time_t start;
+            start = time(NULL);
+            char buf[30];
+            memset(buf, 0, 30);
+            snprintf(buf, 30, "%ld %d\n", start, count);
+            count++;
+            write_log(RESULT_LOG, buf);*/
 		}
         pthread_mutex_unlock(&mutex);
     }
@@ -1581,6 +1627,8 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
     char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
 
+    int min_p_id = -1;
+
     while(loop) {
         length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
         if(length == 0) {
@@ -1596,6 +1644,9 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
                 OctPoint *point = new OctPoint();
                 point->loadFromByteArray(ptr);
                 g_PtList.insert(pair<IDTYPE, OctPoint*>(point->p_id, point));
+                if( min_p_id > point->p_id) {
+                    min_p_id = point->p_id;
+                }
             }
             memset(buf, 0, SOCKET_BUF_SIZE);
         }
@@ -1603,6 +1654,8 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
+
+    g_ptNewCount = -(min_p_id + 1);
 
     char buffer[1024];
     memset(buffer, 0, 1024);
@@ -1657,6 +1710,8 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
     }
 
     // TODO set max_n_id to oct tree
+    g_nodeCount = max_n_id + 1;
+    g_ptCount = g_NodeList.find(1)->second->n_ptCount;
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
