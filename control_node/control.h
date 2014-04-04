@@ -89,6 +89,8 @@ int dispatch_skip_list(skip_list *list, node_info *node_ptr);
 
 int query_torus(struct query_struct query, const char *entry_ip);
 
+int query_oct_tree(struct query_struct query, const char *entry_ip);
+
 
 #endif /* CONTROL_H_ */
 

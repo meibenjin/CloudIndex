@@ -991,62 +991,13 @@ int main(int argc, char **argv) {
 	print_torus_cluster(cluster_list);
 	printf("\n\n");
 
-    // rtree insert 
-	/*int count = 0, i;
-    struct query_struct query;
-    FILE *fp;
-
-    char data_file[MAX_FILE_NAME];
-    snprintf(data_file, MAX_FILE_NAME, "%s/data", TMP_DATA_DIR);
-	fp = fopen(data_file, "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    printf("begin read.\n");
-	while (!feof(fp)) {
-
-        fscanf(fp, "%d %d %d", &query.op, &query.trajectory_id, &query.data_id);
-        count++;
-        //printf("%d %d %d ", ++count, op, id);
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-                //printf("%d ", query.intval[i].low);
-            #else
-                fscanf(fp, "%lf", &query.intval[i].low);
-                //printf("%lf ", query.intval[i].low);
-            #endif
-        }
-
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].high);
-                //printf("%d ", query.intval[i].high);
-            #else
-                fscanf(fp, "%lf", &query.intval[i].high);
-                //printf("%lf ", query.intval[i].high);
-            #endif
-        }
-        fscanf(fp, "\n");
-        //printf("\n");
-
-        query_torus(query, entry_ip);
-        //printf("\n");
-        if(count % 1000 == 0) {
-            printf("%d\n", count);
-        }
-	}
-    printf("finish read.\n");
-	fclose(fp);*/
 
 	int count = 0, i;
     struct query_struct query;
     FILE *fp;
 
     char data_file[MAX_FILE_NAME];
-    snprintf(data_file, MAX_FILE_NAME, "%s/data", TMP_DATA_DIR);
+    snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
 	fp = fopen(data_file, "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
@@ -1058,8 +1009,8 @@ int main(int argc, char **argv) {
     //1 2   39.984683   116.318450  39744.120255    1
 	while (!feof(fp)) {
 
-        fscanf(fp, "%d %d ", &query.op, &query.data_id);
-        printf("%d ", query.data_id);
+        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
+        //printf("%d ", query.data_id);
         count++;
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
@@ -1070,14 +1021,14 @@ int main(int argc, char **argv) {
                 fscanf(fp, "%lf", &value);
                 query.intval[i].low = value;
                 query.intval[i].high = value;
-                printf("%lf ", query.intval[i].low);
+                //printf("%lf ", query.intval[i].low);
             #endif
         }
         fscanf(fp, "%d", &query.trajectory_id);
-        printf("%d ", query.trajectory_id);
+        //printf("%d ", query.trajectory_id);
 
         fscanf(fp, "\n");
-        printf("\n");
+        //printf("\n");
 
         if( FALSE == query_oct_tree(query, entry_ip)) {
             printf("%d\n", count);
