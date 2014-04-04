@@ -41,7 +41,7 @@
 #define SKIPLIST_P 0.5
 
 // LOG file path
-//#define WRITE_LOG
+#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
