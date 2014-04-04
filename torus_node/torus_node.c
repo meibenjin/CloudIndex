@@ -41,11 +41,11 @@ void init_torus_node(torus_node *node_ptr) {
 
 int set_interval(node_info *node_ptr){
     int i;
-    int cid = node_ptr->cluster_id;
-    coordinate nid = node_ptr->node_id;
+    int c_id = node_ptr->cluster_id;
+    coordinate pc = node_ptr->node_id;
 
     char range_file[MAX_FILE_NAME];
-    snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", TMP_DATA_DIR, cid, nid.x, nid.y, nid.z);
+    snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", DATA_DIR, c_id, pc.x, pc.y, pc.z);
     FILE *fp = fopen(range_file, "rb");
     if(fp == NULL) {
         printf("can't open range file %s\n", range_file);
@@ -53,9 +53,9 @@ int set_interval(node_info *node_ptr){
     }
     for (i = 0; i < MAX_DIM_NUM; i++) {
         #ifdef INT_DATA
-            fscanf(fp, "%d %d", &node_ptr->region[i].low, &node_ptr->region[i].high);
+            fscanf(fp, "%d\t%d", &node_ptr->region[i].low, &node_ptr->region[i].high);
         #else
-            fscanf(fp, "%lf %lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
+            fscanf(fp, "%lf\t%lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
         #endif
     }
     fclose(fp);
