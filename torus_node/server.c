@@ -1422,6 +1422,7 @@ int oct_tree_insert(OctPoint *pt) {
 		//4.更新两个server上的trajectory状态
 		//这个点所在Trajectory不存在
         write_log(RESULT_LOG, "here 1\n");
+        printTrajs();
         int traj_exist = 0;
 		if (g_TrajList.find(pt->p_tid) == g_TrajList.end()) {
             write_log(RESULT_LOG, "here 2\n");
