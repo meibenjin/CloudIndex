@@ -18,10 +18,22 @@ OctLeafNode::OctLeafNode(int nid, NodeType type, double* low, double* high,
 
 void OctLeafNode::nodeInsert(OctPoint *pt) {
 	//g_PtList.insert(make_pair(pt->p_id,pt));
+    printNodes();
+    FILE *fp;
+    char buffer[1024];
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    strcpy(buffer, "leaf node here \n");
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 	g_PtList.insert(pair<int, OctPoint*>(pt->p_id, pt));
 	data.insert(pt->p_id);
 	n_ptCount++;
 	nodeAjust();
+    printNodes();
 }
 
 void OctLeafNode::geneChildRelativeLocation(OctPoint *pt, int* l) {
