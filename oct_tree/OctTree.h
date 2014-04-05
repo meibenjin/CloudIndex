@@ -160,6 +160,8 @@ public:
 	OctIdxNode(int nid, NodeType type, double* low, double* high, int father);
 	void nodeInsert(OctPoint *pt);
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
+    int sum(int *a);
+    void specialInsert(OctPoint *pt);
 };
 
 class OctLeafNode: public OctTNode {
