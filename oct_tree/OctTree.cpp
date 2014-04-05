@@ -154,9 +154,9 @@ bool containPointNew(OctPoint *pt,double *low,double *high)
 
 void OctTree::setDom(double *low, double *high, bool getLow, int &condition) {
 	//find which axis to cut
-	int x_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+	int z_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	int y_axis[8] = { 0, 1, 4, 5, 2, 3, 6, 7 };
-	int z_axis[8] = { 0, 2, 4, 6, 1, 3, 5, 7 };
+	int x_axis[8] = { 0, 2, 4, 6, 1, 3, 5, 7 };
 	int countX_low = 0;
 	int countY_low = 0;
 	int countZ_low = 0;
@@ -239,9 +239,9 @@ void OctTree::treeSplit(bool getLow) {
     fwrite(buffer, strlen(buffer), 1, fp);
     fclose(fp);*/
 	//find which axis to cut
-	int x_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+	int z_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	int y_axis[8] = { 0, 1, 4, 5, 2, 3, 6, 7 };
-	int z_axis[8] = { 0, 2, 4, 6, 1, 3, 5, 7 };
+	int x_axis[8] = { 0, 2, 4, 6, 1, 3, 5, 7 };
 	double low[3];
 	double high[3];
 	int condition;
