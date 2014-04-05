@@ -14,9 +14,148 @@ OctIdxNode::OctIdxNode(int nid, NodeType type, double* low, double* high,
 		n_children[i] = -1;
 	}
 }
+
+int OctIdxNode::sum(int *a)
+{
+    int i;
+    int sum1=0,sum2=0;
+    for(i=0; i<4; i++)
+    {
+        sum1 += n_children[a[i]];
+        sum2 += n_children[a[i+4]];
+    }
+    return sum1 < sum2 ? sum1 : sum2;
+}
+
+void OctIdxNode::specialInsert(OctPoint *pt)
+{
+    //将为-1的child全new 一个OctTNode
+    int i;
+    int z_axis[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    int y_axis[8] = { 0, 1, 4, 5, 2, 3, 6, 7 };
+    int x_axis[8] = { 0, 2, 4, 6, 1, 3, 5, 7 };
+    if( -8 == sum(x_axis) )//按x轴切的
+    {
+        for(i=0; i<8; i++)
+        {
+            if( -1 == n_children[i] )//这个孩子尚没有点
+            {
+                double low[3];
+                double high[3];
+                octsplit(low, high, i, n_domLow, n_domHigh);
+                low[0] = n_domLow[0];
+                high[0] = n_domHigh[0];
+                int nid = g_nodeCount + 1;
+                OctLeafNode *tmp = new OctLeafNode(nid, LEAF, low, high, n_id);
+                g_NodeList.insert(pair<int, OctTNode*>(nid, tmp));
+                n_children[i] = nid;
+                g_leafCount++;
+                g_nodeCount++;
+            }
+        }
+        for(i=0; i<8; i++)
+        {
+            if( -2 != n_children[i] )
+            {
+                OctTNode *temp = g_NodeList.find(n_children[i])->second;
+                if (temp->containPoint(pt))
+                {
+                    temp->nodeInsert(pt);
+                    break;
+                }
+            }
+        }
+    }
+    else if( -8 == sum(y_axis) )
+    {
+        for(i=0; i<8; i++)
+        {
+            if( -1 == n_children[i] )//这个孩子尚没有点
+            {
+                double low[3];
+                double high[3];
+                octsplit(low, high, i, n_domLow, n_domHigh);
+                low[1] = n_domLow[1];
+                high[1] = n_domHigh[1];
+                int nid = g_nodeCount + 1;
+                OctLeafNode *tmp = new OctLeafNode(nid, LEAF, low, high, n_id);
+                g_NodeList.insert(pair<int, OctTNode*>(nid, tmp));
+                n_children[i] = nid;
+                g_leafCount++;
+                g_nodeCount++;
+            }
+        }
+        for(i=0; i<8; i++)
+        {
+            if( -2 != n_children[i] )
+            {
+                OctTNode *temp = g_NodeList.find(n_children[i])->second;
+                if (temp->containPoint(pt))
+                {
+                    temp->nodeInsert(pt);
+                    break;
+                }
+            }
+        }
+    }
+    else if( -8 == sum(z_axis) )
+    {
+        for(i=0; i<8; i++)
+        {
+            if( -1 == n_children[i] )//这个孩子尚没有点
+            {
+                double low[3];
+                double high[3];
+                octsplit(low, high, i, n_domLow, n_domHigh);
+                low[2] = n_domLow[2];
+                high[2] = n_domHigh[2];
+                int nid = g_nodeCount + 1;
+                OctLeafNode *tmp = new OctLeafNode(nid, LEAF, low, high, n_id);
+                g_NodeList.insert(pair<int, OctTNode*>(nid, tmp));
+                n_children[i] = nid;
+                g_leafCount++;
+                g_nodeCount++;
+            }
+        }
+        for(i=0; i<8; i++)
+        {
+            if( -2 != n_children[i] )
+            {
+                OctTNode *temp = g_NodeList.find(n_children[i])->second;
+                if (temp->containPoint(pt))
+                {
+                    temp->nodeInsert(pt);
+                    break;
+                }
+            }
+        }
+    }
+    else
+    {
+        cout<<"wrong!!"<<endl;
+    }
+
+}
+
 void OctIdxNode::nodeInsert(OctPoint *pt) {
-	n_ptCount++;
 	int i;
+    if(n_id==1)//对于根节点采用特殊处理逻辑
+    {
+        int split_flag = 0;
+        for( i = 0; i<8; i++)
+        {
+            if( -2 == n_children[i] )
+            {
+                split_flag = 1;
+            }
+        }
+        if( 1 == split_flag )
+        {
+            specialInsert(pt);
+            return;
+        }
+    }
+	n_ptCount++;
 	for (i = 0; i < 8; i++) {
 		if (!containPoint(pt, i))
 			continue;
