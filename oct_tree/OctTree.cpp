@@ -255,34 +255,23 @@ void OctTree::treeSplit(bool getLow) {
 	for (int j = 0; j < 4; j++) {
 		switch (condition) {
 		case 0:
-			if (!getLow)
-			{
+			if (!getLow){
 				root->n_children[x_axis[j]] = -1;
-			}
-
-			else
-			{
+			} else {
 				root->n_children[x_axis[j + 4]] = -1;
 			}
-
 			break;
 		case 1:
-			if (!getLow)
-			{
+			if (!getLow){
 				root->n_children[y_axis[j]] = -1;
-			}
-			else
-			{
+			} else {
 				root->n_children[y_axis[j + 4]] = -1;
 			}
 			break;
 		default:
-			if (!getLow)
-			{
+			if (!getLow) {
 				root->n_children[z_axis[j]] = -1;
-			}
-			else
-			{
+			} else {
 				root->n_children[z_axis[j + 4]] = -1;
 			}
 			break;
