@@ -1421,11 +1421,8 @@ int oct_tree_insert(OctPoint *pt) {
 		//3.更新两个server的前后继值
 		//4.更新两个server上的trajectory状态
 		//这个点所在Trajectory不存在
-        write_log(RESULT_LOG, "here 1\n");
-        printTrajs();
         int traj_exist = 0;
 		if (g_TrajList.find(pt->p_tid) == g_TrajList.end()) {
-            write_log(RESULT_LOG, "here 2\n");
 
 			vector<OctPoint*> pt_vector;
 			double range[3] = { 1.0, 1.0, 1.0 };  //需要定义一下，以这个点为中心的一个范围
@@ -1482,12 +1479,16 @@ int oct_tree_insert(OctPoint *pt) {
 			 return;
 			 }
 			 */
-			g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
-			pt->pre = tmp->t_tail;
+            if(g_PtList.find(tmp->t_tail) != g_PtList.end()){
+			    g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
+            }
+            else{
+                printNodes();
+            }
+            pt->pre = tmp->t_tail;
 			tmp->t_tail = pt->p_id;
             root->nodeInsert(pt);
             g_ptCount++;
-            write_log(RESULT_LOG, "here 3\n");
 		}
 	} else {
 		cout << "point not in this oct-tree!" << endl;
@@ -1517,8 +1518,8 @@ int operate_oct_tree(struct query_struct query) {
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, NONE, NONE);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
             oct_tree_insert(point);
-            printNodes();
-            write_log(RESULT_LOG, "here 4\n");
+            //printNodes();
+            //write_log(RESULT_LOG, "here 4\n");
             //char buffer[1024];
             //memset(buffer, 0, 1024);
             //sprintf(buffer, "oct tree point %d %d %lf %lf %lf\n", point->p_id, point->p_tid, point->p_xyz[0], point->p_xyz[1], point->p_xyz[2]);
@@ -1672,7 +1673,7 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
     sprintf(buffer, "receive split oct tree points spend %f ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
-    printPoints();
+    //printPoints();
 
     return TRUE;
 }
@@ -1737,7 +1738,7 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
     sprintf(buffer, "receive split oct tree nodes spend %f ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
-    printNodes();
+    //printNodes();
 
     return TRUE;
 }
@@ -1781,7 +1782,7 @@ int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
     sprintf(buffer, "receive split oct tree trajectorys spend %f ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
 
-    printTrajs();
+    //printTrajs();
 
     return TRUE;
 }
