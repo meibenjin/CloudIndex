@@ -16,7 +16,7 @@ for line in lines:
     child = pexpect.spawn('ssh-copy-id -i /root/.ssh/id_rsa.pub ' + user_name + '@' + line)
     message = ''
     try:
-        i = child.expect(['[Pp]assword:','continue connecting (yes/no?)'])
+        i = child.expect(['[Pp]assword:','continue connecting'])
         if i == 0:
             child.sendline(pwd)
         elif i == 1:
