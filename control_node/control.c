@@ -1034,7 +1034,7 @@ int main(int argc, char **argv) {
             printf("%d\n", count);
             break;
         }
-        if(count % 1 == 0) {
+        if(count % 1000 == 0) {
             printf("%d\n", count);
         }
 	}
