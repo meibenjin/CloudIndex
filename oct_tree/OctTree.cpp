@@ -246,7 +246,7 @@ void OctTree::treeSplit(bool getLow) {
 	double high[3];
 	int condition;
 	setDom(low, high, getLow, condition);                         //new tree dom
-	OctTNode *root = new OctTNode(1, IDX, tree_domLow, tree_domHigh, -1);
+	OctTNode *root = new OctIdxNode(1, IDX, tree_domLow, tree_domHigh, -1);
 	OctTNode *now = g_NodeList.find(tree_root)->second;
 	for (int i = 0; i < 8; i++) {
 		root->n_children[i] = now->n_children[i];
@@ -256,30 +256,30 @@ void OctTree::treeSplit(bool getLow) {
 		switch (condition) {
 		case 0:
 			if (!getLow){
-				root->n_children[x_axis[j]] = -1;
+				root->n_children[x_axis[j]] = SPLIT_FLAG;
 			} else {
-				root->n_children[x_axis[j + 4]] = -1;
+				root->n_children[x_axis[j + 4]] = SPLIT_FLAG;
 			}
 			break;
 		case 1:
 			if (!getLow){
-				root->n_children[y_axis[j]] = -1;
+				root->n_children[y_axis[j]] = SPLIT_FLAG;
 			} else {
-				root->n_children[y_axis[j + 4]] = -1;
+				root->n_children[y_axis[j + 4]] = SPLIT_FLAG;
 			}
 			break;
 		default:
 			if (!getLow) {
-				root->n_children[z_axis[j]] = -1;
+				root->n_children[z_axis[j]] = SPLIT_FLAG;
 			} else {
-				root->n_children[z_axis[j + 4]] = -1;
+				root->n_children[z_axis[j + 4]] = SPLIT_FLAG;
 			}
 			break;
 		}
 	}
 
 	for (int i = 0; i < 8; i++) {
-		if (-1 != root->n_children[i]) {
+		if (0 <= root->n_children[i]) {
 			root->n_ptCount +=
 					g_NodeList.find(root->n_children[i])->second->n_ptCount;
 		}
@@ -467,7 +467,7 @@ void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
 		OctTNode *newnode = new OctIdxNode(n_pt->n_id,n_pt->n_type,n_pt->n_domLow,n_pt->n_domHigh,n_pt->n_father);
 		node_list.insert(pair<int, OctTNode*>(newnode->n_id, newnode));
 		for (int i = 0; i < 8; i++) {
-			if (n_pt->n_children[i] != NONE) {
+			if (n_pt->n_children[i] >= 0) {
 				copy(g_NodeList.find(n_pt->n_children[i])->second, treeNewLow, treeNewHigh);
 			}
 		}
@@ -521,7 +521,7 @@ int OctTree::pointInWhichNode(OctPoint *pt) {
 	//OctTNode *child;
 	while (root->n_type != LEAF) {
 		for (int i = 0; i < 8; i++) {
-			if (-1 == root->n_children[i])
+			if (0 > root->n_children[i])
 				continue;
 			//child = g_NodeList.find(root->n_children[i])->second;
 			if (root->containPoint(pt, i)) {

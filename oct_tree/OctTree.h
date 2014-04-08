@@ -24,10 +24,11 @@ using namespace __gnu_cxx;
 const double eps = 1e-8;
 
 #define IDTYPE int
-#define nodeLimit 8 
+#define nodeLimit 100 
 #define miniDistance 1e-8
 #define threshold 0.97
 #define NONE -1
+#define SPLIT_FLAG -2
 
 enum NodeType {
 	LEAF, IDX
@@ -126,10 +127,8 @@ public:
 			double* high);
 
 	//virtual bool split_or_not(){cout<<"base insert!"<<endl;return false;}
-	virtual void nodeInsert(OctPoint *pt) {
-		cout << "base insert!" << endl;
-	}
-	;
+	virtual void nodeInsert(OctPoint *pt) {};
+    virtual void printIt(){};
 	virtual void nodeSplit() {
 		cout << "base split!" << endl;
 	}
@@ -143,7 +142,7 @@ public:
 	};
 
 public:
-    void printIt();
+    //void printIt();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **pdata, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
@@ -159,6 +158,7 @@ public:
 	;
 	OctIdxNode(int nid, NodeType type, double* low, double* high, int father);
 	void nodeInsert(OctPoint *pt);
+    void printIt();
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
     int sum(int *a);
     void specialInsert(OctPoint *pt);
@@ -176,6 +176,7 @@ public:
 
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void nodeInsert(OctPoint *pt);
+    void printIt();
 	void nodeSplit();
 	void geneChildRelativeLocation(OctPoint *pt, int *l);
 	void geneChildRelativeLocation(double* xyz, int* l);

@@ -1,4 +1,5 @@
 #include "OctTree.h"
+#include "utils.h"
 
 OctIdxNode::OctIdxNode(int nid, NodeType type, double* low, double* high,
 		int father) {
@@ -13,6 +14,31 @@ OctIdxNode::OctIdxNode(int nid, NodeType type, double* low, double* high,
 	for (int i = 0; i < 8; i++) {
 		n_children[i] = -1;
 	}
+}
+
+void OctIdxNode::printIt() {
+    FILE *fp;
+    char buffer[1024];
+    fp = fopen(RESULT_LOG, "ab+");
+    if (fp == NULL) {
+        printf("log: open file %s error.\n", RESULT_LOG);
+        return;
+    }
+    int i = 0, len = 0;
+    len = sprintf(buffer, "idx nid:%d ntype:%d nfater:%d ncount:%d children[", n_id, n_type, n_father, n_ptCount);
+    for(i = 0; i < 8; i++) {
+        len += sprintf(buffer + len, "%d ", n_children[i]);
+    } 
+    len += sprintf(buffer + len, "] data[");
+
+	hash_set<IDTYPE>::iterator it;
+	for (it = data.begin(); it != data.end(); it++) {
+        len += sprintf(buffer + len, "%d ", *it);
+	}
+    len += sprintf(buffer + len, "]\n");
+
+    fwrite(buffer, strlen(buffer), 1, fp);
+    fclose(fp);
 }
 
 int OctIdxNode::sum(int *a)
@@ -139,6 +165,7 @@ void OctIdxNode::specialInsert(OctPoint *pt)
 
 void OctIdxNode::nodeInsert(OctPoint *pt) {
 	int i;
+	n_ptCount++;
     if(n_id==1)//对于根节点采用特殊处理逻辑
     {
         int split_flag = 0;
@@ -155,7 +182,6 @@ void OctIdxNode::nodeInsert(OctPoint *pt) {
             return;
         }
     }
-	n_ptCount++;
 	for (i = 0; i < 8; i++) {
 		if (!containPoint(pt, i))
 			continue;

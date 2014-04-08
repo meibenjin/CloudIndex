@@ -16,9 +16,7 @@ OctLeafNode::OctLeafNode(int nid, NodeType type, double* low, double* high,
 	}
 }
 
-void OctLeafNode::nodeInsert(OctPoint *pt) {
-	//g_PtList.insert(make_pair(pt->p_id,pt));
-    printNodes();
+void OctLeafNode::printIt() {
     FILE *fp;
     char buffer[1024];
     fp = fopen(RESULT_LOG, "ab+");
@@ -26,14 +24,30 @@ void OctLeafNode::nodeInsert(OctPoint *pt) {
         printf("log: open file %s error.\n", RESULT_LOG);
         return;
     }
-    strcpy(buffer, "leaf node here \n");
+    int i = 0, len = 0;
+    len = sprintf(buffer, "leaf nid:%d ntype:%d nfater:%d ncount:%d children[", n_id, n_type, n_father, n_ptCount);
+    for(i = 0; i < 8; i++) {
+        len += sprintf(buffer + len, "%d ", n_children[i]);
+    } 
+    len += sprintf(buffer + len, "] data[");
+
+	hash_set<IDTYPE>::iterator it;
+	for (it = data.begin(); it != data.end(); it++) {
+        len += sprintf(buffer + len, "%d ", *it);
+	}
+    len += sprintf(buffer + len, "]\n");
+
     fwrite(buffer, strlen(buffer), 1, fp);
     fclose(fp);
+}
+
+void OctLeafNode::nodeInsert(OctPoint *pt) {
+	//g_PtList.insert(make_pair(pt->p_id,pt));
+    
 	g_PtList.insert(pair<int, OctPoint*>(pt->p_id, pt));
 	data.insert(pt->p_id);
 	n_ptCount++;
 	nodeAjust();
-    printNodes();
 }
 
 void OctLeafNode::geneChildRelativeLocation(OctPoint *pt, int* l) {

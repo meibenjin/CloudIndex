@@ -30,7 +30,8 @@ OctTNode::OctTNode(int nid, NodeType type, double* low, double* high,
 	}
 }
 
-void OctTNode::printIt() {
+
+/*void OctTNode::printIt() {
     FILE *fp;
     char buffer[1024];
     fp = fopen(RESULT_LOG, "ab+");
@@ -39,7 +40,7 @@ void OctTNode::printIt() {
         return;
     }
     int i = 0, len = 0;
-    len = sprintf(buffer, "nid:%d nfater:%d ncount:%d children[", n_id, n_father, n_ptCount);
+    len = sprintf(buffer, "nid:%d ntype:%d nfater:%d ncount:%d children[", n_id, n_type, n_father, n_ptCount);
     for(i = 0; i < 8; i++) {
         len += sprintf(buffer + len, "%d ", n_children[i]);
     } 
@@ -53,7 +54,7 @@ void OctTNode::printIt() {
 
     fwrite(buffer, strlen(buffer), 1, fp);
     fclose(fp);
-}
+}*/
 
 uint32_t OctTNode::getByteArraySize() {
 	size_t data_size = data.size();
