@@ -1159,6 +1159,7 @@ int do_query_torus_cluster(struct message msg) {
     // all leaders has the same region
     // random choose a leader 
     int index = rand() % LEADER_NUM;
+
 	if (0 == interval_overlap(sln_ptr->leader[index].region[2], query.intval[2])) { // node searched
 		if (FALSE == gen_request_stamp(stamp)) {
 			return FALSE;
@@ -1258,10 +1259,8 @@ int do_query_torus_cluster(struct message msg) {
 	} else if (-1 == interval_overlap(sln_ptr->leader[index].region[2], query.intval[2])) { // node is on the forward of skip list
 		int visit_forward = 0;
 		for (i = the_skip_list->level; i >= 0; --i) {
-			if ((sln_ptr->level[i].forward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[i].forward->leader[index].region[2],
-							query.intval[2]) <= 0)) {
+			if ((sln_ptr->level[i].forward != NULL) && \
+                    (interval_overlap(sln_ptr->level[i].forward->leader[index].region[2], query.intval[2]) <= 0)) {
 
 				get_node_ip(sln_ptr->level[i].forward->leader[index], dst_ip);
 				fill_message((OP)msg.op, src_ip, dst_ip, "forward", msg.data,
@@ -1280,10 +1279,8 @@ int do_query_torus_cluster(struct message msg) {
 	} else {							// node is on the backward of skip list
 		int visit_backward = 0;
 		for (i = the_skip_list->level; i >= 0; --i) {
-			if ((sln_ptr->level[i].backward != NULL)
-					&& (interval_overlap(
-							sln_ptr->level[i].backward->leader[index].region[2],
-							query.intval[2]) >= 0)) {
+			if ((sln_ptr->level[i].backward != NULL) && \
+                    (interval_overlap(sln_ptr->level[i].backward->leader[index].region[2], query.intval[2]) >= 0)) {
 
 				get_node_ip(sln_ptr->level[i].backward->leader[index], dst_ip);
 				fill_message((OP)msg.op, src_ip, dst_ip, "backward", msg.data,
