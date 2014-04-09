@@ -243,9 +243,9 @@ int set_neighbors(torus_s *torus, torus_node *node_ptr) {
 	return TRUE;
 }
 
-//TODO choose a leader node
+// TODO choose LEADER_NUM leder nodes
 node_info *assign_torus_leader(torus_s *torus) {
-	node_info *leader_node = (node_info*) malloc(sizeof(node_info));
+	node_info *leader_node = (node_info *) malloc(sizeof(node_info) * LEADER_NUM);
 	if (leader_node == NULL) {
 		return NULL;
 	}
@@ -253,24 +253,50 @@ node_info *assign_torus_leader(torus_s *torus) {
 	int i, j;
 	int nodes_num = get_nodes_num(torus->partition);
 
-	// default set 0# torus node as leader node
-	*leader_node = torus->node_list[0].info;
+	struct interval total_region[MAX_DIM_NUM];
+	for (i = 0; i < MAX_DIM_NUM; ++i) {
+        total_region[i] = torus->node_list[0].info.region[i];
+    }
 
 	//calculate total interval in a torus cluster
 	for (i = 0; i < MAX_DIM_NUM; ++i) {
 		for (j = 1; j < nodes_num; ++j) {
-			if (torus->node_list[j].info.region[i].low
-					< leader_node->region[i].low) {
-				leader_node->region[i].low = torus->node_list[j].info.region[i].low;
+			if (torus->node_list[j].info.region[i].low < total_region[i].low) {
+				total_region[i].low = torus->node_list[j].info.region[i].low;
 			}
-			if (torus->node_list[j].info.region[i].high
-					> leader_node->region[i].high) {
-				leader_node->region[i].high =
-						torus->node_list[j].info.region[i].high;
+			if (torus->node_list[j].info.region[i].high > total_region[i].high) {
+				total_region[i].high = torus->node_list[j].info.region[i].high;
 			}
 		}
 	}
+
+    int index[nodes_num];
+    shuffle(index, nodes_num);
+    // random choose LEADER_NUM torus nodes as leader
+    for(i = 0; i < LEADER_NUM; ++i) {
+        leader_node[i] = torus->node_list[index[i]].info;
+        for( j = 0; j < MAX_DIM_NUM; ++j) {
+            leader_node[i].region[j] = total_region[j];
+        } 
+    }
 	return leader_node;
+}
+
+void shuffle(int array[], int n) {
+    int i, tmp;
+
+    for(i = 0; i < n; i++) {
+        array[i] = i;
+    }
+
+    for(i = n; i > 0; --i) {
+        int j = rand() % i;
+
+        //swap
+        tmp = array[i - 1];
+        array[i - 1] = array[j];
+        array[j] = tmp;
+    }
 }
 
 torus_s *new_torus(struct torus_partitions new_torus_p) {
@@ -614,59 +640,6 @@ int read_torus_ip_list() {
 	return TRUE;
 }
 
-int create_skip_list(torus_s *torus) {
-	/*int i, nodes_num;
-
-	 nodes_num = get_nodes_num(torus->partition);
-	 for (i = 0; i < nodes_num; ++i) {
-	 insert_skip_list_node(&torus->node_list[i].info);
-	 }*/
-	return TRUE;
-}
-
-int update_skip_list(skip_list *list) {
-
-	skip_list_node *cur_sln;
-	cur_sln = list->header->level[0].forward;
-	while (cur_sln != NULL) {
-		int i, nodes_num, index = 0;
-		nodes_num = (cur_sln->height + 1) * 2;
-		node_info nodes[nodes_num];
-		for (i = 0; i <= cur_sln->height; ++i) {
-			if (cur_sln->level[i].forward) {
-				nodes[index++] = cur_sln->level[i].forward->leader;
-			} else {
-				init_node_info(&nodes[index++]);
-			}
-			if (cur_sln->level[i].backward) {
-				nodes[index++] = cur_sln->level[i].backward->leader;
-			} else {
-				init_node_info(&nodes[index++]);
-			}
-		}
-
-        char buf[DATA_SIZE];
-        memset(buf, 0, DATA_SIZE);
-        size_t cpy_len = 0;
-
-        memcpy(buf, &nodes_num, sizeof(int));
-        cpy_len += sizeof(int);
-        for(i = 0; i < nodes_num; i++) {
-            memcpy(buf + cpy_len, (void *)&nodes[i], sizeof(struct node_info));
-            cpy_len += sizeof(struct node_info);
-        }
-
-		char dst_ip[IP_ADDR_LENGTH];
-		memset(dst_ip, 0, IP_ADDR_LENGTH);
-		strncpy(dst_ip, cur_sln->leader.ip, IP_ADDR_LENGTH);
-
-		send_data(UPDATE_SKIP_LIST, dst_ip, buf, cpy_len);
-
-		cur_sln = cur_sln->level[0].forward;
-	}
-	return TRUE;
-}
-
 int traverse_skip_list(const char *entry_ip) {
 	int socketfd;
 
@@ -694,136 +667,171 @@ int traverse_skip_list(const char *entry_ip) {
 	return TRUE;
 }
 
-int dispatch_skip_list(skip_list *list, node_info *node_ptr) {
-	int i, index, new_level, update_num;
+int dispatch_skip_list(skip_list *list, node_info *leaders) {
+	int i, j, new_level;
     size_t cpy_len = 0;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
 	skip_list_node *sln_ptr, *new_sln;
+	node_info forwards[LEADER_NUM], backwards[LEADER_NUM], end_node;
+    init_node_info(&end_node);
 
-	node_info *update_nodes, null_node;
-	init_node_info(&null_node);
 
 	memset(src_ip, 0, IP_ADDR_LENGTH);
 	if (FALSE == get_local_ip(src_ip)) {
 		return FALSE;
 	}
 
-	// random choose a level for new skip list node
+	// random choose a level and create new skip list node (local create)
 	new_level = random_level();
-	new_sln = new_skip_list_node(new_level, node_ptr);
-	if (new_sln == NULL) {
-		return FALSE;
-	}
+    new_sln = new_skip_list_node(new_level, leaders);
 
-	// send message to new node to create a new skip list node
+	// create a new skip list node at each leader node (remote create)
 	struct message msg;
-	msg.op = NEW_SKIP_LIST;
-	strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, node_ptr->ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, &new_level, sizeof(int));
-    cpy_len += sizeof(int);
-	memcpy(msg.data + cpy_len, node_ptr, sizeof(node_info));
+    msg.op = NEW_SKIP_LIST;
+    strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    for(i = 0; i < LEADER_NUM; ++i) {
+        cpy_len = 0;
+        strncpy(msg.dst_ip, leaders[i].ip, IP_ADDR_LENGTH);
+        memset(msg.data, 0, DATA_SIZE);
+        memcpy(msg.data, &new_level, sizeof(int));
+        cpy_len += sizeof(int);
+        memcpy(msg.data + cpy_len, leaders, sizeof(node_info) * LEADER_NUM);
 
-	if (TRUE == forward_message(msg, 0)) {
-		printf("new skip list node %s ... success\n", node_ptr->ip);
-	} else {
-		printf("new skip list node %s ... failed\n", node_ptr->ip);
-		return FALSE;
-	}
+        if (TRUE == forward_message(msg, 0)) {
+            printf("%s:\tcreate new skip list node ... success\n", leaders[i].ip);
+        } else {
+            printf("%s:\tcreate new skip list node ... failed\n", leaders[i].ip);
+            return FALSE;
+        }
+    }
 
 	// update skip list header's level
 	if (new_level > list->level) {
 		list->level = new_level;
 	}
 
-	update_num = (new_level + 1) * 2;
-	update_nodes = (node_info *) malloc(sizeof(node_info) * update_num);
 
 	sln_ptr = list->header;
-	index = 0;
 	for (i = list->level; i >= 0; --i) {
-		while ((sln_ptr->level[i].forward != NULL)
-				&& (-1
-						== compare(sln_ptr->level[i].forward->leader.region[2],
-								node_ptr->region[2]))) {
+		while ((sln_ptr->level[i].forward != NULL) && \
+                (-1 == compare(sln_ptr->level[i].forward->leader[0].region[2], leaders[0].region[2]))) {
 			sln_ptr = sln_ptr->level[i].forward;
 		}
 
 		if (i <= new_level) {
-			// update new skip list node's forward field
-			new_sln->level[i].forward = sln_ptr->level[i].forward;
-			update_nodes[index++] =
-					(sln_ptr->level[i].forward == NULL) ?
-							null_node : sln_ptr->level[i].forward->leader;
+            int update_forward = 0, update_backword = 0;
+			// update new skip list node's forward field (local update)
+            new_sln->level[i].forward = sln_ptr->level[i].forward;
+            for(j = 0; j < LEADER_NUM; j++) {
+                if(sln_ptr->level[i].forward != NULL) {
+                    forwards[j] = sln_ptr->level[i].forward->leader[j];
+                    update_forward = 1;
+                }
+            }
 
-			// update new skip list node's backward field
-			new_sln->level[i].backward =
-					(sln_ptr == list->header) ? NULL : sln_ptr;
-			update_nodes[index++] =
-					(sln_ptr == list->header) ? null_node : sln_ptr->leader;
+			// update new skip list node's backward field (local update)
+            new_sln->level[i].backward = (sln_ptr == list->header) ? NULL : sln_ptr;
+            for(j = 0; j < LEADER_NUM; j++) {
+                if(sln_ptr != list->header) {
+                    backwards[j] = sln_ptr->leader[j];
+                    update_backword= 1;
+                }
+            }
+
+            //update new skip list node's forwards and backwards (remote update)
+            for(j = 0; j < LEADER_NUM; ++j) {
+                msg.op = UPDATE_SKIP_LIST_NODE;
+                get_node_ip(leaders[j], dst_ip);
+                strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                cpy_len = 0;
+                memcpy(msg.data, &i, sizeof(int));
+                cpy_len += sizeof(int);
+                memcpy(msg.data + cpy_len, &update_forward, sizeof(int));
+                cpy_len += sizeof(int);
+                memcpy(msg.data + cpy_len, &update_backword, sizeof(int));
+                cpy_len += sizeof(int);
+
+                if(update_forward == 1) {
+                    memcpy(msg.data + cpy_len, forwards, sizeof(node_info) * LEADER_NUM);
+                    cpy_len += sizeof(node_info) * LEADER_NUM;
+                }
+
+                if(update_backword == 1) {
+                    memcpy(msg.data + cpy_len, backwards, sizeof(node_info) * LEADER_NUM);
+                    cpy_len += sizeof(node_info) * LEADER_NUM;
+                }
+
+                if (TRUE == forward_message(msg, 0)) {
+                    printf("%s:\tupdate new skip list node's forward and backward ... success\n", dst_ip);
+                } else {
+                    printf("%s:\tupdate new skip list node's forward and backward ... failed\n", dst_ip);
+                    return FALSE;
+                }
+            }
 
 			// if current skip list node's forward field exist(not the tail node)
-			// update it's(sln_ptr->level[i].forward) backward field
-			if (sln_ptr->level[i].forward) {
-				new_sln->level[i].forward->level[i].backward = new_sln;
+			// update it's(sln_ptr->level[i].forward) backward field (local update)
+			if(sln_ptr->level[i].forward) {
+                sln_ptr->level[i].forward->level[i].backward = new_sln;
 
-				msg.op = UPDATE_BACKWARD;
-				get_node_ip(sln_ptr->level[i].forward->leader, dst_ip);
-				strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-                cpy_len = 0;
-				memcpy(msg.data, &i, sizeof(int));
-                cpy_len += sizeof(int);
-				memcpy(msg.data + cpy_len, (void *) node_ptr,sizeof(struct node_info));
+                //update current skip list node's forward's backward (remote update)
+                for( j = 0; j < LEADER_NUM; ++j) {
+                    msg.op = UPDATE_SKIP_LIST_NODE;
+                    get_node_ip(sln_ptr->level[i].forward->leader[j], dst_ip);
+                    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                    cpy_len = 0;
 
-				if (TRUE == forward_message(msg, 0)) {
-					printf("update skip list node %s's backward ... success\n",
-							dst_ip);
-				} else {
-					printf("update skip list node %s's backward ... failed\n",
-							dst_ip);
-					return FALSE;
-				}
+                    // only need update backward
+                    update_forward = 0;
+                    update_backword = 1;
+                    memcpy(msg.data, &i, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, &update_forward, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, &update_backword, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, leaders,sizeof(node_info) * LEADER_NUM);
+
+                    if (TRUE == forward_message(msg, 0)) {
+                        printf("%s:\tupdate skip list node's backward ... success\n", dst_ip);
+                    } else {
+                        printf("%s:\tupdate skip list node's backward ... failed\n", dst_ip);
+                        return FALSE;
+                    }
+                }
 			}
 
-			// update current skip list node's forward field
-			sln_ptr->level[i].forward = new_sln;
-			if (get_cluster_id(sln_ptr->leader) != -1) {
+			// update current skip list node's forward field (local update)
+            sln_ptr->level[i].forward = new_sln;
+            for( j = 0; j < LEADER_NUM; ++j) {
 
-				msg.op = UPDATE_FORWARD;
-				get_node_ip(sln_ptr->leader, dst_ip);
-				strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-                cpy_len = 0;
-				memcpy(msg.data, &i, sizeof(int));
-                cpy_len += sizeof(int);
-				memcpy(msg.data + cpy_len, (void *) node_ptr, sizeof(struct node_info));
-				if (TRUE == forward_message(msg, 0)) {
-					printf("update skip list node %s's forward ... success\n",
-							dst_ip);
-				} else {
-					printf("update skip list node %s's forward ... failed\n",
-							dst_ip);
-					return FALSE;
-				}
-			}
+                //update current skip list node's forward (remote update)
+                if (get_cluster_id(sln_ptr->leader[j]) != -1) {
+                    msg.op = UPDATE_SKIP_LIST_NODE;
+                    get_node_ip(sln_ptr->leader[j], dst_ip);
+                    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                    cpy_len = 0;
+                    // only need update forward 
+                    update_forward = 1;
+                    update_backword = 0;
+                    memcpy(msg.data, &i, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, &update_forward, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, &update_backword, sizeof(int));
+                    cpy_len += sizeof(int);
+                    memcpy(msg.data + cpy_len, leaders, sizeof(node_info) * LEADER_NUM);
+
+                    if (TRUE == forward_message(msg, 0)) {
+                        printf("%s:\tupdate skip list node's forward ... success\n", dst_ip);
+                    } else {
+                        printf("%s:\tupdate skip list node's forward ... failed\n", dst_ip);
+                        return FALSE;
+                    }
+                }
+            }
 		}
-	}
-
-    char buf[DATA_SIZE];
-    memset(buf, 0, DATA_SIZE);
-
-    cpy_len = 0;
-    memcpy(buf, &update_num, sizeof(int));
-    cpy_len += sizeof(int);
-
-    for(i = 0; i < update_num; i++){
-        memcpy(buf + cpy_len, (void *) &update_nodes[i], sizeof(struct node_info));
-        cpy_len += sizeof(struct node_info);
-    }
-    free(update_nodes);
-
-	if (FALSE == send_data(UPDATE_SKIP_LIST, node_ptr->ip, buf, cpy_len)) {
-		return FALSE;
 	}
 
 	return TRUE;
@@ -932,36 +940,40 @@ int main(int argc, char **argv) {
 
 	char entry_ip[IP_ADDR_LENGTH];
     //int cnt = 5;
+    int i = 0;
+    while( i < 4) {
 
-    // create a new torus by torus partition info
-    struct torus_s *torus_ptr;
-    torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
-    if (torus_ptr == NULL) {
-        exit(1);
-    }
-
-    node_info *leader_node;
-    leader_node = assign_torus_leader(torus_ptr);
-
-    strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
-
-    // insert newly created torus cluster into cluster_list
-    insert_torus_cluster(cluster_list, torus_ptr);
-
-    //print_torus_cluster(cluster_list);
-
-    if (TRUE == dispatch_torus(torus_ptr)) {
-        if (TRUE == dispatch_skip_list(slist, leader_node)) {
-            print_skip_list(slist);
-            //printf("traverse skip list success!\n");
+        // create a new torus by torus partition info
+        struct torus_s *torus_ptr;
+        torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+        if (torus_ptr == NULL) {
+            exit(1);
         }
+
+        node_info *leader_node;
+        leader_node = assign_torus_leader(torus_ptr);
+
+        strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
+
+        // insert newly created torus cluster into cluster_list
+        insert_torus_cluster(cluster_list, torus_ptr);
+
+        //print_torus_cluster(cluster_list);
+
+        if (TRUE == dispatch_torus(torus_ptr)) {
+            if (TRUE == dispatch_skip_list(slist, leader_node)) {
+                print_skip_list(slist);
+                //printf("traverse skip list success!\n");
+            }
+        }
+
+        printf("\n\n");
+        //print_torus_cluster(cluster_list);
+        printf("\n\n");
+        i++;
     }
 
-	printf("\n\n");
-	print_torus_cluster(cluster_list);
-	printf("\n\n");
-
-	int count = 0, i;
+	/*int count = 0, i;
     struct query_struct query;
     FILE *fp;
 
@@ -1008,7 +1020,7 @@ int main(int argc, char **argv) {
         }
 	}
     printf("finish read.\n");
-	fclose(fp);
+	fclose(fp);*/
 
 	/*fp = fopen("./range_query", "rb");
 	if (fp == NULL) {

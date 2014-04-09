@@ -78,17 +78,14 @@ void print_torus(torus_s *torus);
 
 int read_torus_ip_list();
 
-// create a skip list
-int create_skip_list(torus_s *torus);
-
-int update_skip_list(skip_list *list);
-
 int traverse_skip_list(const char *entry_ip);
 
-int dispatch_skip_list(skip_list *list, node_info *node_ptr);
+int dispatch_skip_list(skip_list *list, node_info *leaders);
 
 int query_torus(struct query_struct query, const char *entry_ip);
 
+// used for choose leaders
+void shuffle(int array[], int n);
 
 #endif /* CONTROL_H_ */
 
