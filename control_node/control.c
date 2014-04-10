@@ -766,7 +766,7 @@ int dispatch_skip_list(skip_list *list, node_info *node_ptr) {
 			// if current skip list node's forward field exist(not the tail node)
 			// update it's(sln_ptr->level[i].forward) backward field
 			if (sln_ptr->level[i].forward) {
-				new_sln->level[i].forward->level[i].backward = new_sln;
+				sln_ptr->level[i].forward->level[i].backward = new_sln;
 
 				msg.op = UPDATE_BACKWARD;
 				get_node_ip(sln_ptr->level[i].forward->leader, dst_ip);
