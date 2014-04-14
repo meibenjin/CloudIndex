@@ -32,9 +32,10 @@ int forward_to_neighbors(struct message msg);
 
 int operate_rtree(struct query_struct query);
 
+// query torus nodes
 int do_query_torus_node(struct message msg);
 
-// search skip list node
+// query torus cluster 
 int do_query_torus_cluster(struct message msg);
 
 // handle create torus request from client
@@ -45,12 +46,6 @@ int do_update_skip_list(struct message msg);
 
 // update current torus node's skip list node's forward and backward
 int do_update_skip_list_node(struct message msg);
-
-// update current torus node's skip list node's forward
-int do_update_forward(struct message msg);
-
-// update current torus node's skip list node's backward
-int do_update_backward(struct message msg);
 
 // create a new skip list struct 
 int do_new_skip_list(struct message msg); 
@@ -67,9 +62,8 @@ int do_receive_query(struct message msg);
 // receive data( thread handle)
 void *do_receive_data(void *args);
 
-/* resolve the message sent from client
- * send reply code to client after all.
- *
+/* dispatch request based on 
+ * the operation code in message
  */
 int process_message(connection_t conn, struct message msg);
 

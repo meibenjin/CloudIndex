@@ -272,3 +272,17 @@ void print_node_info(node_info node) {
     #endif
 }
 
+void print_torus_leaders(node_info leaders[]) {
+    #ifdef WRITE_LOG 
+        char buf[1024];
+        memset(buf, 0, 1024);
+        int len = 0, i;
+        len = sprintf(buf, "torus leaders:[");
+        for(i = 0; i < LEADER_NUM; i++) {
+            len += sprintf(buf + len, "%s ", leaders[i].ip);
+        }
+        len += sprintf(buf + len, "]\n");
+        write_log(TORUS_NODE_LOG, buf);
+    #endif
+}
+

@@ -37,11 +37,12 @@
 #define MAX_NODES_NUM 20 * 20 * 20
 
 // limits for skip list
+#define LEADER_NUM 3
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
 // LOG file path
-//#define WRITE_LOG
+#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
@@ -57,9 +58,9 @@
 #define CONN_MAXFD 65536 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
 
-//#define INT_DATA
-//typedef int data_type;
-typedef double data_type;
+#define INT_DATA
+typedef int data_type;
+//typedef double data_type;
 
 // operation for rtree
 #define RTREE_INSERT 1
@@ -96,8 +97,6 @@ typedef enum OP {
 	NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
-	UPDATE_FORWARD,
-	UPDATE_BACKWARD,
 	TRAVERSE_SKIP_LIST,
 	RECEIVE_RESULT,
 	RECEIVE_QUERY,
@@ -159,7 +158,7 @@ typedef struct skip_list_node {
 	 * total interval of whole torus
 	 * cluster in all dimension
 	 */
-	node_info leader;
+	node_info leader[LEADER_NUM];
     struct skip_list_level {
         struct skip_list_node *forward;
         struct skip_list_node *backward;
@@ -196,9 +195,12 @@ typedef struct torus_partitions {
 	int p_z;
 } torus_partitions;
 
+// a torus cluster node info
+// include: cluster_id, partition, leaders and node_list
 typedef struct torus_s {
-    torus_partitions partition;
     int cluster_id;
+    torus_partitions partition;
+    node_info leaders[LEADER_NUM];
     torus_node *node_list;
 }torus_s;
 

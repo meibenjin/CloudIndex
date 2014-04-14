@@ -343,10 +343,10 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 			printf("%s: receive reply ...... failed.\n", dst_ip);
 			ret = FALSE;
 		}*/
-        printf("%s: send data...... finish.\n", dst_ip);
+        printf("%s:\tsend data...... finish.\n", dst_ip);
         ret = TRUE;
 	} else {
-		printf("%s: send data...... failed.\n", dst_ip);
+		printf("%s:\tsend data...... failed.\n", dst_ip);
 		ret = FALSE;
 	}
 
