@@ -195,9 +195,12 @@ typedef struct torus_partitions {
 	int p_z;
 } torus_partitions;
 
+// a torus cluster node info
+// include: cluster_id, partition, leaders and node_list
 typedef struct torus_s {
-    torus_partitions partition;
     int cluster_id;
+    torus_partitions partition;
+    node_info leaders[LEADER_NUM];
     torus_node *node_list;
 }torus_s;
 
