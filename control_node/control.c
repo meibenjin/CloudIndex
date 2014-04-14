@@ -18,6 +18,19 @@
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
+//define control node 
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+torus_cluster *cluster_list;
+
+// skip list (multiple level linked list for torus cluster)
+skip_list *slist;
+
+char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
+int torus_nodes_num;
+
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
 torus_cluster *new_torus_cluster() {
 	torus_cluster *cluster_list;
 	cluster_list = (torus_cluster *) malloc(sizeof(torus_cluster));
@@ -244,12 +257,8 @@ int set_neighbors(torus_s *torus, torus_node *node_ptr) {
 }
 
 // TODO choose LEADER_NUM leder nodes
-node_info *assign_torus_leader(torus_s *torus) {
-	node_info *leader_node = (node_info *) malloc(sizeof(node_info) * LEADER_NUM);
-	if (leader_node == NULL) {
-		return NULL;
-	}
-
+// this would be done after torus interval has been assigned;
+void assign_torus_leader(torus_s *torus) {
 	int i, j;
 	int nodes_num = get_nodes_num(torus->partition);
 
@@ -274,12 +283,11 @@ node_info *assign_torus_leader(torus_s *torus) {
     shuffle(index, nodes_num);
     // random choose LEADER_NUM torus nodes as leader
     for(i = 0; i < LEADER_NUM; ++i) {
-        leader_node[i] = torus->node_list[index[i]].info;
+        torus->leaders[i] = torus->node_list[index[i]].info;
         for( j = 0; j < MAX_DIM_NUM; ++j) {
-            leader_node[i].region[j] = total_region[j];
+            torus->leaders[i].region[j] = total_region[j];
         } 
     }
-	return leader_node;
 }
 
 void shuffle(int array[], int n) {
@@ -325,6 +333,7 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 
 	torus_ptr->node_list = (torus_node *) malloc(
 			sizeof(torus_node) * nodes_num);
+
 	if (torus_ptr->node_list == NULL) {
 		printf("new_torus: malloc space for torus node list failed.\n");
 		return NULL;
@@ -381,6 +390,7 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
 		printf("create_torus: create a new torus failed.\n");
 		return NULL;
 	}
+
 
     #ifdef INT_DATA
         interval intvl[MAX_DIM_NUM];
@@ -447,6 +457,9 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
 	for (i = 0; i < nodes_num; ++i) {
 		set_neighbors(torus_ptr, &torus_ptr->node_list[i]);
 	}
+
+    // assign torus leader for new create torus
+    assign_torus_leader(torus_ptr);
 
 	return torus_ptr;
 }
@@ -528,7 +541,7 @@ torus_s *append_torus(torus_s *to, torus_s *from, int direction) {
 }
 
 int dispatch_torus(torus_s *torus) {
-	int i, nodes_num;
+	int i, j, nodes_num;
 
 	nodes_num = get_nodes_num(torus->partition);
     // send info to all torus nodes
@@ -542,6 +555,15 @@ int dispatch_torus(torus_s *torus) {
         memcpy(buf, (void *)&torus->partition, sizeof(struct torus_partitions));
         cpy_len += sizeof(struct torus_partitions);
 
+        //copy leaders info into buf
+        int leaders_num = LEADER_NUM;
+        memcpy(buf + cpy_len, &leaders_num, sizeof(int));
+        cpy_len += sizeof(int);
+
+        for(j = 0; j < LEADER_NUM; j++) {
+            memcpy(buf + cpy_len, &torus->leaders[j], sizeof(node_info));
+            cpy_len += sizeof(node_info);
+        }
 
         //copy dst node info into buf
         struct torus_node *node_ptr;
@@ -619,12 +641,6 @@ int read_torus_ip_list() {
 	FILE *fp;
 	char ip[IP_ADDR_LENGTH];
 	int count;
-	/*torus_ip_list = (char (*)[IP_ADDR_LENGTH]) malloc(
-	 sizeof(char *) * MAX_NODES_NUM);*/
-	/*if (torus_ip_list == NULL) {
-	 printf("read_torus_ip_list: allocate torus_ip_list failed.\n");
-	 return FALSE;
-	 }*/
 	fp = fopen(TORUS_IP_LIST, "rb");
 	if (fp == NULL) {
 		printf("read_torus_ip_list: open file %s failed.\n", TORUS_IP_LIST);
@@ -667,7 +683,7 @@ int traverse_skip_list(const char *entry_ip) {
 	return TRUE;
 }
 
-int dispatch_skip_list(skip_list *list, node_info *leaders) {
+int dispatch_skip_list(skip_list *list, node_info leaders[]) {
 	int i, j, new_level;
     size_t cpy_len = 0;
 	char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
@@ -922,6 +938,7 @@ int main(int argc, char **argv) {
 	 exit(1);
 	 }*/
 
+    // read ip pool from file 
 	if (FALSE == read_torus_ip_list()) {
 		exit(1);
 	}
@@ -941,7 +958,7 @@ int main(int argc, char **argv) {
 	char entry_ip[IP_ADDR_LENGTH];
     //int cnt = 5;
     int i = 0;
-    while( i < 4) {
+    while(i < 4) {
 
         // create a new torus by torus partition info
         struct torus_s *torus_ptr;
@@ -950,10 +967,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        node_info *leader_node;
-        leader_node = assign_torus_leader(torus_ptr);
-
-        strncpy(entry_ip, leader_node->ip, IP_ADDR_LENGTH);
+        strncpy(entry_ip, torus_ptr->leaders[i].ip, IP_ADDR_LENGTH);
 
         // insert newly created torus cluster into cluster_list
         insert_torus_cluster(cluster_list, torus_ptr);
@@ -961,7 +975,7 @@ int main(int argc, char **argv) {
         //print_torus_cluster(cluster_list);
 
         if (TRUE == dispatch_torus(torus_ptr)) {
-            if (TRUE == dispatch_skip_list(slist, leader_node)) {
+            if (TRUE == dispatch_skip_list(slist, torus_ptr->leaders)) {
                 print_skip_list(slist);
                 //printf("traverse skip list success!\n");
             }
