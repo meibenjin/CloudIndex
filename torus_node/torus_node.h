@@ -56,6 +56,8 @@ void print_torus_node(torus_node torus);
 
 extern void print_node_info(node_info node);
 
+void print_torus_leaders(node_info leaders[]);
+
 torus_node *new_torus_node();
 
 #endif /* TORUS_NODE_H_ */
