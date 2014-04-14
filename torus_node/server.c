@@ -29,9 +29,10 @@ extern "C" {
 
 
 //define torus server 
-/*****************************************************************************/
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 torus_node *the_torus;
+node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
 
 ISpatialIndex* the_torus_rtree;
@@ -217,9 +218,9 @@ int forward_to_neighbors(struct message msg) {
 }
 
 int do_create_torus(struct message msg) {
-	int i, d;
+	int i, j, d;
     size_t cpy_len = 0;
-	int num, neighbors_num = 0;
+	int num, leaders_num, neighbors_num = 0;
 
     // allocate for the_torus if it's NULL
     if(the_torus == NULL) {
@@ -230,8 +231,21 @@ int do_create_torus(struct message msg) {
     memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
 
-    #ifdef WRITE_LOG 
+    // get torus leaders info 
+    memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
+    cpy_len += sizeof(int);
+
+    for(j = 0; j < leaders_num; j++) {
+        memcpy(&the_torus_leaders[j], (void *)(msg.data + cpy_len), sizeof(node_info));
+        cpy_len += sizeof(node_info);
+    }
+
+    // write leader node into log file
+    print_torus_leaders(the_torus_leaders);
+
+    #ifdef WRITE_LOG
         char buf[1024];
+        memset(buf, 0, 1024);
         sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
                 the_partition.p_y, the_partition.p_z);
         write_log(TORUS_NODE_LOG, buf);
@@ -265,6 +279,7 @@ int do_create_torus(struct message msg) {
 	set_neighbors_num(the_torus, neighbors_num);
 
     #ifdef WRITE_LOG 
+        memset(buf, 0, 1024);
         sprintf(buf, "torus node capacity:%d\n", the_torus->info.capacity);
         write_log(TORUS_NODE_LOG, buf);
     #endif
@@ -776,6 +791,7 @@ int torus_split() {
     write_log(RESULT_LOG, buffer);
 
     // append a new torus node
+    // TODO get free ip from control node
     torus_node *new_node = append_torus_node(d);
 
     // reset the regions(both current node and new append torus node
@@ -786,7 +802,6 @@ int torus_split() {
     the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
     new_node->info.region[d].high = (new_node->info.region[d].low + new_node->info.region[d].high) * 0.5;
 
-    
     // Step 2: update neighbor information
     clock_gettime(CLOCK_REALTIME, &start);
 
@@ -795,6 +810,16 @@ int torus_split() {
     char buf[DATA_SIZE];
     memcpy(buf, (void *)&the_partition, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
+
+    //copy leaders info into buf
+    int leaders_num = LEADER_NUM;
+    memcpy(buf + cpy_len, &leaders_num, sizeof(int));
+    cpy_len += sizeof(int);
+    for(i = 0; i < leaders_num; i++) {
+        memcpy(buf + cpy_len, &the_torus_leaders[i], sizeof(node_info));
+        cpy_len += sizeof(node_info);
+    }
+    
     // copy neighbors info into buf 
     // then send to new torus node
     memcpy(buf + cpy_len,(void *) &new_node->info, sizeof(node_info));
@@ -825,6 +850,7 @@ int torus_split() {
             cpy_len += sizeof(node_info);
         }
     }
+
     char dst_ip[IP_ADDR_LENGTH];
     memset(dst_ip, 0, IP_ADDR_LENGTH);
     get_node_ip(new_node->info, dst_ip);
@@ -1300,7 +1326,7 @@ int do_query_torus_cluster(struct message msg) {
 	return TRUE;
 }
 
-//return elasped time from start to finish
+//return elasped time from start to finish (ns)
 long get_elasped_time(struct timespec start, struct timespec end) {
 	return 1000000000L * (end.tv_sec - start.tv_sec)
 			+ (end.tv_nsec - start.tv_nsec);
