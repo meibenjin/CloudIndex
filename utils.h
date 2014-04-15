@@ -98,6 +98,7 @@ typedef enum OP {
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
 	TRAVERSE_SKIP_LIST,
+    SEEK_IDLE_NODE,
 	RECEIVE_RESULT,
 	RECEIVE_QUERY,
     RECEIVE_DATA, 
