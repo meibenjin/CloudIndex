@@ -645,7 +645,7 @@ int get_split_dimension() {
     return d;
 }
 
-int rtree_split(char *dst_ip, double plow[], double phigh[]) {
+int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
 
     char buffer[1024];
     struct timespec start, end, s, e;
@@ -881,7 +881,8 @@ int torus_split() {
     }
 
     clock_gettime(CLOCK_REALTIME, &start);
-    rtree_split(dst_ip, nlow, nhigh);
+    // send lower half of whole rtree to new append torus node
+    send_splitted_rtree(dst_ip, nlow, nhigh);
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
     memset(buffer, 0, 1024);
@@ -903,6 +904,14 @@ int torus_split() {
     memset(buffer, 0, 1024);
     sprintf(buffer, "%lu\n", c);
     write_log(RESULT_LOG, buffer);
+
+    return TRUE;
+}
+
+int local_rtree_query(double low[], double high[]) {
+    MyVisitor vis;
+    rtree_range_query(low, high, the_torus_rtree, vis);
+    std::vector<SpatialIndex::IData*> v = vis.GetResults();
 
     return TRUE;
 }
@@ -941,7 +950,8 @@ int operate_rtree(struct query_struct query) {
             return FALSE;
         }
     } else if(query.op == RTREE_QUERY) {
-        if(FALSE == rtree_query(plow, phigh, the_torus_rtree)) {
+        // TODO add read lock
+        if(FALSE == local_rtree_query(plow, phigh)) {
             return FALSE;
         }
     }

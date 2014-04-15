@@ -28,8 +28,19 @@ int gen_request_stamp(char *stamp);
 // handle the traverse torus request from client
 int do_traverse_torus(struct message msg);
 
+// forward message to current torus node's neighbors
 int forward_to_neighbors(struct message msg);
 
+// send part of current torus node's rtree 
+int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]);
+
+// recreate local rtree by specified region
+int rtree_recreate(double plow[], double phigh[]);
+
+// append a new torus node if current torus node is up to bound
+int torus_split();
+
+// query type can be insert, delete or query
 int operate_rtree(struct query_struct query);
 
 // query torus nodes
