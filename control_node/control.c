@@ -280,13 +280,17 @@ void assign_torus_leader(torus_s *torus) {
 	}
 
     int index[nodes_num];
+    // this function rearrange a initial array indexed with 0~n
     shuffle(index, nodes_num);
+
     // random choose LEADER_NUM torus nodes as leader
     for(i = 0; i < LEADER_NUM; ++i) {
         torus->leaders[i] = torus->node_list[index[i]].info;
         for( j = 0; j < MAX_DIM_NUM; ++j) {
             torus->leaders[i].region[j] = total_region[j];
         } 
+        // update leader flag
+        torus->node_list[index[i]].is_leader = 1;
     }
 }
 
@@ -317,7 +321,6 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 	}
 
 	struct torus_s *torus_ptr;
-	struct torus_node *new_node;
 
 	torus_ptr = (torus_s *) malloc(sizeof(torus_s));
 	if (torus_ptr == NULL) {
@@ -339,14 +342,8 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 		return NULL;
 	}
 
-	for (i = 0; i < nodes_num; ++i) {
-        for(j = 0; j < DIRECTIONS; j++) {
-            torus_ptr->node_list[i].neighbors[j] = NULL;
-        }
-    }
-    
-
 	index = 0;
+	struct torus_node *new_node;
 	for (i = 0; i < new_torus_p.p_x; ++i) {
 		for (j = 0; j < new_torus_p.p_y; ++j) {
 			for (k = 0; k < new_torus_p.p_z; ++k) {
@@ -549,13 +546,14 @@ int dispatch_torus(torus_s *torus) {
         int d;
         size_t cpy_len = 0;
         char buf[DATA_SIZE];
-        //memset(buf, 0, DATA_SIZE);
+        memset(buf, 0, DATA_SIZE);
 
         //copy torus partitions into buf
         memcpy(buf, (void *)&torus->partition, sizeof(struct torus_partitions));
         cpy_len += sizeof(struct torus_partitions);
 
-        //copy leaders info into buf
+
+        // copy leaders info into buf
         int leaders_num = LEADER_NUM;
         memcpy(buf + cpy_len, &leaders_num, sizeof(int));
         cpy_len += sizeof(int);
@@ -565,13 +563,18 @@ int dispatch_torus(torus_s *torus) {
             cpy_len += sizeof(node_info);
         }
 
-        //copy dst node info into buf
         struct torus_node *node_ptr;
         node_ptr = &torus->node_list[i];
+
+        //copy current torus node's leader flag into buf
+        memcpy(buf + cpy_len, &node_ptr->is_leader, sizeof(int));
+        cpy_len += sizeof(int);
+
+        //copy current torus node info into buf
 		memcpy(buf + cpy_len,(void *) &node_ptr->info, sizeof(node_info));
         cpy_len += sizeof(node_info);
 
-        // copy neighbors info into buf
+        // copy current torus node's neighbors info into buf
         for(d = 0; d < DIRECTIONS; d++) {
             int num = get_neighbors_num_d(node_ptr, d);
             memcpy(buf + cpy_len, &num, sizeof(int));
