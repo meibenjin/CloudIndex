@@ -15,8 +15,6 @@ extern "C" {
 #include"socket/socket.h"
 }; 
 
-#include"torus_rtree.h"
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -27,40 +25,117 @@ extern "C" {
 #include<pthread.h>
 #include<errno.h>
 
+#include"torus_rtree.h"
+
 
 //define torus server 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-
-torus_node *the_torus;
-node_info the_torus_leaders[LEADER_NUM];
-struct torus_partitions the_partition;
-
-ISpatialIndex* the_torus_rtree;
+/* note: some of these global variables are used for torus leaders 
+ * some are used for torus nodes, and some used for both two */
 
 // mark torus node is active or not 
 int should_run;
 
+torus_node *the_torus;
+struct node_stat the_node_stat;
 struct skip_list *the_skip_list;
+node_info the_torus_leaders[LEADER_NUM];
+struct torus_partitions the_partition;
+ISpatialIndex* the_torus_rtree;
 
-
-// handle request variablies
+// connections queue 
 struct connection_st g_conn_table[CONN_MAXFD];
+
+// worker epoll fds
+// these epoll fds handle ready connections from client
+int worker_epfd[EPOLL_NUM];
+
+// socket for accept requests from client
+int server_socket;
+
+// socket for accept data requests from client
+int data_socket;
+
+// multiple threads in torus node
+pthread_t data_thread;
+pthread_t listener_thread;
+pthread_t worker_thread[WORKER_NUM];
+pthread_t heartbeat_thread;
 
 pthread_mutex_t mutex;
 //pthread_cond_t condition;
 
-// ready epoll fds
-int worker_epfd[EPOLL_NUM];
-int server_socket;
-int data_socket;
-
-pthread_t listener_thread;
-pthread_t worker_thread[WORKER_NUM];
-
-
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+// torus cluster status list 
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+// status of this torus cluster
+typedef struct torus_stat {
+    struct node_stat node;
+    struct torus_stat *next;
+}torus_stat;
+
+struct torus_stat *the_torus_stat;
+
+struct torus_stat *new_torus_stat() {
+    struct torus_stat *ptr;
+    ptr = (struct torus_stat *)malloc(sizeof(struct torus_stat));
+    if(ptr == NULL) {
+        printf("malloc torus stat list failed.\n");
+        return NULL;
+    }
+    ptr->next = NULL;
+    return ptr;
+}
+
+struct torus_stat *find_node_stat(struct torus_stat *list, const struct node_stat node_stat) {
+	struct torus_stat *ptr = list->next;
+	while (ptr) {
+		if (strcmp(ptr->node.ip, node_stat.ip) == 0) {
+			return ptr;
+		}
+		ptr = ptr->next;
+	}
+	return NULL;
+}
+
+struct torus_stat *insert_node_stat(struct torus_stat *list, const struct node_stat node_stat) {
+	struct torus_stat *new_ts = new_torus_stat();
+	if (new_ts == NULL) {
+		printf("insert_node_stat: allocate new node_stat failed.\n");
+		return NULL;
+	}
+    strncpy(new_ts->node.ip, node_stat.ip, IP_ADDR_LENGTH);
+    new_ts->node.max_wait_time = node_stat.max_wait_time;
+
+	struct torus_stat *ptr = list;
+	new_ts->next = ptr->next;
+	ptr->next = new_ts;
+
+	return new_ts;
+}
+
+int remove_node_stat(struct torus_stat *list, const struct node_stat node_stat) {
+	struct torus_stat *pre_ptr = list;
+	struct torus_stat *ptr = list->next;
+	while (ptr) {
+		if (strcmp(ptr->node.ip, node_stat.ip) == 0) {
+			pre_ptr->next = ptr->next;
+			free(ptr);
+			ptr = NULL;
+			return TRUE;
+		}
+		pre_ptr = pre_ptr->next;
+		ptr = ptr->next;
+	}
+	return FALSE;
+}
+
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
 
 // torus server request list
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
@@ -231,18 +306,6 @@ int do_create_torus(struct message msg) {
     memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
 
-    // get torus leaders info 
-    memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
-    cpy_len += sizeof(int);
-
-    for(j = 0; j < leaders_num; j++) {
-        memcpy(&the_torus_leaders[j], (void *)(msg.data + cpy_len), sizeof(node_info));
-        cpy_len += sizeof(node_info);
-    }
-
-    // write leader node into log file
-    print_torus_leaders(the_torus_leaders);
-
     #ifdef WRITE_LOG
         char buf[1024];
         memset(buf, 0, 1024);
@@ -251,9 +314,36 @@ int do_create_torus(struct message msg) {
         write_log(TORUS_NODE_LOG, buf);
     #endif
 
+    // get torus leaders info 
+    memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
+    cpy_len += sizeof(int);
+
+    for(j = 0; j < leaders_num; j++) {
+        memcpy(&the_torus_leaders[j], (void *)(msg.data + cpy_len), sizeof(node_info));
+        cpy_len += sizeof(node_info);
+    }
+    // write leader node into log file
+    print_torus_leaders(the_torus_leaders);
+
+
+    // get leader flag from msg
+    memcpy(&the_torus->is_leader, (void *)(msg.data + cpy_len), sizeof(int));
+    cpy_len += sizeof(int);
+
     // get local torus node from msg
     memcpy(&the_torus->info, (void *)(msg.data + cpy_len), sizeof(node_info));
     cpy_len += sizeof(node_info);
+
+    /* init the_torus_stat and node_stat
+     * note: if current torus node is not a leader node
+     * the_torus_stat is NULL */
+    if(the_torus->is_leader == 0) {
+        the_torus_stat = NULL;
+    } else {
+        the_torus_stat = new_torus_stat();
+    }
+    strncpy(the_node_stat.ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    the_node_stat.max_wait_time = -1;
 
     // get neighbors info from msg 
     for(d = 0; d < DIRECTIONS; d++) {
@@ -908,11 +998,72 @@ int torus_split() {
     return TRUE;
 }
 
+char *get_idle_torus_node() {
+    struct torus_stat *ptr = the_torus_stat->next;
+    char *idle_ip = NULL;
+    long min = 1000000; 
+    while(ptr) {
+        if(ptr->node.max_wait_time < min) {
+            strncpy(idle_ip, ptr->node.ip, IP_ADDR_LENGTH);
+            min = ptr->node.max_wait_time;
+        }
+        ptr = ptr->next;
+    }
+    return idle_ip;
+}
+
 int local_rtree_query(double low[], double high[]) {
     MyVisitor vis;
     rtree_range_query(low, high, the_torus_rtree, vis);
     std::vector<SpatialIndex::IData*> v = vis.GetResults();
 
+    //find a idle torus node to do refinement
+    char *idle_node = NULL;
+
+    /* check if the_torus itself is a idle torus node
+     * then check if the_torus is a leader node, if true, find a 
+     * idle node base on the_torus_stat; if not send SEEK_IDLE_NODE
+     * message to its leader
+     * */
+    if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
+        idle_node = the_torus->info.ip;
+
+    } else if(the_torus->is_leader == 1){ 
+        idle_node = get_idle_torus_node();
+    } else {
+        // random choose a leader;
+        int index = rand() % LEADER_NUM;
+        char *src_ip = the_torus->info.ip;
+        char *dst_ip = the_torus_leaders[index].ip;
+
+        int socketfd;
+        socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+        if (FALSE == socketfd) {
+            return FALSE;
+        }
+
+        struct message msg;
+        msg.op = SEEK_IDLE_NODE;
+        strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+        strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+        strncpy(msg.stamp, "", STAMP_SIZE);
+        strncpy(msg.data, "", DATA_SIZE);
+        send_message(socketfd, msg);
+
+        struct reply_message reply_msg;
+        if( TRUE == receive_reply(socketfd, &reply_msg)) {
+            if (SUCCESS != reply_msg.reply_code) {
+                return FALSE;
+            }
+        }
+        char return_ip[IP_ADDR_LENGTH];
+        memset(return_ip, 0, IP_ADDR_LENGTH);
+        memcpy(return_ip, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
+        idle_node = return_ip;
+        close(socketfd);
+    }
+
+    //TODO do refinement use idle torus node 
     return TRUE;
 }
 
@@ -1510,6 +1661,52 @@ int do_performance_test(struct message msg) {
     return TRUE;
 }
 
+int do_heartbeat(struct message msg) {
+    struct node_stat stat;
+    struct torus_stat *ptr;
+
+    memcpy(&stat, msg.data, sizeof(struct node_stat));
+
+    // check if coming heartbeat record in the_torus_stat
+    // if true update the stat information, or insert a new stat
+    ptr = find_node_stat(the_torus_stat, stat);
+    if(ptr == NULL) {
+        insert_node_stat(the_torus_stat, stat);
+    } else {
+        ptr->node.max_wait_time = stat.max_wait_time;
+    }
+
+    struct torus_stat *p = the_torus_stat->next;
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int len;
+    while(p) {
+        len += sprintf(buf + len, "%s %ld\n", p->node.ip, p->node.max_wait_time);
+        p = p->next;
+    }
+    sprintf(buf + len, "\n\n");
+    write_log(RESULT_LOG, buf);
+    return TRUE;
+}
+
+int do_seek_idle_node(connection_t conn, struct message msg) {
+    char *idle_ip = NULL;
+    idle_ip = get_idle_torus_node();
+    if(idle_ip == NULL) {
+        strcpy(idle_ip, "0.0.0.0");
+    }
+
+	struct reply_message reply_msg;
+    reply_msg.op = (OP)msg.op;
+    reply_msg.reply_code = SUCCESS;
+    strncpy(reply_msg.stamp, idle_ip, STAMP_SIZE);
+
+    if (FALSE == send_reply(conn->socketfd, reply_msg)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 int process_message(connection_t conn, struct message msg) {
 
 	struct reply_message reply_msg;
@@ -1640,6 +1837,22 @@ int process_message(connection_t conn, struct message msg) {
 
         do_performance_test(msg);
         break;
+    
+    case HEARTBEAT:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive heartbeat information.\n");
+        #endif
+
+        do_heartbeat(msg);
+        break;
+
+    case SEEK_IDLE_NODE:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive heartbeat information.\n");
+        #endif
+
+        do_seek_idle_node(conn, msg);
+        break;
 
     case RELOAD_RTREE:
         #ifdef WRITE_LOG
@@ -1736,15 +1949,16 @@ void *listen_epoll(void *args) {
 		//for(i = 0; i < nfds; i++) {
         if(nfds > 0) {
             while((conn_socket = accept_connection(server_socket)) > 0) {
-                g_conn_table[conn_socket].used = 1;
-
                 set_nonblocking(conn_socket);
-
                 ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
 
                 /* register conn_socket to worker-pool's 
                  * epoll, not the listen epoll*/
+                g_conn_table[conn_socket].used = 1;
+                
+                // record enter_time of coming connection
+                clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
                 g_conn_table[conn_socket].index = index; 
                 g_conn_table[conn_socket].socketfd = conn_socket; 
@@ -1759,14 +1973,20 @@ void *listen_epoll(void *args) {
 }
 
 void close_connection(connection_t conn) {
-    //if(conn->used != 0) {
-        struct epoll_event ev;
+    //update max_wait_time
+    long elasped;
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    elasped = get_elasped_time(conn->enter_time, now) / 1000000;
+    if(elasped > the_node_stat.max_wait_time) {
+        the_node_stat.max_wait_time = elasped;
+    }
 
-        conn->used = 0;
-        conn->roff = 0;
-        epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
-        close(conn->socketfd);
-    //}
+    struct epoll_event ev;
+    conn->used = 0;
+    conn->roff = 0;
+    epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
+    close(conn->socketfd);
 }
 
 void *work_epoll(void *args){
@@ -1821,11 +2041,13 @@ void *data_transform(void *args) {
         if(nfds > 0) {
             if(event.data.fd == data_socket) {
                 while((conn_socket = accept_connection(data_socket)) > 0) {
-                    g_conn_table[conn_socket].used = 1;
-
                     set_nonblocking(conn_socket);
                     ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
+
+                    g_conn_table[conn_socket].used = 1;
+                    // record enter_time of coming connection
+                    clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
                     epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
@@ -1846,6 +2068,45 @@ void *data_transform(void *args) {
 	}
 
     close(epfd);
+    return NULL;
+}
+
+int send_node_status(const char *dst_ip) {
+    int socketfd;
+	socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    struct message msg;
+    msg.op = HEARTBEAT;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+
+    memcpy(msg.data, &the_node_stat, sizeof(struct node_stat));
+
+    send_message(socketfd, msg);
+    close(socketfd);
+    return TRUE;
+}
+
+void *send_heartbeat(void *args){
+    int i;
+    while(should_run) {
+        //send heart beat
+        for(i = 0; i < LEADER_NUM; i++) {
+            send_node_status(the_torus_leaders[i].ip);
+        }
+        sleep(HEARTBEAT_INTERVAL);
+    }
     return NULL;
 }
 
@@ -1875,7 +2136,6 @@ int main(int argc, char **argv) {
 	printf("load rtree.\n");
 	write_log(TORUS_NODE_LOG, "load rtree.\n");
 
-
 	server_socket = new_server(LISTEN_PORT);
 	if (server_socket == FALSE) {
         write_log(TORUS_NODE_LOG, "start server failed.\n");
@@ -1892,15 +2152,9 @@ int main(int argc, char **argv) {
 	printf("start data server.\n");
 	write_log(TORUS_NODE_LOG, "start data server.\n");
 
-
-    // set socket fd reused
-    //int reuse = 1;
-    //setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-
 	// set server socket nonblocking
 	set_nonblocking(server_socket);
 	set_nonblocking(data_socket);
-
 
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
@@ -1921,8 +2175,14 @@ int main(int argc, char **argv) {
         }
     }
 
-    pthread_t data_thread;
+    // create data thread to handle data request
     pthread_create(&data_thread, NULL, data_transform, NULL);
+
+    // create heartbeat thread to send status info
+    pthread_create(&heartbeat_thread, NULL, send_heartbeat, NULL);
+
+    pthread_join(heartbeat_thread, NULL);
+
     pthread_join(data_thread, NULL);
 
     for (i = 0; i < WORKER_NUM; i++) {

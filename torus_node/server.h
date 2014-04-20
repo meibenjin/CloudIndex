@@ -10,6 +10,7 @@
 
 #include"utils.h"
 
+
 // torus server request list
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 struct request *new_request();
@@ -97,3 +98,4 @@ void *work_epoll(void *args);
 void *do_performance_test_long(void *args);
 
 #endif /* SERVER_H_ */
+
