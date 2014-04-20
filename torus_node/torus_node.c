@@ -16,7 +16,7 @@
 
 void init_node_info(node_info *info_ptr) {
 	if (!info_ptr) {
-		printf("init_torus_node: node_ptr is null pointer.\n");
+		printf("init_node_info: node_ptr is null pointer.\n");
 		return;
 	}
 	set_node_ip(info_ptr, "0.0.0.0");
@@ -37,6 +37,13 @@ void init_torus_node(torus_node *node_ptr) {
 		return;
 	}
     init_node_info(&node_ptr->info);
+    node_ptr->neighbors_num = 0;
+    node_ptr->is_leader = 0;
+
+    int i;
+    for(i = 0; i < DIRECTIONS; i++) {
+        node_ptr->neighbors[i] = NULL;
+    }
 }
 
 int set_interval(node_info *node_ptr){
@@ -220,14 +227,7 @@ torus_node *new_torus_node() {
 		printf("new_torus_node: malloc for torus node failed.\n");
 		return NULL;
 	}
-	init_node_info(&new_torus->info);
-	set_neighbors_num(new_torus, 0);
-
-    int i;
-    for(i = 0; i < DIRECTIONS; i++) {
-        new_torus->neighbors[i] = NULL;
-    }
-
+    init_torus_node(new_torus);
 	return new_torus;
 }
 
