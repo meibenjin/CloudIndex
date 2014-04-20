@@ -8,6 +8,8 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+#include<time.h>
+
 // lock for rtree
 #define HAVE_PTHREAD_H 1
 
@@ -35,6 +37,8 @@
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
+#define HEARTBEAT_INTERVAL 5
+#define WORKLOAD_THRESHOLD 20
 
 // limits for skip list
 #define LEADER_NUM 3
@@ -99,6 +103,7 @@ typedef enum OP {
 	UPDATE_SKIP_LIST_NODE,
 	TRAVERSE_SKIP_LIST,
     SEEK_IDLE_NODE,
+    HEARTBEAT,
 	RECEIVE_RESULT,
 	RECEIVE_QUERY,
     RECEIVE_DATA, 
@@ -139,6 +144,9 @@ struct neighbor_node{
 typedef struct torus_node {
 	// torus node info
 	struct node_info info;
+
+    // leader flag
+    int is_leader;
 
 	// number of neighbors
 	int neighbors_num;
@@ -196,7 +204,7 @@ typedef struct torus_partitions {
 	int p_z;
 } torus_partitions;
 
-// a torus cluster node info
+// a torus cluster info
 // include: cluster_id, partition, leaders and node_list
 typedef struct torus_s {
     int cluster_id;
@@ -205,6 +213,7 @@ typedef struct torus_s {
     torus_node *node_list;
 }torus_s;
 
+// linked list of torus clusters
 typedef struct torus_cluster {
     struct torus_s *torus;
     struct torus_cluster *next;
@@ -223,11 +232,21 @@ typedef struct connection_st {
     int socketfd;
     // which epoll fd this conn belongs to
     int index; 
+    // flag
     int used;
+    // time when this socket to be used; 
+    struct timespec enter_time;
     //read offset
     int roff;
     char rbuf[CONN_BUF_SIZE];
 }*connection_t;
+
+// status of current torus node
+// only max_wait_time now
+typedef struct node_stat {
+    char ip[IP_ADDR_LENGTH];
+    long max_wait_time;
+}node_stat;
 
 
 #endif /* UTILS_H_ */
