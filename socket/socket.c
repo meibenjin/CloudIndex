@@ -364,10 +364,6 @@ int performance_test(char *entry_ip) {
 		ret = FALSE;
 	}
 
-    socketfd = new_client_socket(entry_ip, LISTEN_PORT);
-    if (FALSE == socketfd) {
-        ret = FALSE;
-    }
 
     struct message msg;
     msg.op = PERFORMANCE_TEST;
@@ -380,13 +376,17 @@ int performance_test(char *entry_ip) {
     printf("start send data to server\n");
     int count = 0;
     for(i = 0; i < 500000; i++) {
+        socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+        if (FALSE == socketfd) {
+            ret = FALSE;
+        }
         send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
         count++;
         if(count % 1000 == 0) {
             printf("%d\n", count);
         }
+        close(socketfd);
     }
-    close(socketfd);
     printf("finish send data to server\n");
     return ret;
 }
