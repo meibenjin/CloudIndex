@@ -62,7 +62,9 @@ pthread_t listener_thread;
 pthread_t worker_thread[WORKER_NUM];
 pthread_t heartbeat_thread;
 
+// mutex variables
 pthread_mutex_t mutex;
+pthread_mutex_t global_variable_mutex;
 //pthread_cond_t condition;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
@@ -343,7 +345,7 @@ int do_create_torus(struct message msg) {
         the_torus_stat = new_torus_stat();
     }
     strncpy(the_node_stat.ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    the_node_stat.max_wait_time = -1;
+    the_node_stat.max_wait_time = 0;
 
     // get neighbors info from msg 
     for(d = 0; d < DIRECTIONS; d++) {
@@ -1025,6 +1027,7 @@ int local_rtree_query(double low[], double high[]) {
      * idle node base on the_torus_stat; if not send SEEK_IDLE_NODE
      * message to its leader
      * */
+    //TODO before visit max_wait_time, should get global_variable_mutex
     if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
         idle_node = the_torus->info.ip;
 
@@ -1748,6 +1751,7 @@ int process_message(connection_t conn, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
+
 		break;
 
 	case TRAVERSE_TORUS:
@@ -1974,19 +1978,28 @@ void *listen_epoll(void *args) {
 
 void close_connection(connection_t conn) {
     //update max_wait_time
-    long elasped;
-    struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-    elasped = get_elasped_time(conn->enter_time, now) / 1000000;
-    if(elasped > the_node_stat.max_wait_time) {
-        the_node_stat.max_wait_time = elasped;
-    }
 
     struct epoll_event ev;
     conn->used = 0;
     conn->roff = 0;
     epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
     close(conn->socketfd);
+}
+
+void update_max_wait_time(connection_t conn) {
+    long elasped;
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+
+    // ms
+    elasped = get_elasped_time(conn->enter_time, now) / 1000000;
+    
+    pthread_mutex_lock(&global_variable_mutex);
+    if(elasped > the_node_stat.max_wait_time) {
+        the_node_stat.max_wait_time = elasped;
+    }
+
+    pthread_mutex_unlock(&global_variable_mutex);
 }
 
 void *work_epoll(void *args){
@@ -2005,6 +2018,9 @@ void *work_epoll(void *args){
 				conn_socket = event.data.fd;
 
                 connection_t conn = &g_conn_table[conn_socket];
+
+                // calc current max_wait_time
+                update_max_wait_time(conn);
 
                 if(FALSE == handle_read_event(conn)) {
                     close_connection(conn);
@@ -2054,11 +2070,16 @@ void *data_transform(void *args) {
                 }
             } else if(event.events && EPOLLIN) { 
 				conn_socket = event.data.fd;
+                connection_t conn = &g_conn_table[conn_socket];
+
+                // calc current max_wait_time
+                update_max_wait_time(conn);
+
 				memset(&msg, 0, sizeof(struct message));
 
 				// receive message through the conn_socket
-				if (TRUE == receive_message(conn_socket, &msg)) {
-					process_message(&g_conn_table[conn_socket], msg);
+				if (TRUE == receive_message(conn->socketfd, &msg)) {
+					process_message(conn, msg);
 				} else {
 					//  TODO: handle receive message failed
 					printf("receive message failed.\n");
@@ -2091,7 +2112,13 @@ int send_node_status(const char *dst_ip) {
     strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
     strncpy(msg.stamp, "", STAMP_SIZE);
 
-    memcpy(msg.data, &the_node_stat, sizeof(struct node_stat));
+    //reset max_wait_time
+    pthread_mutex_lock(&global_variable_mutex);
+    node_stat stat = the_node_stat;
+    the_node_stat.max_wait_time = 0;
+    pthread_mutex_unlock(&global_variable_mutex);
+
+    memcpy(msg.data, &stat, sizeof(struct node_stat));
 
     send_message(socketfd, msg);
     close(socketfd);
@@ -2158,6 +2185,7 @@ int main(int argc, char **argv) {
 
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&global_variable_mutex, NULL);
 
     //create EPOLL_NUM different epoll fd for workers
     for (i = 0; i < EPOLL_NUM; i++) {
