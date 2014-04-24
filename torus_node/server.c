@@ -1000,9 +1000,12 @@ int torus_split() {
     return TRUE;
 }
 
-char *get_idle_torus_node() {
+int get_idle_torus_node(char idle_ip[]) {
+    // this means current torus node is not a leader
+    if(the_torus_stat == NULL) {
+        return FALSE;
+    }
     struct torus_stat *ptr = the_torus_stat->next;
-    char *idle_ip = NULL;
     long min = 1000000; 
     while(ptr) {
         if(ptr->node.max_wait_time < min) {
@@ -1011,7 +1014,7 @@ char *get_idle_torus_node() {
         }
         ptr = ptr->next;
     }
-    return idle_ip;
+    return TRUE;
 }
 
 int local_rtree_query(double low[], double high[]) {
@@ -1020,7 +1023,8 @@ int local_rtree_query(double low[], double high[]) {
     std::vector<SpatialIndex::IData*> v = vis.GetResults();
 
     //find a idle torus node to do refinement
-    char *idle_node = NULL;
+    char idle_node[IP_ADDR_LENGTH];
+    memset(idle_node, 0, IP_ADDR_LENGTH);
 
     /* check if the_torus itself is a idle torus node
      * then check if the_torus is a leader node, if true, find a 
@@ -1029,41 +1033,39 @@ int local_rtree_query(double low[], double high[]) {
      * */
     //TODO before visit max_wait_time, should get global_variable_mutex
     if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
-        idle_node = the_torus->info.ip;
-
-    } else if(the_torus->is_leader == 1){ 
-        idle_node = get_idle_torus_node();
+        strncpy(idle_node, the_torus->info.ip, IP_ADDR_LENGTH);
     } else {
-        // random choose a leader;
-        int index = rand() % LEADER_NUM;
-        char *src_ip = the_torus->info.ip;
-        char *dst_ip = the_torus_leaders[index].ip;
+        get_idle_torus_node(idle_node);
+        if(strcmp(idle_node, "") == 0){
+            // random choose a leader;
+            int index = rand() % LEADER_NUM;
+            char *src_ip = the_torus->info.ip;
+            char *dst_ip = the_torus_leaders[index].ip;
 
-        int socketfd;
-        socketfd = new_client_socket(dst_ip, LISTEN_PORT);
-        if (FALSE == socketfd) {
-            return FALSE;
-        }
-
-        struct message msg;
-        msg.op = SEEK_IDLE_NODE;
-        strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
-        strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-        strncpy(msg.stamp, "", STAMP_SIZE);
-        strncpy(msg.data, "", DATA_SIZE);
-        send_message(socketfd, msg);
-
-        struct reply_message reply_msg;
-        if( TRUE == receive_reply(socketfd, &reply_msg)) {
-            if (SUCCESS != reply_msg.reply_code) {
+            int socketfd;
+            socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+            if (FALSE == socketfd) {
                 return FALSE;
             }
+
+            int route_count = MAX_ROUTE_STEP;
+            struct message msg;
+            msg.op = SEEK_IDLE_NODE;
+            strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+            strncpy(msg.stamp, "", STAMP_SIZE);
+            memcpy(msg.data, &route_count, sizeof(int));
+            send_message(socketfd, msg);
+
+            struct reply_message reply_msg;
+            if( TRUE == receive_reply(socketfd, &reply_msg)) {
+                if (SUCCESS != reply_msg.reply_code) {
+                    return FALSE;
+                }
+            }
+            memcpy(idle_node, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
+            close(socketfd);
         }
-        char return_ip[IP_ADDR_LENGTH];
-        memset(return_ip, 0, IP_ADDR_LENGTH);
-        memcpy(return_ip, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
-        idle_node = return_ip;
-        close(socketfd);
     }
 
     //TODO do refinement use idle torus node 
@@ -1693,17 +1695,59 @@ int do_heartbeat(struct message msg) {
 }
 
 int do_seek_idle_node(connection_t conn, struct message msg) {
-    char *idle_ip = NULL;
-    idle_ip = get_idle_torus_node();
-    if(idle_ip == NULL) {
-        strcpy(idle_ip, "0.0.0.0");
-    }
+    int route_count;
+    // get route_count from msg and decrease route_count
+    memcpy(&route_count, msg.data, sizeof(int));
+    route_count--;
 
 	struct reply_message reply_msg;
-    reply_msg.op = (OP)msg.op;
     reply_msg.reply_code = SUCCESS;
-    strncpy(reply_msg.stamp, idle_ip, STAMP_SIZE);
 
+    char idle_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
+    memset(idle_ip, 0, IP_ADDR_LENGTH);
+    get_idle_torus_node(idle_ip);
+
+    if(strcmp(idle_ip, "") == 0) {
+        if(route_count == 0) {
+            reply_msg.reply_code = FAILED;
+            strncpy(idle_ip, "0.0.0.0", IP_ADDR_LENGTH);
+        } else {
+            // route to it's backward leader
+            skip_list_node *backward;
+            backward = the_skip_list->header->level[0].backward;
+            if(backward != NULL) {
+                int socketfd;
+                socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+                if (FALSE == socketfd) {
+                    return FALSE;
+                }
+
+                //rand choose a leader
+                int i = rand() % LEADER_NUM;
+                get_node_ip(backward->leader[i], dst_ip);
+                strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+                strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+                memcpy(msg.data, &route_count, sizeof(int));
+                send_message(socketfd, msg);
+                struct reply_message reply;
+                if(TRUE == receive_reply(socketfd, &reply)) {
+                    if (SUCCESS != reply.reply_code) {
+                        reply_msg.reply_code = FAILED;
+                        strncpy(idle_ip, "0.0.0.0", IP_ADDR_LENGTH);
+                    } else {
+                        memcpy(idle_ip, reply.stamp, sizeof(IP_ADDR_LENGTH));
+                    }
+                }
+                close(socketfd);
+            } else {
+                reply_msg.reply_code = FAILED;
+                strncpy(idle_ip, "0.0.0.0", IP_ADDR_LENGTH);
+            }
+        }
+    } 
+
+    reply_msg.op = (OP)msg.op;
+    strncpy(reply_msg.stamp, idle_ip, STAMP_SIZE);
     if (FALSE == send_reply(conn->socketfd, reply_msg)) {
         return FALSE;
     }
