@@ -39,6 +39,7 @@
 #define MAX_NODES_NUM 20 * 20 * 20
 #define HEARTBEAT_INTERVAL 5
 #define WORKLOAD_THRESHOLD 20
+#define MAX_ROUTE_STEP 3
 
 // limits for skip list
 #define LEADER_NUM 3
