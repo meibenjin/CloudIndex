@@ -53,43 +53,6 @@ int main(int argc, char **argv) {
 
     performance_test(argv[1]);
 
-	/*struct timespec query_start, query_end;
-    double start_time, end_time = 0.0;
-    int i;
-	clock_gettime(CLOCK_REALTIME, &query_start);
-    start_time = (double)(1000000000L * query_start.tv_sec + query_start.tv_nsec);
-    for(i = 0; i < 1000; i++) {
-        FILE *fp = fopen("./test", "a+");
-        if (fp == NULL) {
-            printf("can't open file test\n");
-            exit(0);
-        }
-        fprintf(fp, "start query time:%f ns\n\n", start_time);
-        fclose(fp);
-    }
-	clock_gettime(CLOCK_REALTIME, &query_end);
-    end_time = (double)(1000000000L * query_end.tv_sec + query_end.tv_nsec);
-    for(i = 0; i < 10000; i++) {
-        FILE *fp = fopen("./test", "a+");
-        if (fp == NULL) {
-            printf("can't open file test\n");
-            exit(0);
-        }
-        fprintf(fp, "send query time:%f ns\n\n", end_time);
-        fclose(fp);
-    }*/
-
-	/*FILE *fp = fopen("./range_query", "rb");
-    int count = 0;
-    int a, b, c, d, e, f;
-    int g, h ;
-    while(!feof(fp)){
-        fscanf(fp, "%d %d", &g, &h);
-        fscanf(fp, "%d %d %d %d %d %d", &a, &b, &c, &d, &e, &f);
-        count++;
-    }
-    fclose(fp);
-    printf("%d\n", count);*/
 	return 0;
 }
 
