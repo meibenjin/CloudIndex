@@ -16,14 +16,6 @@
 #define TORUS_IP_LIST "../etc/torus_ip_list"
 
 
-torus_cluster *cluster_list;
-
-// skip list (multiple level linked list for torus cluster)
-skip_list *slist;
-
-char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
-int torus_nodes_num;
-
 torus_cluster *new_torus_cluster();
 
 torus_cluster *find_torus_cluster(torus_cluster *list, int cluster_id);
@@ -49,7 +41,7 @@ int get_node_index(torus_partitions torus_p, int x, int y, int z);
 
 int set_neighbors(torus_s *torus, torus_node *node_ptr);
 
-node_info *assign_torus_leader(torus_s *torus);
+void assign_torus_leader(torus_s *torus);
 
 // create a new torus
 torus_s *new_torus(struct torus_partitions new_torus_p);
@@ -78,19 +70,16 @@ void print_torus(torus_s *torus);
 
 int read_torus_ip_list();
 
-// create a skip list
-int create_skip_list(torus_s *torus);
-
-int update_skip_list(skip_list *list);
-
 int traverse_skip_list(const char *entry_ip);
 
-int dispatch_skip_list(skip_list *list, node_info *node_ptr);
+int dispatch_skip_list(skip_list *list, node_info leaders[]);
 
 int query_torus(struct query_struct query, const char *entry_ip);
 
 int query_oct_tree(struct query_struct query, const char *entry_ip);
 
+// used for choose leaders
+void shuffle(int array[], int n);
 
 #endif /* CONTROL_H_ */
 

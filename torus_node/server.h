@@ -10,6 +10,7 @@
 
 #include"utils.h"
 
+
 // torus server request list
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 struct request *new_request();
@@ -28,13 +29,25 @@ int gen_request_stamp(char *stamp);
 // handle the traverse torus request from client
 int do_traverse_torus(struct message msg);
 
+// forward message to current torus node's neighbors
 int forward_to_neighbors(struct message msg);
 
+// send part of current torus node's rtree 
+int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]);
+
+// recreate local rtree by specified region
+int rtree_recreate(double plow[], double phigh[]);
+
+// append a new torus node if current torus node is up to bound
+int torus_split();
+
+// query type can be insert, delete or query
 int operate_rtree(struct query_struct query);
 
+// query torus nodes
 int do_query_torus_node(struct message msg);
 
-// search skip list node
+// query torus cluster 
 int do_query_torus_cluster(struct message msg);
 
 // handle create torus request from client
@@ -45,12 +58,6 @@ int do_update_skip_list(struct message msg);
 
 // update current torus node's skip list node's forward and backward
 int do_update_skip_list_node(struct message msg);
-
-// update current torus node's skip list node's forward
-int do_update_forward(struct message msg);
-
-// update current torus node's skip list node's backward
-int do_update_backward(struct message msg);
 
 // create a new skip list struct 
 int do_new_skip_list(struct message msg); 
@@ -67,9 +74,8 @@ int do_receive_query(struct message msg);
 // receive data( thread handle)
 void *do_receive_data(void *args);
 
-/* resolve the message sent from client
- * send reply code to client after all.
- *
+/* dispatch request based on 
+ * the operation code in message
  */
 int process_message(connection_t conn, struct message msg);
 
@@ -92,3 +98,4 @@ void *work_epoll(void *args);
 void *do_performance_test_long(void *args);
 
 #endif /* SERVER_H_ */
+

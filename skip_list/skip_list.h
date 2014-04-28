@@ -25,8 +25,8 @@ int random_level();
 // create skip_list list
 skip_list *new_skip_list(int level);
 
-// create a skip list node from a torus node
-skip_list_node *new_skip_list_node(int level, node_info *node_ptr);
+// create a skip list node with LEADER_NUM  torus nodes
+skip_list_node *new_skip_list_node(int level, node_info *leaders);
 
 // insert a torus_node into skip_list
 int insert_skip_list(skip_list *slist, node_info *node_ptr);

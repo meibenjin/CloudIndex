@@ -1,7 +1,10 @@
 # this is makefile of torus
 
 VPATH=.
-DEPS=./deps/spatialindex
+RTREE_LIB=./deps/spatialindex/lib
+RTREE_INCLUDE=./deps/spatialindex/include
+GSL_LIB=./deps/gsl/lib
+GSL_INCLUDE=./deps/gsl/include
 SOCKETDIR=./socket
 TORUSDIR=./torus_node
 OCTTREEDIR=./oct_tree
@@ -19,8 +22,8 @@ all: control start-node test1
 control: control.o torus-node.o socket.o skip-list.o log.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o 
 
-start-node: torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
-	$(CXX) $(CFLAGS) $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -I$(DEPS)/include -I$(VPATH) -L$(DEPS)/lib -lspatialindex -lspatialindex_c -pthread
+start-node: torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o
+	$(CXX) $(CFLAGS) $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -I$(VPATH) -I$(RTREE_INCLUDE) -I$(GSL_INCLUDE) -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -pthread
 
 control.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONTROLDIR)/control.c -I$(VPATH)
@@ -35,10 +38,10 @@ skip-list.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SKIPLISTDIR)/skip_list.c -I$(VPATH)
 	
 torus_rtree.o:
-	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/torus_rtree.c -I$(VPATH) -I$(DEPS)/include -L$(DEPS)/lib -lspatialindex 
+	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/torus_rtree.c -I$(VPATH) -I$(RTREE_INCLUDE) -L$(RTREE_LIB) -lspatialindex 
 
 server.o:
-	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/server.c -I$(VPATH) -I$(DEPS)/include -L$(DEPS)/lib -lspatialindex -pthread
+	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/server.c -I$(VPATH) -I$(RTREE_INCLUDE) -I$(GSL_INCLUDE) -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -pthread
 	
 log.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(LOGDIR)/log.c -I$(VPATH) 

@@ -57,7 +57,7 @@ int random_level() {
 	return (level < MAXLEVEL) ? level : MAXLEVEL;
 }
 
-skip_list_node *new_skip_list_node(int level, node_info *node_ptr) {
+skip_list_node *new_skip_list_node(int level, node_info *leaders) {
 	skip_list_node *sln = (skip_list_node *) malloc(
 			sizeof(*sln) + (level + 1) * sizeof(struct skip_list_level));
 	if (sln == NULL) {
@@ -66,15 +66,17 @@ skip_list_node *new_skip_list_node(int level, node_info *node_ptr) {
 	}
 
 	int i;
-	// if node_ptr is NULL pointer
-	// let the leader to be initial node
-	if (node_ptr == NULL) {
-		node_info node;
-		init_node_info(&node);
-		sln->leader = node;
-	} else {
-		sln->leader = *node_ptr;
-	}
+	// if leaders is NULL pointer
+    // set leader as inital torus node info
+    node_info node;
+    init_node_info(&node);
+    for(i = 0; i < LEADER_NUM; ++i) {
+        if (leaders == NULL) {
+            sln->leader[i] = node;
+        } else {
+            sln->leader[i] = leaders[i];
+        }
+    }
 	sln->height = level;
 
 	for (i = 0; i <= level; ++i) {
@@ -104,7 +106,7 @@ int insert_skip_list(skip_list *slist, node_info *node_ptr) {
 	 printf("insert: duplicate torus node.\n");
 	 return FALSE;
 	 } else {*/
-	int i, new_level;
+	/*int i, new_level;
 	skip_list_node *sln_ptr;
 	skip_list_node *new_sln;
 
@@ -140,9 +142,8 @@ int insert_skip_list(skip_list *slist, node_info *node_ptr) {
 
 			sln_ptr->level[i].forward = new_sln;
 		}
-	}
+	}*/
 	return TRUE;
-	//}
 
 }
 
@@ -151,7 +152,7 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 	 printf("remove: can't find torus node.\n");
 	 return FALSE;
 	 } else {*/
-	int i;
+	/*int i;
 	skip_list_node *sln_ptr;
 	skip_list_node *del_ptr;
 	sln_ptr = slist->header;
@@ -181,11 +182,11 @@ int remove_skip_list(skip_list *slist, node_info *node_ptr) {
 
 	free(del_ptr);
 
-	/* adjust header level */
+	// adjust header level 
 	while ((slist->level > 0)
 			&& (slist->header->level[slist->level].forward == NULL)) {
 		--slist->level;
-	}
+	}*/
 	return TRUE;
 	//}
 }
@@ -204,7 +205,7 @@ int interval_overlap(interval cinterval, interval ointerval) {
 }
 
 node_info *search_skip_list(skip_list *slist, interval time_interval) {
-	int i;
+	/*int i;
 	skip_list_node *sln_ptr;
 	sln_ptr = slist->header;
 
@@ -220,26 +221,34 @@ node_info *search_skip_list(skip_list *slist, interval time_interval) {
 	if ((sln_ptr != NULL)
 			&& (0 == interval_overlap(sln_ptr->leader.region[2], time_interval))) {
 		return &sln_ptr->leader;
-	}
+	}*/
 	return NULL;
 }
 
 void print_skip_list(skip_list *slist) {
-	int i;
+	int i, j, k;
 	skip_list_node *sln_ptr;
 	for (i = 0; i <= slist->level; ++i) {
 		sln_ptr = slist->header;
 		printf("level:%d\n", i);
 		while (sln_ptr->level[i].forward != NULL) {
-			print_node_info(sln_ptr->level[i].forward->leader);
-			if (sln_ptr->level[i].forward->level[i].backward) {
-				printf("\tback:");
-				print_node_info(
-						sln_ptr->level[i].forward->level[i].backward->leader);
-			} else {
-				printf("\tback:NULL\n");
-			}
-			sln_ptr = sln_ptr->level[i].forward;
+            for(j = 0; j < LEADER_NUM; j++) {
+                printf("%s ", sln_ptr->level[i].forward->leader[j].ip);
+                //print_node_info(sln_ptr->level[i].forward->leader[j]);
+            }
+            printf("height:%d\n", sln_ptr->level[i].forward->height);
+
+            if (sln_ptr->level[i].forward->level[i].backward) {
+                printf("\tback:");
+                for(k = 0; k < LEADER_NUM; k++) {
+                    printf("%s ", sln_ptr->level[i].forward->level[i].backward->leader[k].ip);
+                    //print_node_info(sln_ptr->level[i].forward->level[j].backward->leader[k]);
+                }
+                printf("\n");
+            } else {
+                printf("\tback:NULL\n");
+            }
+            sln_ptr = sln_ptr->level[i].forward;
 		}
 		printf("\n");
 	}
@@ -247,12 +256,14 @@ void print_skip_list(skip_list *slist) {
 
 void print_skip_list_node(skip_list *slist) {
     #ifdef WRITE_LOG 
-        int i = 0;
+        int i = 0, j;
         char buf[1024];
         skip_list_node *sln_ptr;
         sln_ptr = slist->header;
         write_log(TORUS_NODE_LOG, "skip list:\n");
-        print_node_info(sln_ptr->leader);
+        for(j = 0; j < LEADER_NUM; j++) {
+            print_node_info(sln_ptr->leader[j]);
+        }
 
         while (i <= slist->level) {
             memset(buf, 0, 1024);
@@ -262,15 +273,32 @@ void print_skip_list_node(skip_list *slist) {
             memset(buf, 0, 1024);
             if (sln_ptr->level[i].forward != NULL) {
                 write_log(TORUS_NODE_LOG, "\tforward: ");
-                print_node_info(sln_ptr->level[i].forward->leader);
+                int len = 0;
+                for(j = 0; j < LEADER_NUM; j++) {
+                    printf("%s ", sln_ptr->level[i].forward->leader[j].ip);
+                    len += sprintf(buf + len, "%s ", sln_ptr->level[i].forward->leader[j].ip);
+                    //print_node_info(sln_ptr->level[i].forward->leader[j]);
+                }
+                printf("\n");
+                sprintf(buf + len, "\n");
+                write_log(TORUS_NODE_LOG, buf);
             } else {
+                printf("\tforward: NULL\n");
                 write_log(TORUS_NODE_LOG, "\tforward: NULL\n");
             }
             if (sln_ptr->level[i].backward != NULL) {
-                memset(buf, 0, 1024);
                 write_log(TORUS_NODE_LOG, "\tbackward: ");
-                print_node_info(sln_ptr->level[i].backward->leader);
+                int len = 0;
+                for(j = 0; j < LEADER_NUM; j++) {
+                    printf("%s ", sln_ptr->level[i].backward->leader[j].ip);
+                    len += sprintf(buf + len, "%s ", sln_ptr->level[i].backward->leader[j].ip);
+                    //print_node_info(sln_ptr->level[i].backward->leader[j]);
+                }
+                printf("\n");
+                sprintf(buf + len, "\n");
+                write_log(TORUS_NODE_LOG, buf);
             } else {
+                printf("\tbackward: NULL\n");
                 write_log(TORUS_NODE_LOG, "\tbackward: NULL\n");
             }
             i++;
