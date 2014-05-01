@@ -41,6 +41,9 @@
 #define WORKLOAD_THRESHOLD 20
 #define MAX_ROUTE_STEP 3
 
+// standard deviation sigma
+#define SIGMA 1
+
 // limits for skip list
 #define LEADER_NUM 3
 #define MAXLEVEL 31
@@ -80,6 +83,13 @@ typedef struct coordinate {
 	int y;
 	int z;
 } coordinate;
+
+typedef struct point {
+    double x; 
+    double y; 
+    double z;
+}point;
+
 
 // return value of functions
 enum status {
