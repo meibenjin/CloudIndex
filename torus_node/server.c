@@ -29,6 +29,8 @@ extern "C" {
 #include<errno.h>
 
 #include"torus_rtree.h"
+#include "gsl_rng.h"
+#include "gsl_randist.h"
 
 
 //define torus server 
@@ -1655,6 +1657,132 @@ int oct_tree_insert(OctPoint *pt) {
     return TRUE;
 }
 
+int local_oct_tree_query(double low[], double high[]) {
+    //step 1: query trajs which overlap with region(low, high)
+
+    //step 2:find a idle torus node to do refinement
+    char idle_node[IP_ADDR_LENGTH];
+    memset(idle_node, 0, IP_ADDR_LENGTH);
+
+    /* check if the_torus itself is a idle torus node
+     * then check if the_torus is a leader node, if true, find a 
+     * idle node base on the_torus_stat; if not send SEEK_IDLE_NODE
+     * message to its leader
+     * */
+    //TODO before visit max_wait_time, should get global_variable_mutex
+    if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
+        strncpy(idle_node, the_torus->info.ip, IP_ADDR_LENGTH);
+    } else {
+        get_idle_torus_node(idle_node);
+        if(strcmp(idle_node, "") == 0){
+            // random choose a leader;
+            int index = rand() % LEADER_NUM;
+            char *src_ip = the_torus->info.ip;
+            char *dst_ip = the_torus_leaders[index].ip;
+
+            int socketfd;
+            socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+            if (FALSE == socketfd) {
+                return FALSE;
+            }
+
+            int route_count = MAX_ROUTE_STEP;
+            struct message msg;
+            msg.op = SEEK_IDLE_NODE;
+            strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+            strncpy(msg.stamp, "", STAMP_SIZE);
+            memcpy(msg.data, &route_count, sizeof(int));
+            send_message(socketfd, msg);
+
+            struct reply_message reply_msg;
+            if( TRUE == receive_reply(socketfd, &reply_msg)) {
+                if (SUCCESS != reply_msg.reply_code) {
+                    return FALSE;
+                }
+            }
+            memcpy(idle_node, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
+            close(socketfd);
+        }
+    }
+
+    //TODO do refinement use idle torus node 
+    //refinement();
+    return TRUE;
+}
+
+int gen_sample_points(point start, point end, int n, int m, point **samples) {
+    int i, j;
+    double value, x, y;
+
+    gsl_rng *r;
+    gsl_rng_env_setup();
+    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
+    r = gsl_rng_alloc(gsl_rng_default);
+
+    for(i = 0; i < n; i++) {
+        // sample z(time) axis with uniform distribution
+        value = gsl_ran_flat(r, start.z, end.z);
+        for(j = 0; j < m; j++) {
+           samples[i][j].z = value;
+        }
+
+        // sample x, y axis with gaussian distribution
+        j = 0;
+        while(j < m) {
+           value = gsl_ran_gaussian(r, SIGMA); 
+           if(value < -3 * SIGMA || value > 3 * SIGMA) {
+               continue;
+           }
+           x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
+           samples[i][j].x = x + value;
+           j++;
+        }
+        j = 0;
+
+        while(j < m) {
+           value = gsl_ran_gaussian(r, SIGMA); 
+           if(value < -3 * SIGMA || value > 3 * SIGMA) {
+               continue;
+           }
+           y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
+           samples[i][j].y = y + value;
+           j++;
+        }
+    }
+
+    gsl_rng_free(r);
+    return TRUE;
+}
+
+int do_refinement() {
+    // the time sampling size n 
+    // and other two sampling size m
+    int i, j, n = 5, m = 10;
+    struct point start, end;
+    struct point **samples;
+    samples = (point **)malloc(sizeof(point*) * n);
+    for(i = 0; i < n; i++) {
+        samples[i] = (point *)malloc(sizeof(point) * m);
+        for(j = 0; j < m; j++) {
+            samples[i][j].x = 0;
+            samples[i][j].y = 0;
+            samples[i][j].z = 0;
+        }
+    } 
+
+    gen_sample_points(start, end, n, m, samples);
+
+    
+
+
+    for(i = 0; i < n; i++){
+        free(samples[i]);
+    }
+
+    return TRUE;
+}
+
 int operate_oct_tree(struct query_struct query) {
     if(the_torus_rtree == NULL) {
         #ifdef WRITE_LOG
@@ -1695,6 +1823,10 @@ int operate_oct_tree(struct query_struct query) {
             count++;
             write_log(RESULT_LOG, buf);*/
 		}
+        pthread_mutex_unlock(&mutex);
+    } else if(query.op == RTREE_QUERY) {
+        pthread_mutex_lock(&mutex);
+        local_oct_tree_query(plow, phigh);
         pthread_mutex_unlock(&mutex);
     }
     return TRUE;
