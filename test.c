@@ -14,6 +14,9 @@
 #include "utils.h"
 #include "socket/socket.h"
 
+#include "gsl_rng.h"
+#include "gsl_randist.h"
+
 int query_test(struct query_struct query, const char *entry_ip) {
 
 	// get local ip address
@@ -73,8 +76,82 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 			+ (end.tv_nsec - start.tv_nsec);
 }
 
+int gen_sample_point(point start, point end, int n, int m, point **samples) {
+    int i, j;
+    double value, x, y;
+
+    gsl_rng *r;
+    gsl_rng_env_setup();
+    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
+    r = gsl_rng_alloc(gsl_rng_default);
+
+    for(i = 0; i < n; i++) {
+        // sample z(time) axis with uniform distribution
+        value = gsl_ran_flat(r, start.z, end.z);
+        for(j = 0; j < m; j++) {
+           samples[i][j].z = value;
+        }
+
+        // sample x, y axis with gaussian distribution
+        j = 0;
+        while(j < m) {
+           value = gsl_ran_gaussian(r, SIGMA); 
+           if(value < -3 * SIGMA || value > 3 * SIGMA) {
+               continue;
+           }
+           x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
+           samples[i][j].x = x + value;
+           j++;
+        }
+        j = 0;
+
+        while(j < m) {
+           value = gsl_ran_gaussian(r, SIGMA); 
+           if(value < -3 * SIGMA || value > 3 * SIGMA) {
+               continue;
+           }
+           y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
+           samples[i][j].y = y + value;
+           j++;
+        }
+    }
+
+    gsl_rng_free(r);
+    return TRUE;
+}
 
 int main(int argc, char **argv) {
+
+    int i, j, n = 5, m = 5;
+    struct point start, end;
+    start.x = start.y = start.z = 1;
+    end.x = end.y = end.z = 10;
+    struct point **samples;
+    samples = (point **)malloc(sizeof(point*) * n);
+    for(i = 0; i < n; i++) {
+        samples[i] = (point *)malloc(sizeof(point) * m);
+        for(j = 0; j < m; j++) {
+            samples[i][j].x = 0;
+            samples[i][j].y = 0;
+            samples[i][j].z = 0;
+        }
+    } 
+
+    gen_sample_point(start, end, n, m, samples);
+
+    for(i = 0; i < n; i++) {
+        for(j = 0; j < m; j++) {
+            printf("[%.2lf,%.2lf,%.2lf] ", samples[i][j].x, samples[i][j].y, samples[i][j].z);
+        }
+        printf("\n");
+    }
+    printf("\n");
+
+    for(i = 0; i < n; i++){
+        free(samples[i]);
+    }
+
+
 	/*int i;
     srand(time(NULL));
 	for(i = 0; i< 10000;i++){
@@ -130,7 +207,7 @@ int main(int argc, char **argv) {
     printf("finish read.\n");
 	fclose(fp);*/
     //performance_test("172.16.0.166");
-    performance_test(argv[1]);
+    //performance_test(argv[1]);
 	return 0;
 }
 
