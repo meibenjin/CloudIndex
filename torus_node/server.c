@@ -1657,8 +1657,10 @@ int oct_tree_insert(OctPoint *pt) {
     return TRUE;
 }
 
-int local_oct_tree_query(double low[], double high[]) {
+int local_oct_tree_query(struct interval region[], double low[], double high[]) {
     //step 1: query trajs which overlap with region(low, high)
+    vector<OctPoint*> pt_vector;
+    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
 
     //step 2:find a idle torus node to do refinement
     char idle_node[IP_ADDR_LENGTH];
@@ -1707,7 +1709,45 @@ int local_oct_tree_query(double low[], double high[]) {
     }
 
     //TODO do refinement use idle torus node 
-    //refinement();
+    size_t i;
+    hash_map<int, Traj *>::iterator tit;
+    hash_map<IDTYPE, Traj*> trajs;
+    for (i = 0; i < pt_vector.size(); i++) {
+        tit = g_TrajList.find(pt_vector[i]->p_tid);
+		if (tit != g_TrajList.end()) {
+            Traj *t = tit->second;
+            trajs.insert(pair<int, Traj*>(t->t_id, t));
+        }
+    }
+
+    OctPoint *p_cur, *p_next;
+    struct point start, end;
+    double pro;
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        IDTYPE id = traj->t_head;
+        p_cur =  g_PtList.find(id)->second;
+        while(p_cur->next != -1) {
+            id = p_cur->p_id; 
+            p_next = g_PtList.find(id)->second; 
+            // ignore the interpolation point
+            while(p_next->p_id < -1) {
+                id = p_next->p_id; 
+                p_next = g_PtList.find(id)->second; 
+            }
+
+            for(i = 0; i < MAX_DIM_NUM; i++) {
+                start.axis[i] = p_cur->p_xyz[i];
+                end.axis[i] = p_next->p_xyz[i];
+            }
+            pro = do_refinement(region, start, end);
+            if(pro >= REFINEMENT_THRESHOLD) {
+                //TODO this traj statisfiy threshold
+                break;
+            }
+            p_cur = p_next;
+        }
+    }
     return TRUE;
 }
 
@@ -1719,35 +1759,50 @@ int gen_sample_points(point start, point end, int n, int m, point **samples) {
     gsl_rng_env_setup();
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
-
+    
     for(i = 0; i < n; i++) {
-        // sample z(time) axis with uniform distribution
-        value = gsl_ran_flat(r, start.z, end.z);
+        if(i == 0) {
+            value = start.axis[2];
+        } else if(i == n - 1) {
+            value = end.axis[2];
+        } else {
+            // sample z(time) axis with uniform distribution
+            value = gsl_ran_flat(r, start.axis[2], end.axis[2]);
+        }
+
         for(j = 0; j < m; j++) {
-           samples[i][j].z = value;
+            samples[i][j].axis[2] = value;
         }
 
         // sample x, y axis with gaussian distribution
-        j = 0;
-        while(j < m) {
-           value = gsl_ran_gaussian(r, SIGMA); 
-           if(value < -3 * SIGMA || value > 3 * SIGMA) {
-               continue;
-           }
-           x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
-           samples[i][j].x = x + value;
-           j++;
-        }
-        j = 0;
+        /* given points start and end and sample point p's z axis,
+         * note that these three points are in one line.
+         * calc samples point's x, y method:
+         *  (p.x[y] - start.x[y])     (end.x[y] - start.x[y]) 
+         * ----------------------- = -------------------------
+         *    (p.z - start.z)              (end.z - p.z) 
+         * */
 
+        j = 0;
         while(j < m) {
-           value = gsl_ran_gaussian(r, SIGMA); 
-           if(value < -3 * SIGMA || value > 3 * SIGMA) {
-               continue;
-           }
-           y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
-           samples[i][j].y = y + value;
-           j++;
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            x = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[0] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[0]) / (end.axis[2] - start.axis[2]);
+            samples[i][j].axis[0] = x + value;
+            j++;
+        }
+
+        j = 0;
+        while(j < m) {
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            y = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[1] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[1]) / (end.axis[2] - start.axis[2]);
+            samples[i][j].axis[1] = y + value;
+            j++;
         }
     }
 
@@ -1755,30 +1810,61 @@ int gen_sample_points(point start, point end, int n, int m, point **samples) {
     return TRUE;
 }
 
-int do_refinement() {
+double calc_QP(struct interval region[], int n, int m, point **samples) {
+    struct interval intval[MAX_DIM_NUM];
+    int i, j, k;
+    double qp = 0.0, F[n], MF = 1;
+    // the probability of each time samples(n)
+    double pt = 1.0 / n;
+
+    for(i = 0; i < n; i++) {
+        F[i] = 0.0;
+        for(j = 0; j < m; j++) {
+            for(k = 0; k < MAX_DIM_NUM; k++) {
+                intval[k].low = intval[k].high = samples[i][j].axis[k];
+            }
+            if(1 == overlaps(intval, region)) {
+                F[i] += pt;
+            }
+        }
+        MF *= (1 - F[i]);
+    }
+    qp = 1 - MF;
+
+    return qp;
+}
+
+int do_refinement(struct interval region[], point start, point end) {
     // the time sampling size n 
     // and other two sampling size m
-    int i, j, n = 5, m = 10;
-    struct point start, end;
+    int i, j, k, n = 5, m = 10;
+    /*struct point start, end;
+    for(k = 0; k < MAX_DIM_NUM; k++) {
+        start.axis[k] = 1;
+        end.axis[k] = 10;
+    }*/
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
     for(i = 0; i < n; i++) {
         samples[i] = (point *)malloc(sizeof(point) * m);
         for(j = 0; j < m; j++) {
-            samples[i][j].x = 0;
-            samples[i][j].y = 0;
-            samples[i][j].z = 0;
+            for(k = 0; k < MAX_DIM_NUM; k++) {
+                samples[i][j].axis[k] = 0;
+            }
         }
     } 
 
+    // generate n*m samples points
     gen_sample_points(start, end, n, m, samples);
-
     
+    double qp = calc_QP(region, n, m, samples);
+    printf("%lf\n", qp);
 
-
+    // release the samples mem
     for(i = 0; i < n; i++){
         free(samples[i]);
     }
+    free(samples);
 
     return TRUE;
 }
@@ -1826,7 +1912,7 @@ int operate_oct_tree(struct query_struct query) {
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RTREE_QUERY) {
         pthread_mutex_lock(&mutex);
-        local_oct_tree_query(plow, phigh);
+        local_oct_tree_query(query.intval, plow, phigh);
         pthread_mutex_unlock(&mutex);
     }
     return TRUE;

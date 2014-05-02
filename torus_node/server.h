@@ -97,5 +97,7 @@ void *work_epoll(void *args);
 // 
 void *do_performance_test_long(void *args);
 
+int do_refinement(struct interval region[], point start, point end);
+
 #endif /* SERVER_H_ */
 
