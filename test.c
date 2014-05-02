@@ -76,7 +76,7 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 			+ (end.tv_nsec - start.tv_nsec);
 }
 
-int gen_sample_point(point start, point end, int n, int m, point **samples) {
+/*int gen_sample_point(point start, point end, int n, int m, point **samples) {
     int i, j;
     double value, x, y;
 
@@ -86,33 +86,99 @@ int gen_sample_point(point start, point end, int n, int m, point **samples) {
     r = gsl_rng_alloc(gsl_rng_default);
 
     for(i = 0; i < n; i++) {
-        // sample z(time) axis with uniform distribution
-        value = gsl_ran_flat(r, start.z, end.z);
+        if(i == 0) {
+            value = start.z;
+        } else if(i == n - 1) {
+            value = end.z;
+        } else {
+            // sample z(time) axis with uniform distribution
+            value = gsl_ran_flat(r, start.z, end.z);
+        }
+
         for(j = 0; j < m; j++) {
-           samples[i][j].z = value;
+            samples[i][j].z = value;
         }
 
         // sample x, y axis with gaussian distribution
         j = 0;
         while(j < m) {
-           value = gsl_ran_gaussian(r, SIGMA); 
-           if(value < -3 * SIGMA || value > 3 * SIGMA) {
-               continue;
-           }
-           x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
-           samples[i][j].x = x + value;
-           j++;
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
+            samples[i][j].x = x + value;
+            j++;
         }
-        j = 0;
 
+        j = 0;
         while(j < m) {
-           value = gsl_ran_gaussian(r, SIGMA); 
-           if(value < -3 * SIGMA || value > 3 * SIGMA) {
-               continue;
-           }
-           y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
-           samples[i][j].y = y + value;
-           j++;
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
+            samples[i][j].y = y + value;
+            j++;
+        }
+    }
+
+    gsl_rng_free(r);
+    return TRUE;
+}*/
+
+int gen_sample_point(point start, point end, int n, int m, point **samples) {
+    int i, j;
+    double value, x, y;
+
+    gsl_rng *r;
+    gsl_rng_env_setup();
+    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
+    r = gsl_rng_alloc(gsl_rng_default);
+    
+    for(i = 0; i < n; i++) {
+        if(i == 0) {
+            value = start.axis[2];
+        } else if(i == n - 1) {
+            value = end.axis[2];
+        } else {
+            // sample z(time) axis with uniform distribution
+            value = gsl_ran_flat(r, start.axis[2], end.axis[2]);
+        }
+
+        for(j = 0; j < m; j++) {
+            samples[i][j].axis[2] = value;
+        }
+
+        // sample x, y axis with gaussian distribution
+        /* given points start and end and sample point p's z axis,
+         * note that these three points are in one line.
+         * calc samples point's x, y method:
+         *  (p.x[y] - start.x[y])     (end.x[y] - start.x[y]) 
+         * ----------------------- = -------------------------
+         *    (p.z - start.z)              (end.z - p.z) 
+         * */
+
+        j = 0;
+        while(j < m) {
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            x = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[0] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[0]) / (end.axis[2] - start.axis[2]);
+            samples[i][j].axis[0] = x + value;
+            j++;
+        }
+
+        j = 0;
+        while(j < m) {
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            y = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[1] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[1]) / (end.axis[2] - start.axis[2]);
+            samples[i][j].axis[1] = y + value;
+            j++;
         }
     }
 
@@ -120,20 +186,46 @@ int gen_sample_point(point start, point end, int n, int m, point **samples) {
     return TRUE;
 }
 
+double calc_Qp(struct interval region[], int n, int m, point **samples) {
+    struct interval intval[MAX_DIM_NUM];
+    int i, j, k;
+    double qp = 0.0, F[n], MF = 1;
+    // the probability of each time samples(n)
+    //double pt = 1.0 / n;
+
+    for(i = 0; i < n; i++) {
+        F[i] = 0.0;
+        for(j = 0; j < m; j++) {
+            for(k = 0; k < MAX_DIM_NUM; k++) {
+                intval[k].low = intval[k].high = samples[i][j].axis[k];
+            }
+            //if(1 == overlaps(intval, region)) {
+            //    F[i] += pt;
+            //}
+        }
+        MF *= (1 - F[i]);
+    }
+    qp = 1 - MF;
+
+    return qp;
+}
+
 int main(int argc, char **argv) {
 
-    int i, j, n = 5, m = 5;
+    int i, j, k, n = 5, m = 5;
     struct point start, end;
-    start.x = start.y = start.z = 1;
-    end.x = end.y = end.z = 10;
+    for(k = 0; k < MAX_DIM_NUM; k++) {
+        start.axis[k] = 1;
+        end.axis[k] = 10;
+    }
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
     for(i = 0; i < n; i++) {
         samples[i] = (point *)malloc(sizeof(point) * m);
         for(j = 0; j < m; j++) {
-            samples[i][j].x = 0;
-            samples[i][j].y = 0;
-            samples[i][j].z = 0;
+            for(k = 0; k < MAX_DIM_NUM; k++) {
+                samples[i][j].axis[k] = 0;
+            }
         }
     } 
 
@@ -141,7 +233,7 @@ int main(int argc, char **argv) {
 
     for(i = 0; i < n; i++) {
         for(j = 0; j < m; j++) {
-            printf("[%.2lf,%.2lf,%.2lf] ", samples[i][j].x, samples[i][j].y, samples[i][j].z);
+            printf("[%.2lf,%.2lf,%.2lf] ", samples[i][j].axis[0], samples[i][j].axis[1], samples[i][j].axis[2]);
         }
         printf("\n");
     }
@@ -150,6 +242,7 @@ int main(int argc, char **argv) {
     for(i = 0; i < n; i++){
         free(samples[i]);
     }
+    free(samples);
 
 
 	/*int i;
