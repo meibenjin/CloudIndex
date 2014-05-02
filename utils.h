@@ -40,6 +40,7 @@
 #define HEARTBEAT_INTERVAL 5
 #define WORKLOAD_THRESHOLD 20
 #define MAX_ROUTE_STEP 3
+#define REFINEMENT_THRESHOLD 0.8
 
 // standard deviation sigma
 #define SIGMA 1
@@ -68,9 +69,9 @@
 #define CONN_MAXFD 65536 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
 
-#define INT_DATA
-typedef int data_type;
-//typedef double data_type;
+//#define INT_DATA
+//typedef int data_type;
+typedef double data_type;
 
 // operation for rtree
 #define RTREE_INSERT 1
@@ -85,9 +86,7 @@ typedef struct coordinate {
 } coordinate;
 
 typedef struct point {
-    double x; 
-    double y; 
-    double z;
+    data_type axis[MAX_DIM_NUM];
 }point;
 
 
