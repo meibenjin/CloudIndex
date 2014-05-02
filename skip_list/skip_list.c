@@ -15,7 +15,9 @@
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-
+// check two MAX_DIM_NUM dimension regions
+// note that this function remain correct when 
+// one of the two region is a point(low = high) 
 int overlaps(interval c[], interval o[]) {
 	int i, ovlp = 1;
 	i = 0;
