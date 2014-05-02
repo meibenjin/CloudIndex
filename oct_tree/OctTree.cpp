@@ -537,7 +537,6 @@ int OctTree::pointInWhichNode(OctPoint *pt) {
 
 void OctTree::rangeQuery(double *low, double *high,
 		vector<OctPoint*> &pt_vector) {
-
 	OctTNode *root = g_NodeList.find(tree_root)->second;
 	root->rangeQueryNode(low, high, pt_vector);
 }
