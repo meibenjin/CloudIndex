@@ -1684,7 +1684,7 @@ int do_heartbeat(struct message msg) {
     struct torus_stat *p = the_torus_stat->next;
     char buf[1024];
     memset(buf, 0, 1024);
-    int len;
+    int len = 0;
     while(p) {
         len += sprintf(buf + len, "%s %ld\n", p->node.ip, p->node.max_wait_time);
         p = p->next;
@@ -2174,6 +2174,9 @@ void *send_heartbeat(void *args){
     while(should_run) {
         //send heart beat
         for(i = 0; i < LEADER_NUM; i++) {
+            if(strcmp(the_torus_leaders[i].ip, "") == 0) {
+                break;
+            }
             send_node_status(the_torus_leaders[i].ip);
         }
         sleep(HEARTBEAT_INTERVAL);
@@ -2191,6 +2194,10 @@ int main(int argc, char **argv) {
 
 	// new a torus node
 	the_torus = NULL; // = new_torus_node();
+
+    for(i = 0; i < LEADER_NUM; i++) {
+        memset(the_torus_leaders[i].ip, 0, IP_ADDR_LENGTH);
+    }
 
 	the_skip_list = NULL; //*new_skip_list_node();
 
