@@ -12,6 +12,10 @@
 
 int overlaps(interval c[], interval o[]);
 
+int point_contain(point p, interval o[]);
+
+int line_intersect(interval o[], point start, point end);
+
 data_type get_distance(interval c, interval o);
 
 // compare two torus_node by time interval

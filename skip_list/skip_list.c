@@ -29,6 +29,26 @@ int overlaps(interval c[], interval o[]) {
 	return ovlp;
 }
 
+int point_contain(point p, interval o[]) {
+	int i, ovlp = 1;
+	i = 0;
+	while (ovlp && i < MAX_DIM_NUM) {
+		ovlp = !(p.axis[i] < o[i].low || p.axis[i] > o[i].high);
+		i++;
+	}
+    return ovlp;
+}
+
+int line_intersect(interval o[], point start, point end) {
+    int intersect = 1;
+    int i = 0;
+	while (intersect && i < MAX_DIM_NUM) {
+        intersect = !((start.axis[i] < o[i].low && end.axis[i] < o[i].low) || (start.axis[i] > o[i].high && end.axis[i] > o[i].high));
+        i++;
+    }
+    return intersect;
+}
+
 data_type get_distance(interval c, interval o){
 	data_type c_center = (c.low + c.high) / 2;
 	data_type o_center = (o.low + o.high) / 2;
