@@ -46,6 +46,7 @@ void init_torus_node(torus_node *node_ptr) {
     }
 }
 
+// TODO calc the region of this torus node by it's cluster_id and node_id
 int set_interval(node_info *node_ptr){
     int i;
     int c_id = node_ptr->cluster_id;
