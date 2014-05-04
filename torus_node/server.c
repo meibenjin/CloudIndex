@@ -1566,6 +1566,7 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
                         }
                     }
                     memset(buf, 0, SOCKET_BUF_SIZE);
+                    close(socketfd);
                 }
                 nn_ptr = nn_ptr->next;
             }
@@ -1740,10 +1741,12 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
                 start.axis[i] = p_cur->p_xyz[i];
                 end.axis[i] = p_next->p_xyz[i];
             }
-            pro = do_refinement(region, start, end);
-            if(pro >= REFINEMENT_THRESHOLD) {
-                //TODO this traj statisfiy threshold
-                break;
+            if(1 == line_intersect(region, start, end)){
+                pro = do_refinement(region, start, end);
+                if(pro >= REFINEMENT_THRESHOLD) {
+                    //TODO this traj statisfiy threshold
+                    break;
+                }
             }
             p_cur = p_next;
         }
@@ -1811,8 +1814,8 @@ int gen_sample_points(point start, point end, int n, int m, point **samples) {
 }
 
 double calc_QP(struct interval region[], int n, int m, point **samples) {
-    struct interval intval[MAX_DIM_NUM];
-    int i, j, k;
+    //struct interval intval[MAX_DIM_NUM];
+    int i, j;
     double qp = 0.0, F[n], MF = 1;
     // the probability of each time samples(n)
     double pt = 1.0 / n;
@@ -1820,10 +1823,10 @@ double calc_QP(struct interval region[], int n, int m, point **samples) {
     for(i = 0; i < n; i++) {
         F[i] = 0.0;
         for(j = 0; j < m; j++) {
-            for(k = 0; k < MAX_DIM_NUM; k++) {
+            /*for(k = 0; k < MAX_DIM_NUM; k++) {
                 intval[k].low = intval[k].high = samples[i][j].axis[k];
-            }
-            if(1 == overlaps(intval, region)) {
+            }*/
+            if(1 == point_contain(samples[i][j], region)) {
                 F[i] += pt;
             }
         }
@@ -2701,13 +2704,13 @@ int do_heartbeat(struct message msg) {
     struct torus_stat *p = the_torus_stat->next;
     char buf[1024];
     memset(buf, 0, 1024);
-    int len;
+    int len = 0;
     while(p) {
         len += sprintf(buf + len, "%s %ld\n", p->node.ip, p->node.max_wait_time);
         p = p->next;
     }
     sprintf(buf + len, "\n\n");
-    write_log(RESULT_LOG, buf);
+    write_log(HEARTBEAT_LOG, buf);
     return TRUE;
 }
 
@@ -3092,17 +3095,17 @@ void update_max_wait_time(connection_t conn) {
 void *work_epoll(void *args){
     int epfd = *(int *)args;
 
-	struct epoll_event ev, event; //events[MAX_EVENTS];
+	struct epoll_event ev, events[MAX_EVENTS];
 
-    int nfds;
+    int i, nfds;
     int conn_socket;
 
 	while(should_run) {
-		nfds = epoll_wait(epfd, &event, 1, -1);
-		//for(i = 0; i < nfds; i++) {
-        if(nfds > 0) {
-            if (event.events && EPOLLIN) {
-				conn_socket = event.data.fd;
+		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+		for(i = 0; i < nfds; i++) {
+        //if(nfds > 0) {
+            if (events[i].events && EPOLLIN) {
+				conn_socket = events[i].data.fd;
 
                 connection_t conn = &g_conn_table[conn_socket];
 
@@ -3217,6 +3220,9 @@ void *send_heartbeat(void *args){
     while(should_run) {
         //send heart beat
         for(i = 0; i < LEADER_NUM; i++) {
+            if(strcmp(the_torus_leaders[i].ip, "") == 0){
+                break;
+            }
             send_node_status(the_torus_leaders[i].ip);
         }
         sleep(HEARTBEAT_INTERVAL);
@@ -3234,6 +3240,10 @@ int main(int argc, char **argv) {
 
 	// new a torus node
 	the_torus = NULL; // = new_torus_node();
+
+    for(i = 0; i < LEADER_NUM; i++) {
+        memset(the_torus_leaders[i].ip, 0, IP_ADDR_LENGTH);
+    }
 
 	the_skip_list = NULL; //*new_skip_list_node();
 
