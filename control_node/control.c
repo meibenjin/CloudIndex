@@ -301,14 +301,15 @@ void shuffle(int array[], int n) {
         array[i] = i;
     }
 
-    for(i = n; i > 0; --i) {
+    // uncomment it after all torus node has the same configuration
+    /*for(i = n; i > 0; --i) {
         int j = rand() % i;
 
         //swap
         tmp = array[i - 1];
         array[i - 1] = array[j];
         array[j] = tmp;
-    }
+    }*/
 }
 
 torus_s *new_torus(struct torus_partitions new_torus_p) {
@@ -989,9 +990,8 @@ int main(int argc, char **argv) {
 	}
 
 	char entry_ip[IP_ADDR_LENGTH];
-    //int cnt = 5;
-    int i = 0;
-    while(i < 4) {
+    int cnt = 0;
+    while(cnt < 1) {
 
         // create a new torus by torus partition info
         struct torus_s *torus_ptr;
@@ -1000,7 +1000,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        strncpy(entry_ip, torus_ptr->leaders[i].ip, IP_ADDR_LENGTH);
+        strncpy(entry_ip, torus_ptr->leaders[cnt].ip, IP_ADDR_LENGTH);
 
         // insert newly created torus cluster into cluster_list
         insert_torus_cluster(cluster_list, torus_ptr);
@@ -1017,10 +1017,10 @@ int main(int argc, char **argv) {
         printf("\n\n");
         //print_torus_cluster(cluster_list);
         printf("\n\n");
-        i++;
+        cnt++;
     }
 
-	/*int count = 0, i;
+	int count = 0, i;
     struct query_struct query;
     FILE *fp;
 
@@ -1067,7 +1067,7 @@ int main(int argc, char **argv) {
         }
 	}
     printf("finish read.\n");
-	fclose(fp);*/
+	fclose(fp);
 
 	/*fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
