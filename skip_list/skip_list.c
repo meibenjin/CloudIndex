@@ -42,11 +42,22 @@ int point_contain(point p, interval o[]) {
 int line_intersect(interval o[], point start, point end) {
     int intersect = 1;
     int i = 0;
-	while (intersect && i < MAX_DIM_NUM) {
-        intersect = !((start.axis[i] < o[i].low && end.axis[i] < o[i].low) || (start.axis[i] > o[i].high && end.axis[i] > o[i].high));
-        i++;
+    interval c[MAX_DIM_NUM];
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        c[i].low = start.axis[i] < end.axis[i] ? start.axis[i] : end.axis[i];
+        c[i].high = start.axis[i] > end.axis[i] ? start.axis[i] : end.axis[i];
     }
+    intersect = overlaps(c, o);
+
     return intersect;
+}
+
+int line_contain(interval o[], point start, point end) {
+    // region o contain one point at least return true
+    if((1 == point_contain(start, o)) && (1 == point_contain(end, o))) {
+        return 1;
+    }
+    return 0;
 }
 
 data_type get_distance(interval c, interval o){
