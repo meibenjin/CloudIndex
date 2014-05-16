@@ -216,18 +216,17 @@ void OctIdxNode::nodeInsert(OctPoint *pt) {
 
 void OctIdxNode::rangeQueryNode(double *low, double *high,
 		vector<OctPoint*> &pt_vector) {
-	double slow[3];
-	double shigh[3];
 	for (int i = 0; i < 8; i++) {
 		if (n_children[i] == -1)
 			continue;
-		octsplit(slow, shigh, i, low, high);
-		if (calOverlap(slow, shigh)) {
-			OctTNode *tmp = g_NodeList.find(n_children[i])->second;
+
+        OctTNode *tmp = g_NodeList.find(n_children[i])->second;
+		//octsplit(slow, shigh, i, low, high);
+		if (tmp->calOverlap(low, high)) {
+            //tmp->printIt();
 			//cout<<tmp->n_id<<" "<<tmp->n_type<<endl;
 			tmp->rangeQueryNode(low, high, pt_vector);
 		}
 	}
 
 }
-;
