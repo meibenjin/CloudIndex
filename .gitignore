@@ -17,6 +17,7 @@
 *.app
 
 # ignore files
+*.log
 bin/*
 test/rtree/*
 logs/*.log
