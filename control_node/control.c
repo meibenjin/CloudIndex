@@ -301,7 +301,7 @@ void shuffle(int array[], int n) {
         array[i] = i;
     }
 
-    // uncomment it after all torus node has the same configuration
+    // TODO: uncomment it after all torus node has the same configuration
     /*for(i = n; i > 0; --i) {
         int j = rand() % i;
 
@@ -1069,7 +1069,7 @@ int main(int argc, char **argv) {
     printf("finish read.\n");
 	fclose(fp);
 
-	/*fp = fopen("./range_query", "rb");
+	fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
 		exit(1);
@@ -1078,10 +1078,18 @@ int main(int argc, char **argv) {
     count = 0;
     printf("begin query.\n");
 	while (!feof(fp)) {
-
         fscanf(fp, "%d %d", &query.op, &query.data_id);
         printf("%d %d %d ", ++count, query.op, query.data_id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d %d ", &query.intval[i].low, &query.intval[i].high);
+                printf("%d %d", query.intval[i].low, query.intval[i].high);
+            #else
+                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+                printf("%lf %lf", query.intval[i].low, query.intval[i].high);
+            #endif
+        }
+        /*for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
                 fscanf(fp, "%d", &query.intval[i].low);
                 printf("%d ", query.intval[i].low);
@@ -1099,16 +1107,16 @@ int main(int argc, char **argv) {
                 fscanf(fp, "%lf", &query.intval[i].high);
                 printf("%lf ", query.intval[i].high);
             #endif
-        }
+        }*/
         fscanf(fp, "\n");
         printf("\n");
 
-        search_skip_list_node(op, id, intval, entry_ip);
+        query_oct_tree(query, entry_ip);
         printf("\n");
-        //usleep(1000);
+        usleep(50000);
 	}
     printf("finish query.\n");
-	fclose(fp);*/
+	fclose(fp);
 
     //performance_test(entry_ip);
     //send_file(entry_ip);
