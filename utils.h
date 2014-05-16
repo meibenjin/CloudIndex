@@ -38,12 +38,12 @@
 #define MAX_NEIGHBORS 6
 #define MAX_NODES_NUM 20 * 20 * 20
 #define HEARTBEAT_INTERVAL 5
-#define WORKLOAD_THRESHOLD 20
+#define WORKLOAD_THRESHOLD 2
 #define MAX_ROUTE_STEP 3
 #define REFINEMENT_THRESHOLD 0.8
 
 // standard deviation sigma
-#define SIGMA 1
+#define SIGMA 0.00005
 
 // limits for skip list
 #define LEADER_NUM 3
@@ -57,6 +57,7 @@
 #define RESULT_LOG "../logs/query_result.log"
 #define RTREE_LOG "../logs/rtree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
+#define REFINEMENT_LOG "../logs/refinement.log"
 
 // Data file path
 #define DATA_DIR "/root/mbj/data"
@@ -67,6 +68,7 @@
 #define EPOLL_NUM 1
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
+//#define COMPUTE_WOKER_NUM 6
 #define CONN_MAXFD 65536 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
 
@@ -125,7 +127,8 @@ typedef enum OP {
     LOAD_OCT_TREE_POINTS,
     LOAD_OCT_TREE_NODES,
     LOAD_OCT_TREE_TRAJECTORYS,
-    TRAJ_QUERY
+    TRAJ_QUERY,
+    REFINEMENT
 } OP;
 
 // interval of each dimension
@@ -264,6 +267,15 @@ typedef struct node_stat {
     char ip[IP_ADDR_LENGTH];
     long max_wait_time;
 }node_stat;
+
+// used for refinement
+typedef struct line_segment {
+    int t_id;
+    // the num of pair start and end point
+    int pair_num;
+    struct point *start;
+    struct point *end;
+}line_segment ;
 
 
 #endif /* UTILS_H_ */
