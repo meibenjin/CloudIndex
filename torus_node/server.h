@@ -97,7 +97,9 @@ void *work_epoll(void *args);
 // 
 void *do_performance_test_long(void *args);
 
-int do_refinement(struct interval region[], point start, point end);
+double calc_refinement(struct interval region[], point start, point end);
+
+int find_idle_torus_node(char idle_ip[]);
 
 #endif /* SERVER_H_ */
 

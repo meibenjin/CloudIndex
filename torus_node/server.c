@@ -1403,50 +1403,10 @@ int local_rtree_query(double low[], double high[]) {
     std::vector<SpatialIndex::IData*> v = vis.GetResults();
 
     //find a idle torus node to do refinement
-    char idle_node[IP_ADDR_LENGTH];
-    memset(idle_node, 0, IP_ADDR_LENGTH);
+    char idle_ip[IP_ADDR_LENGTH];
+    memset(idle_ip, 0, IP_ADDR_LENGTH);
+    find_idle_torus_node(idle_ip);
 
-    /* check if the_torus itself is a idle torus node
-     * then check if the_torus is a leader node, if true, find a 
-     * idle node base on the_torus_stat; if not send SEEK_IDLE_NODE
-     * message to its leader
-     * */
-    //TODO before visit max_wait_time, should get global_variable_mutex
-    if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
-        strncpy(idle_node, the_torus->info.ip, IP_ADDR_LENGTH);
-    } else {
-        get_idle_torus_node(idle_node);
-        if(strcmp(idle_node, "") == 0){
-            // random choose a leader;
-            int index = rand() % LEADER_NUM;
-            char *src_ip = the_torus->info.ip;
-            char *dst_ip = the_torus_leaders[index].ip;
-
-            int socketfd;
-            socketfd = new_client_socket(dst_ip, LISTEN_PORT);
-            if (FALSE == socketfd) {
-                return FALSE;
-            }
-
-            int route_count = MAX_ROUTE_STEP;
-            struct message msg;
-            msg.op = SEEK_IDLE_NODE;
-            strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
-            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-            strncpy(msg.stamp, "", STAMP_SIZE);
-            memcpy(msg.data, &route_count, sizeof(int));
-            send_message(socketfd, msg);
-
-            struct reply_message reply_msg;
-            if( TRUE == receive_reply(socketfd, &reply_msg)) {
-                if (SUCCESS != reply_msg.reply_code) {
-                    return FALSE;
-                }
-            }
-            memcpy(idle_node, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
-            close(socketfd);
-        }
-    }
 
     //TODO do refinement use idle torus node 
     return TRUE;
@@ -1658,15 +1618,7 @@ int oct_tree_insert(OctPoint *pt) {
     return TRUE;
 }
 
-int local_oct_tree_query(struct interval region[], double low[], double high[]) {
-    //step 1: query trajs which overlap with region(low, high)
-    vector<OctPoint*> pt_vector;
-    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
-
-    //step 2:find a idle torus node to do refinement
-    char idle_node[IP_ADDR_LENGTH];
-    memset(idle_node, 0, IP_ADDR_LENGTH);
-
+int find_idle_torus_node(char idle_ip[]) {
     /* check if the_torus itself is a idle torus node
      * then check if the_torus is a leader node, if true, find a 
      * idle node base on the_torus_stat; if not send SEEK_IDLE_NODE
@@ -1674,10 +1626,11 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
      * */
     //TODO before visit max_wait_time, should get global_variable_mutex
     if(the_node_stat.max_wait_time < WORKLOAD_THRESHOLD) {
-        strncpy(idle_node, the_torus->info.ip, IP_ADDR_LENGTH);
+        strncpy(idle_ip, the_torus->info.ip, IP_ADDR_LENGTH);
     } else {
-        get_idle_torus_node(idle_node);
-        if(strcmp(idle_node, "") == 0){
+        //strcmp(idle_ip, "") == 0
+        int ret = get_idle_torus_node(idle_ip);
+        if(ret == FALSE){
             // random choose a leader;
             int index = rand() % LEADER_NUM;
             char *src_ip = the_torus->info.ip;
@@ -1704,12 +1657,31 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
                     return FALSE;
                 }
             }
-            memcpy(idle_node, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
+            memcpy(idle_ip, reply_msg.stamp, sizeof(IP_ADDR_LENGTH));
             close(socketfd);
         }
     }
+    return TRUE;
+}
 
-    //TODO do refinement use idle torus node 
+int local_oct_tree_query(struct interval region[], double low[], double high[]) {
+    //step 1: query trajs which overlap with region(low, high)
+    struct timespec s, e;
+    double elasped = 0L;
+
+    char buffer[1024];
+    clock_gettime(CLOCK_REALTIME, &s);
+    vector<OctPoint*> pt_vector;
+    // range query
+    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "range query spend:%lf ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    // recreate all trajs with pt_vector(range query result)
+    clock_gettime(CLOCK_REALTIME, &s);
     size_t i;
     hash_map<int, Traj *>::iterator tit;
     hash_map<IDTYPE, Traj*> trajs;
@@ -1721,61 +1693,153 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
         }
     }
 
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "recreate trajs spend:%lf ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    //step 2:find a idle torus node to do refinement
+    clock_gettime(CLOCK_REALTIME, &s);
+    char idle_ip[IP_ADDR_LENGTH];
+    memset(idle_ip, 0, IP_ADDR_LENGTH);
+    find_idle_torus_node(idle_ip);
+
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "find idle torus node spend:%lf ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
+
+    //for test;
+    strcpy(idle_ip, "172.16.0.167");
+
+    // create a data socket to send refinement data
+    clock_gettime(CLOCK_REALTIME, &s);
+	int socketfd;
+	socketfd = new_client_socket(idle_ip, DATA_PORT);
+	if (FALSE == socketfd) {
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+    size_t len = 0;
+    struct message msg;
+    msg.op = REFINEMENT;
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, idle_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    memcpy(msg.data, region, sizeof(interval) * MAX_DIM_NUM);
+    len += sizeof(interval) * MAX_DIM_NUM;
+    uint32_t traj_num = trajs.size();
+    memcpy(msg.data + len, &traj_num, sizeof(uint32_t));
+    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "trajs count:%u \n", traj_num);
+    write_log(RESULT_LOG, buffer);
+
+    // begin to send points to idle_ip
+    char buf[SOCKET_BUF_SIZE];
+    size_t cpy_len = 0;
+    uint32_t pair_num = 0;
+
     OctPoint *p_cur, *p_next;
     struct point start, end;
-    double pro;
+
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
         Traj *traj = tit->second;
-        IDTYPE id = traj->t_head;
-        p_cur =  g_PtList.find(id)->second;
+        IDTYPE pid = traj->t_head;
+
+        p_cur =  g_PtList.find(pid)->second;
+
+        cpy_len = sizeof(uint32_t) * 2;
         while(p_cur->next != -1) {
-            id = p_cur->p_id; 
-            p_next = g_PtList.find(id)->second; 
+            pid = p_cur->next; 
+
+            p_next = g_PtList.find(pid)->second; 
             // ignore the interpolation point
             while(p_next->p_id < -1) {
-                id = p_next->p_id; 
-                p_next = g_PtList.find(id)->second; 
+                pid = p_next->p_id; 
+                p_next = g_PtList.find(pid)->second; 
             }
 
             for(i = 0; i < MAX_DIM_NUM; i++) {
                 start.axis[i] = p_cur->p_xyz[i];
                 end.axis[i] = p_next->p_xyz[i];
             }
+
             if(1 == line_intersect(region, start, end)){
-                pro = do_refinement(region, start, end);
-                if(pro >= REFINEMENT_THRESHOLD) {
-                    //TODO this traj statisfiy threshold
+                // skip the line segments that total contain in the region
+                // here send pair_num 0 means this traj is a query result
+                memcpy(buf + 0, &traj->t_id, sizeof(uint32_t));
+                if(1 == line_contain(region, start, end)) {
+                    pair_num = 0;
+                    memcpy(buf + sizeof(uint32_t), &pair_num, sizeof(uint32_t));
                     break;
                 }
+                pair_num++;
+                memcpy(buf + sizeof(uint32_t), &pair_num, sizeof(uint32_t));
+
+                memcpy(buf + cpy_len, &start, sizeof(struct point));
+                cpy_len += sizeof(struct point);
+                memcpy(buf + cpy_len, &end, sizeof(struct point));
+                cpy_len += sizeof(struct point);
+
+                if(cpy_len + sizeof(struct point) * 2 >= SOCKET_BUF_SIZE) {
+                    send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+
+                    // the first 8 byte (tid, pair_num)
+                    cpy_len = sizeof(uint32_t) * 2;
+                    pair_num = 0;
+                    memset(buf, 0, SOCKET_BUF_SIZE);
+                }
             }
+            // move next
             p_cur = p_next;
         }
+
+        // ensure different traj in different buf
+        if(cpy_len > 0) {
+            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            // the first 8 byte (tid, pair_num)
+            cpy_len = sizeof(uint32_t) * 2;
+            pair_num = 0;
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+
     }
+	close(socketfd);
+
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "send refinement data spend:%lf ms\n\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, buffer);
     return TRUE;
 }
 
-int gen_sample_points(point start, point end, int n, int m, point **samples) {
-    int i, j;
-    double value, x, y;
+double calc_QP(struct interval region[], point start, point end, int n, int m, point **samples) {
+    int cnt, i, j;
+    double value, z;
+    // center_point
+    struct point cpt;
 
+    // init gsl lib
     gsl_rng *r;
     gsl_rng_env_setup();
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
-    
-    for(i = 0; i < n; i++) {
-        if(i == 0) {
-            value = start.axis[2];
-        } else if(i == n - 1) {
-            value = end.axis[2];
-        } else {
-            // sample z(time) axis with uniform distribution
-            value = gsl_ran_flat(r, start.axis[2], end.axis[2]);
-        }
 
-        for(j = 0; j < m; j++) {
-            samples[i][j].axis[2] = value;
-        }
+    for(i = 0, cnt = 0; cnt < n; cnt++) {
+        // sample z(time) axis with uniform distribution
+        value = gsl_ran_flat(r, start.axis[2], end.axis[2]);
 
         // sample x, y axis with gaussian distribution
         /* given points start and end and sample point p's z axis,
@@ -1785,67 +1849,94 @@ int gen_sample_points(point start, point end, int n, int m, point **samples) {
          * ----------------------- = -------------------------
          *    (p.z - start.z)              (end.z - p.z) 
          * */
+        z = value;
+        cpt.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / (end.axis[2] - start.axis[2]);
+        cpt.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / (end.axis[2] - start.axis[2]);
+        cpt.axis[2] = z;
 
-        j = 0;
-        while(j < m) {
-            value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
-                continue;
+        // if one of n flat distribution sample point not contianed in region, 
+        // skip this sample point
+        if(1 == point_contain(cpt, region)) {
+            for(j = 0; j < m; j++) {
+                samples[i][j].axis[2] = cpt.axis[2];
             }
-            x = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[0] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[0]) / (end.axis[2] - start.axis[2]);
-            samples[i][j].axis[0] = x + value;
-            j++;
-        }
 
-        j = 0;
-        while(j < m) {
-            value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
-                continue;
+            j = 0;
+            while(j < m) {
+                value = gsl_ran_gaussian(r, SIGMA); 
+                if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                    continue;
+                }
+                samples[i][j].axis[0] = cpt.axis[0] + value;
+                j++;
             }
-            y = ((samples[i][j].axis[2] - start.axis[2]) * end.axis[1] + (end.axis[2] - samples[i][j].axis[2]) * start.axis[1]) / (end.axis[2] - start.axis[2]);
-            samples[i][j].axis[1] = y + value;
-            j++;
+
+            j = 0;
+            while(j < m) {
+                value = gsl_ran_gaussian(r, SIGMA); 
+                if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                    continue;
+                }
+                samples[i][j].axis[1] = cpt.axis[1] + value;
+                j++;
+            }
+            i++;
         }
     }
-
     gsl_rng_free(r);
-    return TRUE;
-}
 
-double calc_QP(struct interval region[], int n, int m, point **samples) {
-    //struct interval intval[MAX_DIM_NUM];
-    int i, j;
+    // i is the final flat sample points
+    int flat_cnt = i;
+    // calculate QP
     double qp = 0.0, F[n], MF = 1;
     // the probability of each time samples(n)
-    double pt = 1.0 / n;
-
-    for(i = 0; i < n; i++) {
+    double pt = 1.0 / m;
+    for(i = 0; i < flat_cnt; i++) {
         F[i] = 0.0;
         for(j = 0; j < m; j++) {
-            /*for(k = 0; k < MAX_DIM_NUM; k++) {
-                intval[k].low = intval[k].high = samples[i][j].axis[k];
-            }*/
             if(1 == point_contain(samples[i][j], region)) {
                 F[i] += pt;
             }
         }
         MF *= (1 - F[i]);
+        // check MF < 1 - theta
+        if( MF < 1 - REFINEMENT_THRESHOLD) {
+            return (1 - MF);
+        }
     }
     qp = 1 - MF;
-
     return qp;
 }
 
-int do_refinement(struct interval region[], point start, point end) {
+/*double calc_QP(struct interval region[], int n, int m, point **samples) {
+    //struct interval intval[MAX_DIM_NUM];
+    int i, j;
+    double qp = 0.0, F[n], MF = 1;
+    // the probability of each time samples(n)
+    double pt = 1.0 / m;
+    //char buf[1024];
+
+    for(i = 0; i < n; i++) {
+        F[i] = 0.0;
+        for(j = 0; j < m; j++) {
+            if(1 == point_contain(samples[i][j], region)) {
+                F[i] += pt;
+            }
+        }
+        MF *= (1 - F[i]);
+        // check MF < 1 - theta
+        if( MF < 1 - REFINEMENT_THRESHOLD) {
+            return (1 - MF);
+        }
+    }
+    qp = 1 - MF;
+    return qp;
+}*/
+
+double calc_refinement(struct interval region[], point start, point end) {
     // the time sampling size n 
     // and other two sampling size m
-    int i, j, k, n = 5, m = 10;
-    /*struct point start, end;
-    for(k = 0; k < MAX_DIM_NUM; k++) {
-        start.axis[k] = 1;
-        end.axis[k] = 10;
-    }*/
+    int i, j, k, n = 200, m = 500;
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
     for(i = 0; i < n; i++) {
@@ -1858,10 +1949,11 @@ int do_refinement(struct interval region[], point start, point end) {
     } 
 
     // generate n*m samples points
-    gen_sample_points(start, end, n, m, samples);
-    
-    double qp = calc_QP(region, n, m, samples);
-    printf("%lf\n", qp);
+    double qp = calc_QP(region, start, end, n, m, samples);
+
+    //printf("[%lf,%lf] [%lf, %lf] [%lf, %lf]", region[0].low, region[0].high, region[1].low, region[1].high,region[2].low, region[2].high);
+    //printf("(%lf,%lf,%lf) ", start.axis[0], start.axis[1], start.axis[2]);
+    //printf("(%lf,%lf,%lf)\n", end.axis[0], end.axis[1], end.axis[2]);
 
     // release the samples mem
     for(i = 0; i < n; i++){
@@ -1869,7 +1961,7 @@ int do_refinement(struct interval region[], point start, point end) {
     }
     free(samples);
 
-    return TRUE;
+    return qp;
 }
 
 int operate_oct_tree(struct query_struct query) {
@@ -2004,6 +2096,133 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     memset(buffer, 0, 1024);
     sprintf(buffer, "%ld %d\n", now, count);
     write_log(RESULT_LOG, buffer);
+    return TRUE;
+}
+
+int do_refinement(connection_t conn, struct message msg) {
+    struct timespec s, e;
+    double elasped = 0L;
+
+    clock_gettime(CLOCK_REALTIME, &s);
+    interval region[MAX_DIM_NUM];
+    uint32_t traj_num, pair_num;
+    size_t len = 0;
+    memcpy(region, msg.data, sizeof(interval) * MAX_DIM_NUM);
+    len += sizeof(interval) * MAX_DIM_NUM;
+    memcpy(&traj_num, msg.data + len, sizeof(uint32_t));
+
+    uint32_t i;
+    struct line_segment segments[traj_num];
+    for(i = 0; i < traj_num; i++) {
+        segments[i].t_id = -1;
+        segments[i].pair_num = 0;
+        segments[i].start = NULL;
+        segments[i].end = NULL;
+    }
+
+    int length = 0, loop = 1, cnt = -1, traj_id, pre_tid = -1;
+    char buf[SOCKET_BUF_SIZE], *ptr;
+
+    while(loop) {
+        memset(buf, 0, SOCKET_BUF_SIZE);
+        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            close_connection(conn);
+            loop = 0;
+        } else {
+            length = 0;
+            ptr = buf; 
+            memcpy(&traj_id, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            if(traj_id != pre_tid){
+                cnt++;
+                pre_tid = traj_id;
+            }
+            segments[cnt].t_id = traj_id;
+
+            memcpy(&pair_num, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            if(0 == pair_num) {
+                segments[cnt].pair_num = 0;
+                continue;
+            }
+            if(segments[cnt].start == NULL) {
+                segments[cnt].start = (point *) malloc(sizeof(struct point) * pair_num);
+                segments[cnt].end = (point *) malloc(sizeof(struct point) * pair_num);
+            } else {
+                int append_size = segments[cnt].pair_num + pair_num;
+                point *tmp1 = (point *)realloc(segments[cnt].start, sizeof(struct point) * append_size);
+                if(tmp1 == NULL) {
+                    // TODO release memory
+                    break;
+                }
+                segments[cnt].start = tmp1;
+
+                point *tmp2 = (point *)realloc(segments[cnt].end, sizeof(struct point) * append_size);
+                if(tmp2 == NULL) {
+                    // TODO release memory
+                    break;
+                }
+                segments[cnt].end = tmp2;
+            }
+            uint32_t index = segments[cnt].pair_num;
+
+            while(index < (segments[cnt].pair_num + pair_num)) {
+                memcpy(&segments[cnt].start[index], ptr, sizeof(struct point));
+                ptr += sizeof(struct point);
+                memcpy(&segments[cnt].end[index], ptr, sizeof(struct point));
+                ptr += sizeof(struct point);
+                index++;
+            }
+            segments[cnt].pair_num += pair_num;
+        }
+    }
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+
+    char b[100];
+    memset(b, 0, 100);
+    sprintf(b, "receive refinement data spend:%lf ms\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, b); 
+
+    char buffer[81920];
+
+    int j, l = 0;
+    int res_cnt = 0;
+    memset(buffer, 0, 81920);
+    clock_gettime(CLOCK_REALTIME, &s);
+    for(i = 0; i < traj_num; i++) {
+        if(segments[i].t_id != -1) {
+            if(segments[i].pair_num != 0) {
+                res_cnt++;
+            }
+            l += sprintf(buffer + l, "tid:%d %d\n", segments[i].t_id, segments[i].pair_num);
+            for(j = 0; j < segments[i].pair_num; j++) {
+                double qp = calc_refinement(region, segments[i].start[j], segments[i].end[j]);
+                l += sprintf(buffer + l, "\tp:%lf\n", qp);
+            }
+
+            // release the memory
+            if(segments[i].start != NULL) {
+                free(segments[i].start);
+            }
+            if(segments[i].end != NULL) {
+                free(segments[i].end);
+            }
+        }
+    }
+    clock_gettime(CLOCK_REALTIME, &e);
+    elasped = get_elasped_time(s, e);
+    write_log(REFINEMENT_LOG, buffer);
+
+    memset(b, 0, 100);
+    sprintf(b, "need refinement trajs count:%d \n", res_cnt);
+    write_log(RESULT_LOG, b);
+
+    memset(b, 0, 100);
+    sprintf(b, "calc refinement spend:%lf ms\n\n", (double) elasped/ 1000000.0);
+    write_log(RESULT_LOG, b); 
+
     return TRUE;
 }
 
@@ -2262,11 +2481,12 @@ int do_query_torus_node(struct message msg) {
                 write_log(CTRL_NODE_LOG, buf);
             #endif
 
-            if(query.op == RTREE_QUERY) {
+            // TODO after test uncomment it
+            /*if(query.op == RTREE_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     forward_search(query.intval, msg, i);
                 }
-            }
+            }*/
 
 			// do rtree operation 
             //operate_rtree(query);
@@ -2969,6 +3189,13 @@ int process_message(connection_t conn, struct message msg) {
         //conn->used = 1;
         break;
 
+    case REFINEMENT:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request calc refinement.\n");
+        #endif
+        do_refinement(conn, msg);
+        break;
+
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
         break;
@@ -3069,10 +3296,10 @@ void *listen_epoll(void *args) {
 
 void close_connection(connection_t conn) {
     //if(conn->used != 0) {
-    struct epoll_event ev;
+    //struct epoll_event ev;
     conn->used = 0;
     conn->roff = 0;
-    epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
+    //epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
     close(conn->socketfd);
 }
 
@@ -3129,6 +3356,46 @@ void *work_epoll(void *args){
     return NULL;
 }
 
+/*void *compute_worker(void *args){
+    int epfd = *(int *)args;
+
+	struct epoll_event event;
+
+    int nfds;
+    int conn_socket;
+    struct message msg;
+
+	while(should_run) {
+		nfds = epoll_wait(epfd, &event, 1, -1);
+        if(nfds > 0) {
+            if (event.events && EPOLLIN) {
+				conn_socket = event.data.fd;
+
+                connection_t conn = &g_conn_table[conn_socket];
+
+                // calc current max_wait_time
+                update_max_wait_time(conn);
+
+				memset(&msg, 0, sizeof(struct message));
+
+				// receive message through the conn_socket
+				if (TRUE == receive_message(conn->socketfd, &msg)) {
+                    pthread_mutex_lock(&mutex);
+                    process_message(conn, msg);
+                    pthread_mutex_unlock(&mutex);
+					//process_message(conn, msg);
+				} else {
+					//  TODO: handle receive message failed
+					printf("receive message failed.\n");
+				}
+
+			}
+		}
+	}
+
+    return NULL;
+}*/
+
 void *data_transform(void *args) {
 	// listen epoll
 	int epfd;
@@ -3157,6 +3424,7 @@ void *data_transform(void *args) {
 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
                     epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
+                    //index = (index + 1) % COMPUTE_WOKER_NUM;
                 }
             } else if(event.events && EPOLLIN) { 
 				conn_socket = event.data.fd;
@@ -3288,13 +3556,14 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
 
+
+    // create listen thread for epoll listerner
+    pthread_create(&listener_thread, NULL, listen_epoll, NULL);
+
     //create EPOLL_NUM different epoll fd for workers
     for (i = 0; i < EPOLL_NUM; i++) {
         worker_epfd[i] = epoll_create(MAX_EVENTS);
     }
-
-    // create listen thread for epoll listerner
-    pthread_create(&listener_thread, NULL, listen_epoll, NULL);
 
     // create worker thread to handle ready socket fds
     for(i = 0; i < EPOLL_NUM; i++) {
