@@ -198,7 +198,14 @@ void OctTNode::octsplit(double* slow, double* shigh, char idx, double* low,
 }
 
 bool OctTNode::calOverlap(const double *low, const double *high) {
-	double slow[3];
+	int i, ovlp = 1;
+	i = 0;
+	while (ovlp && i < MAX_DIM_NUM) {
+		ovlp = !(high[i] < n_domLow[i] || low[i] > n_domHigh[i]);
+		i++;
+	}
+    return ovlp;
+	/*double slow[3];
 	double shigh[3];
 	for (int i = 0; i < 3; i++) {
 		slow[i] = low[i] < n_domLow[i] ? n_domLow[i] : low[i];
@@ -207,5 +214,5 @@ bool OctTNode::calOverlap(const double *low, const double *high) {
 			return false;
 		}
 	}
-	return true;
+	return true;*/
 }
