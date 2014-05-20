@@ -609,7 +609,7 @@ int dispatch_torus(torus_s *torus) {
 int traverse_torus(const char *entry_ip) {
 	int socketfd;
 
-	socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+	socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -663,7 +663,7 @@ int read_torus_ip_list() {
 int traverse_skip_list(const char *entry_ip) {
 	int socketfd;
 
-	socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+	socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -925,7 +925,7 @@ int send_file(char *entry_ip) {
 		ret = FALSE;
 	}
 
-	socketfd = new_client_socket(entry_ip, DATA_PORT);
+	socketfd = new_client_socket(entry_ip, COMPUTE_WORKER_PORT);
 	if (FALSE == socketfd) {
 		ret = FALSE;
 	}
@@ -1113,7 +1113,7 @@ int main(int argc, char **argv) {
 
         query_oct_tree(query, entry_ip);
         printf("\n");
-        usleep(50000);
+        usleep(100000);
 	}
     printf("finish query.\n");
 	fclose(fp);
