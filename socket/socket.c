@@ -180,7 +180,7 @@ void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *sta
 
 int forward_message(struct message msg, int need_reply) {
 	int socketfd;
-	socketfd = new_client_socket(msg.dst_ip, LISTEN_PORT);
+	socketfd = new_client_socket(msg.dst_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -309,7 +309,7 @@ int send_safe(int socketfd, void *data, size_t len, int flags) {
 int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	int socketfd;
 
-	socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+	socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -376,7 +376,7 @@ int performance_test(char *entry_ip) {
     printf("start send data to server\n");
     int count = 0;
     for(i = 0; i < 500000; i++) {
-        socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+        socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
         if (FALSE == socketfd) {
             ret = FALSE;
         }
