@@ -88,11 +88,14 @@ void close_connection(connection_t conn);
 // handle epoll read event
 int handle_read_event(connection_t conn);
 
-// listener thread handler
-void *listen_epoll(void *args);
+// manual worker monitor thread handler
+void *manual_worker_monitor(void *args);
+
+// compute worker monitor thread handler
+void *compute_worker_monitor(void *args);
 
 // worker thread threads handler
-void *work_epoll(void *args);
+void *worker(void *args);
 
 // 
 void *do_performance_test_long(void *args);
