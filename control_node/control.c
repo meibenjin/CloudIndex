@@ -1113,7 +1113,7 @@ int main(int argc, char **argv) {
 
         query_oct_tree(query, entry_ip);
         printf("\n");
-        usleep(100000);
+        usleep(2000);
 	}
     printf("finish query.\n");
 	fclose(fp);
