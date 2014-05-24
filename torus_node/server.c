@@ -7,14 +7,6 @@
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-extern "C" {
-#include"server.h"
-#include"logs/log.h"
-#include"torus_node/torus_node.h"
-#include"skip_list/skip_list.h"
-#include"socket/socket.h"
-}; 
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -25,6 +17,15 @@ extern "C" {
 #include<pthread.h>
 #include<errno.h>
 
+extern "C" {
+#include"logs/log.h"
+#include"torus_node/torus_node.h"
+#include"skip_list/skip_list.h"
+#include"socket/socket.h"
+}; 
+
+
+#include"server.h"
 #include"torus_rtree.h"
 
 
@@ -51,14 +52,14 @@ struct connection_st g_conn_table[CONN_MAXFD];
 int worker_epfd[EPOLL_NUM];
 
 // socket for accept requests from client
-int server_socket;
+int manual_worker_socket;
 
-// socket for accept data requests from client
-int data_socket;
+// socket for accept compute or data transform task from client
+int compute_worker_socket;
 
 // multiple threads in torus node
-pthread_t data_thread;
-pthread_t listener_thread;
+pthread_t manual_worker_monitor_thread;
+pthread_t compute_worker_monitor_thread;
 pthread_t worker_thread[WORKER_NUM];
 pthread_t heartbeat_thread;
 
@@ -759,7 +760,7 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
 	int socketfd;
 
     // create a data socket to send rtree data
-	socketfd = new_client_socket(dst_ip, DATA_PORT);
+	socketfd = new_client_socket(dst_ip, COMPUTE_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -1043,7 +1044,7 @@ int local_rtree_query(double low[], double high[]) {
             char *dst_ip = the_torus_leaders[index].ip;
 
             int socketfd;
-            socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+            socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
             if (FALSE == socketfd) {
                 return FALSE;
             }
@@ -1690,7 +1691,7 @@ int do_heartbeat(struct message msg) {
         p = p->next;
     }
     sprintf(buf + len, "\n\n");
-    write_log(RESULT_LOG, buf);
+    write_log(HEARTBEAT_LOG, buf);
     return TRUE;
 }
 
@@ -1717,7 +1718,7 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
             backward = the_skip_list->header->level[0].backward;
             if(backward != NULL) {
                 int socketfd;
-                socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+                socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
                 if (FALSE == socketfd) {
                     return FALSE;
                 }
@@ -1978,25 +1979,26 @@ int handle_read_event(connection_t conn) {
     return TRUE;
 }
 
-void *listen_epoll(void *args) {
-	// listen epoll
+void *manual_worker_monitor(void *args) {
+	// add manual_worker_listener 
 	int epfd;
 	struct epoll_event ev, event;
 	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = server_socket;
+	ev.data.fd = manual_worker_socket;
 	ev.events = EPOLLIN;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, server_socket, &ev);
+	epoll_ctl(epfd, EPOLL_CTL_ADD, manual_worker_socket, &ev);
 
 	int nfds;
     int conn_socket;
-    //worker epoll index
+
+    //manual worker index from 0 ~ MANUAL_WORKER - 1
     int index = 0;
 
 	while(should_run) {
 		nfds = epoll_wait(epfd, &event, 1, -1);
 		//for(i = 0; i < nfds; i++) {
         if(nfds > 0) {
-            while((conn_socket = accept_connection(server_socket)) > 0) {
+            while((conn_socket = accept_connection(manual_worker_socket)) > 0) {
                 set_nonblocking(conn_socket);
                 ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
@@ -2011,7 +2013,7 @@ void *listen_epoll(void *args) {
                 g_conn_table[conn_socket].index = index; 
                 g_conn_table[conn_socket].socketfd = conn_socket; 
                 epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
-                index = (index + 1) % EPOLL_NUM;
+                index = (index + 1) % MANUAL_WORKER;
             }
 		} 
 	}
@@ -2021,7 +2023,6 @@ void *listen_epoll(void *args) {
 }
 
 void close_connection(connection_t conn) {
-    //update max_wait_time
 
     struct epoll_event ev;
     conn->used = 0;
@@ -2046,36 +2047,53 @@ void update_max_wait_time(connection_t conn) {
     pthread_mutex_unlock(&global_variable_mutex);
 }
 
-void *work_epoll(void *args){
+void *worker(void *args){
     int epfd = *(int *)args;
 
-	struct epoll_event ev, event; //events[MAX_EVENTS];
+	struct epoll_event ev, events[MAX_EVENTS];
 
-    int nfds;
+    int i, nfds;
+    struct message msg;
     int conn_socket;
 
 	while(should_run) {
-		nfds = epoll_wait(epfd, &event, 1, -1);
-		//for(i = 0; i < nfds; i++) {
-        if(nfds > 0) {
-            if (event.events && EPOLLIN) {
-				conn_socket = event.data.fd;
+		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+		for(i = 0; i < nfds; i++) {
+        //if(nfds > 0) {
+            if (events[i].events && EPOLLIN) {
+				conn_socket = events[i].data.fd;
 
                 connection_t conn = &g_conn_table[conn_socket];
 
                 // calc current max_wait_time
                 update_max_wait_time(conn);
 
-                if(FALSE == handle_read_event(conn)) {
-                    close_connection(conn);
-                    continue;
-                }
+                // handle manual task (connection closed here)
+                if(conn->index < MANUAL_WORKER) {
+                    if(FALSE == handle_read_event(conn)) {
+                        close_connection(conn);
+                        continue;
+                    }
 
-                //if(conn->used != 0) {
-                    ev.events = EPOLLIN | EPOLLONESHOT;
-                    ev.data.fd = conn_socket;
-                    epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                //}
+                    if(conn->used != 0) {
+                        ev.events = EPOLLIN | EPOLLONESHOT;
+                        ev.data.fd = conn_socket;
+                        epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
+                    }
+                } else {
+                // handle compute task (connection closed by receiver)
+
+                    memset(&msg, 0, sizeof(struct message));
+
+                    // receive message through the conn_socket
+                    if (TRUE == receive_message(conn->socketfd, &msg)) {
+                        process_message(conn, msg);
+                    } else {
+                        //  TODO: handle receive message failed
+                        printf("receive message failed.\n");
+                    }
+
+                }
 			}
 		}
 	}
@@ -2083,24 +2101,26 @@ void *work_epoll(void *args){
     return NULL;
 }
 
-void *data_transform(void *args) {
+void *compute_worker_monitor(void *args) {
 	// listen epoll
 	int epfd;
 	struct epoll_event ev, event;
 	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = data_socket;
+	ev.data.fd = compute_worker_socket;
 	ev.events = EPOLLIN | EPOLLET;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, data_socket, &ev);
+	epoll_ctl(epfd, EPOLL_CTL_ADD, compute_worker_socket, &ev);
 
 	int nfds;
     int conn_socket;
-    struct message msg;
+
+    // epoll index from MANUAL_WORKER ~ (WORKER_NUM - 1) used for compute worker
+    int index = MANUAL_WORKER;
 
 	while(should_run) {
 		nfds = epoll_wait(epfd, &event, 1, -1);
         if(nfds > 0) {
-            if(event.data.fd == data_socket) {
-                while((conn_socket = accept_connection(data_socket)) > 0) {
+            if(event.data.fd == compute_worker_socket) {
+                while((conn_socket = accept_connection(compute_worker_socket)) > 0) {
                     set_nonblocking(conn_socket);
                     ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
@@ -2109,10 +2129,14 @@ void *data_transform(void *args) {
                     // record enter_time of coming connection
                     clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
+                    g_conn_table[conn_socket].index = index; 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
-                    epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
+                    epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
+
+                    index++;
+                    index = (index == WORKER_NUM) ? MANUAL_WORKER : (index % WORKER_NUM);
                 }
-            } else if(event.events && EPOLLIN) { 
+            } /*else if(event.events && EPOLLIN) { 
 				conn_socket = event.data.fd;
                 connection_t conn = &g_conn_table[conn_socket];
 
@@ -2128,7 +2152,7 @@ void *data_transform(void *args) {
 					//  TODO: handle receive message failed
 					printf("receive message failed.\n");
 				}
-            }
+            }*/
 		} 
 	}
 
@@ -2138,7 +2162,7 @@ void *data_transform(void *args) {
 
 int send_node_status(const char *dst_ip) {
     int socketfd;
-	socketfd = new_client_socket(dst_ip, LISTEN_PORT);
+	socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -2214,69 +2238,69 @@ int main(int argc, char **argv) {
 	printf("load rtree.\n");
 	write_log(TORUS_NODE_LOG, "load rtree.\n");
 
-	server_socket = new_server(LISTEN_PORT);
-	if (server_socket == FALSE) {
-        write_log(TORUS_NODE_LOG, "start server failed.\n");
+	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
+	if (manual_worker_socket == FALSE) {
+        write_log(TORUS_NODE_LOG, "start manual-worker server failed.\n");
         exit(1);
 	}
-	printf("start server.\n");
-	write_log(TORUS_NODE_LOG, "start server.\n");
+	printf("start manual-worker server.\n");
+	write_log(TORUS_NODE_LOG, "start manual-worker server.\n");
 
-	data_socket = new_server(DATA_PORT);
-	if (data_socket == FALSE) {
-        write_log(TORUS_NODE_LOG, "start data server failed.\n");
+	compute_worker_socket = new_server(COMPUTE_WORKER_PORT);
+	if (compute_worker_socket == FALSE) {
+        write_log(TORUS_NODE_LOG, "start compute-worker server failed.\n");
         exit(1);
 	}
-	printf("start data server.\n");
-	write_log(TORUS_NODE_LOG, "start data server.\n");
+	printf("start compute-worker server.\n");
+	write_log(TORUS_NODE_LOG, "start compute-worker server.\n");
 
 	// set server socket nonblocking
-	set_nonblocking(server_socket);
-	set_nonblocking(data_socket);
+	set_nonblocking(manual_worker_socket);
+	set_nonblocking(compute_worker_socket);
 
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
+
+
+    // create listen thread for epoll listerner
+    pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, NULL);
 
     //create EPOLL_NUM different epoll fd for workers
     for (i = 0; i < EPOLL_NUM; i++) {
         worker_epfd[i] = epoll_create(MAX_EVENTS);
     }
 
-    // create listen thread for epoll listerner
-    pthread_create(&listener_thread, NULL, listen_epoll, NULL);
-
     // create worker thread to handle ready socket fds
     for(i = 0; i < EPOLL_NUM; i++) {
         int j; 
         for(j = 0; j < WORKER_PER_GROUP; j++) {
-            pthread_create(worker_thread + (i * WORKER_PER_GROUP + j), NULL, work_epoll, worker_epfd + i);
+            pthread_create(worker_thread + (i * WORKER_PER_GROUP + j), NULL, worker, worker_epfd + i);
         }
     }
 
     // create data thread to handle data request
-    pthread_create(&data_thread, NULL, data_transform, NULL);
+    pthread_create(&compute_worker_monitor_thread, NULL, compute_worker_monitor, NULL);
 
     // create heartbeat thread to send status info
     pthread_create(&heartbeat_thread, NULL, send_heartbeat, NULL);
 
     pthread_join(heartbeat_thread, NULL);
 
-    pthread_join(data_thread, NULL);
+    pthread_join(compute_worker_monitor_thread, NULL);
 
     for (i = 0; i < WORKER_NUM; i++) {
         pthread_join(worker_thread[i], NULL);
     }
 
-    pthread_join(listener_thread, NULL);
+    pthread_join(manual_worker_monitor_thread, NULL);
 
     // close worker epoll fds
     for (i = 0; i < EPOLL_NUM; i++) {
         close(worker_epfd[i]);
     }
 
-    close(server_socket);
-
+    close(manual_worker_socket);
 	return 0;
 }
 
