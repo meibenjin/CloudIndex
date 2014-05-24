@@ -97,12 +97,13 @@ void *compute_worker_monitor(void *args);
 // worker thread threads handler
 void *worker(void *args);
 
-// 
 void *do_performance_test_long(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 
 int find_idle_torus_node(char idle_ip[]);
+
+int local_oct_tree_nn_query(struct interval region[], double low[], double high[]);
 
 #endif /* SERVER_H_ */
 

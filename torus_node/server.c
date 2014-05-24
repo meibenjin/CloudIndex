@@ -7,17 +7,6 @@
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
-extern "C" {
-#include"server.h"
-#include"logs/log.h"
-#include"torus_node/torus_node.h"
-#include"skip_list/skip_list.h"
-#include"socket/socket.h"
-}; 
-
-#include"torus_rtree.h"
-#include"oct_tree/OctTree.h"
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -27,6 +16,18 @@ extern "C" {
 #include<sys/epoll.h>
 #include<pthread.h>
 #include<errno.h>
+
+extern "C" {
+#include"logs/log.h"
+#include"torus_node/torus_node.h"
+#include"skip_list/skip_list.h"
+#include"socket/socket.h"
+}; 
+
+#include"server.h"
+#include"torus_rtree.h"
+#include"oct_tree/OctTree.h"
+
 
 #include"torus_rtree.h"
 #include "gsl_rng.h"
@@ -75,6 +76,15 @@ pthread_mutex_t global_variable_mutex;
 //pthread_cond_t condition;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
+
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+
+// internal functions 
+/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs);
+double get_distance(struct point p1, struct point p2);
+void sort_by_distance(struct point qpt, vector<traj_point *> &samples);
+int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<int, double> &rst_pro);
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -1664,6 +1674,262 @@ int find_idle_torus_node(char idle_ip[]) {
     return TRUE;
 }
 
+/* given a query point with (x, y, z) and a trajs list, 
+ * this function output the intersect points list; 
+ * for each traj and given query time t, we can find the intersect point of line z = t
+ * and line segment in the traj.
+ * for example qpt = (5, 5, 9), one of traj = (0,0,0)-(2,2,5)-(4,4,10)-(6,6,15)
+ * the intersect point of line z = 9 and line segment(here is (2,2,5)-(4,4,10) ) 
+ * of the trajs is one of the output.
+ * */
+int get_center_points(struct point qpt, hash_map<IDTYPE, Traj *> trajs, vector<traj_point *> &center_points) {
+    double z;
+    int i;
+    OctPoint *p_cur, *p_next;
+    point start, end;
+    hash_map<IDTYPE, Traj *>::iterator tit;
+
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        IDTYPE pid = traj->t_head;
+        p_cur =  g_PtList.find(pid)->second;
+
+        while(p_cur->next != -1) {
+            pid = p_cur->next; 
+            p_next = g_PtList.find(pid)->second; 
+            for(i = 0; i < MAX_DIM_NUM; i++) {
+                start.axis[i] = p_cur->p_xyz[i];
+                end.axis[i] = p_next->p_xyz[i];
+            }
+
+            if(qpt.axis[2] > start.axis[2] && qpt.axis[2] < end.axis[2]) {
+                z = qpt.axis[2];
+                traj_point *tpt = (traj_point *) malloc(sizeof(traj_point));
+                tpt->t_id = traj->t_id;
+                tpt->p.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / (end.axis[2] - start.axis[2]);
+                tpt->p.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / (end.axis[2] - start.axis[2]);
+                tpt->p.axis[2] = z;
+                center_points.push_back(tpt);
+                break;
+            }
+            // move next
+            p_cur = p_next;
+        }
+    }
+    return TRUE;
+}
+
+int get_nn_oct_points(struct point query_point, vector<traj_point *> &nn_points) {
+    // step 1 find nearest neighbor of query_point
+    double min_dis, dis;
+    size_t i, size;
+    size = nn_points.size();
+    if(size == 0) {
+        return FALSE;
+    }
+    min_dis = get_distance(query_point, nn_points[0]->p);
+    for(i = 1; i < size; i++) {
+        dis = get_distance(query_point, nn_points[i]->p);
+        if(dis < min_dis) {
+            min_dis = dis;
+        }
+    }
+
+    // delete the points that the distance from query_point
+    // is larger then extend_r
+    double extend_r = min_dis + 6 * SIGMA;
+    extend_r *= extend_r;
+    vector<traj_point *>::iterator it;
+    for(it = nn_points.begin(); it != nn_points.end();) {
+        dis = get_distance(query_point, (*it)->p);
+        if(dis > extend_r) {
+            free(*it);
+            it = nn_points.erase(it);
+        }
+    }
+    return TRUE;
+}
+
+/* given a object o and time interval [start, end] which represent by region, 
+ * this function find nearest neighbor objects in this time interval.
+ * note that the low is equal to high at x dimension in query region, 
+ * same as at y dimension. 
+ * 
+ * */
+int local_oct_tree_nn_query(struct interval region[], double low[], double high[]) {
+    size_t n = 20, m = 500, i; 
+    IDTYPE t_id;
+
+    //step 1: get oct tree points which region overlap with query region
+    vector<OctPoint *> pt_vector;
+    the_torus_oct_tree->NNQuery(low, high, pt_vector);
+
+    // recreate trajs from pt_vector;
+    hash_map<IDTYPE, Traj*> trajs;
+    recreate_trajs(pt_vector, trajs);
+
+    //step 2: filter phrase
+    // init query point
+    struct point query_point;
+    query_point.axis[0] = low[0];
+    query_point.axis[1] = low[1];
+
+    // init gsl lib
+    gsl_rng *r;
+    gsl_rng_env_setup();
+    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
+    r = gsl_rng_alloc(gsl_rng_default);
+
+
+    // init qp_pro 
+    hash_map<IDTYPE, double> qp_pro;
+    hash_map<IDTYPE, Traj *>::iterator tit;
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        t_id = traj->t_id;
+        qp_pro.insert(pair<IDTYPE, double>(t_id, 0.0));
+    }
+
+    /* for each sampled time between start and end
+     * find the nearest neighbor object for query object
+     * and calc the qp at time t
+     * */ 
+    hash_map<IDTYPE, double>::iterator it;
+    double qp, qpt;
+    for(i = 0; i < n; i++) {
+        // sample z(time) axis with uniform distribution
+        query_point.axis[2] = gsl_ran_flat(r, low[2], high[2]);
+
+        vector<traj_point *> nn_points;
+        // get center points for each trajs at time t
+        get_center_points(query_point, trajs, nn_points);
+        // get candidate nearest neighbor objects
+        get_nn_oct_points(query_point, nn_points);
+
+        hash_map<IDTYPE, double> qpt_pro;
+        calc_QPT(query_point, nn_points, m, qpt_pro);
+
+        for(it = qpt_pro.begin(); it != qpt_pro.end(); it++) {
+            t_id = it->first;
+            qpt = it->second;
+            qp = qp_pro.find(t_id)->second;
+            qp *= (1 - qpt);
+            qp_pro.insert(pair<IDTYPE, double>(t_id, qp));
+        }
+    }
+    gsl_rng_free(r);
+    return TRUE;
+}
+
+double get_distance(struct point p1, struct point p2) {
+    double distance = 0;
+    int i;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        distance += (p1.axis[i] - p2.axis[i]) * (p1.axis[i] - p2.axis[i]); 
+    }
+    return distance;
+}
+
+void sort_by_distance(struct point qpt, vector<traj_point *> &samples) {
+}
+
+
+int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_pro) {
+    size_t i, j;
+    double value;
+    vector<traj_point *> samples;
+    hash_map<int, double> cdf;
+
+    // init gsl lib
+    gsl_rng *r;
+    gsl_rng_env_setup();
+    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
+    r = gsl_rng_alloc(gsl_rng_default);
+
+    traj_point *points;
+    for (i = 0; i < nn_points.size(); i++) {
+        points = (traj_point *) malloc(sizeof(traj_point) * m);
+
+        for(j = 0; j < m; j++) {
+            points[j].t_id = nn_points[i]->t_id;
+            points[j].p.axis[2] = nn_points[i]->p.axis[2];
+        }
+
+        j = 0;
+        while(j < m) {
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            points[j].p.axis[0] = nn_points[i]->p.axis[0] + value;
+            j++;
+        }
+
+        j = 0;
+        while(j < m) {
+            value = gsl_ran_gaussian(r, SIGMA); 
+            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+                continue;
+            }
+            points[j].p.axis[1] = nn_points[i]->p.axis[1] + value;
+            j++;
+        }
+        for(j = 0; j < m; j++) {
+            samples.push_back(&points[j]);
+        }
+        cdf.insert(pair<int, double>(nn_points[i]->t_id, 0.0));
+        rst_pro.insert(pair<int, double>(nn_points[i]->t_id, 0.0));
+    }
+    gsl_rng_free(r);
+
+    sort_by_distance(qpt, samples);
+
+    // calc qpt
+    int t_id = 0;
+    double pro, f = 1.0 / m, F = 1.0;
+    for(i = 0; i < samples.size(); i++) {
+        t_id = samples[i]->t_id;
+
+        pro = rst_pro.find(t_id)->second;
+        F *= f;
+        for(j = 0; j < samples.size(); j++) {
+            if(t_id != samples[j]->t_id) {
+                F *= 1 - cdf.find(samples[j]->t_id)->second;
+            }
+        }
+        rst_pro.insert(pair<int, double>(t_id, pro + F));
+
+        pro = cdf.find(t_id)->second;
+        cdf.insert(pair<int, double>(t_id, pro + f));
+        // TODO if F exceed a threshold, break;
+    }
+
+    //TODO: free memory
+    vector<traj_point *>::iterator it;
+    for(it = samples.begin(); it != samples.end(); ++it) {
+        if(NULL != *it) {
+            free(*it);
+            *it = NULL;
+        }
+    }
+    samples.clear();
+
+    return TRUE;
+}
+
+int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs) {
+    size_t i;
+    hash_map<int, Traj *>::iterator tit;
+    for (i = 0; i < pt_vector.size(); i++) {
+        tit = g_TrajList.find(pt_vector[i]->p_tid);
+		if (tit != g_TrajList.end()) {
+            Traj *t = tit->second;
+            trajs.insert(pair<int, Traj*>(t->t_id, t));
+        }
+    }
+    return TRUE;
+}
+
 int local_oct_tree_query(struct interval region[], double low[], double high[]) {
     //step 1: query trajs which overlap with region(low, high)
     struct timespec s, e;
@@ -1682,22 +1948,14 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
 
     // recreate all trajs with pt_vector(range query result)
     clock_gettime(CLOCK_REALTIME, &s);
-    size_t i;
-    hash_map<int, Traj *>::iterator tit;
     hash_map<IDTYPE, Traj*> trajs;
-    for (i = 0; i < pt_vector.size(); i++) {
-        tit = g_TrajList.find(pt_vector[i]->p_tid);
-		if (tit != g_TrajList.end()) {
-            Traj *t = tit->second;
-            trajs.insert(pair<int, Traj*>(t->t_id, t));
-        }
-    }
-
+    recreate_trajs(pt_vector, trajs);
     clock_gettime(CLOCK_REALTIME, &e);
     elasped = get_elasped_time(s, e);
     memset(buffer, 0, 1024);
     sprintf(buffer, "recreate trajs spend:%lf ms\n", (double) elasped/ 1000000.0);
     write_log(RESULT_LOG, buffer);
+
 
     //step 2:find a idle torus node to do refinement
     clock_gettime(CLOCK_REALTIME, &s);
@@ -1747,12 +2005,13 @@ int local_oct_tree_query(struct interval region[], double low[], double high[]) 
 
     // begin to send points to idle_ip
     char buf[SOCKET_BUF_SIZE];
-    size_t cpy_len = 0;
+    size_t cpy_len = 0, i;
     uint32_t pair_num = 0;
 
     OctPoint *p_cur, *p_next;
     struct point start, end;
 
+    hash_map<IDTYPE, Traj *>::iterator tit;
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
         Traj *traj = tit->second;
         IDTYPE pid = traj->t_head;
@@ -1936,7 +2195,7 @@ double calc_QP(struct interval region[], point start, point end, int n, int m, p
 double calc_refinement(struct interval region[], point start, point end) {
     // the time sampling size n 
     // and other two sampling size m
-    int i, j, k, n = 200, m = 500;
+    int i, j, k, n = 20, m = 500;
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
     for(i = 0; i < n; i++) {
@@ -3264,7 +3523,7 @@ void *manual_worker_monitor(void *args) {
 	int nfds;
     int conn_socket;
 
-    //manual worker index
+    //manual worker index from 0 ~ MANUAL_WORKER - 1
     int index = 0;
 
 	while(should_run) {
@@ -3297,10 +3556,10 @@ void *manual_worker_monitor(void *args) {
 
 void close_connection(connection_t conn) {
     //if(conn->used != 0) {
-    //struct epoll_event ev;
+    struct epoll_event ev;
     conn->used = 0;
     conn->roff = 0;
-    //epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
+    epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
     close(conn->socketfd);
 }
 
@@ -3326,6 +3585,7 @@ void *worker(void *args){
 	struct epoll_event ev, events[MAX_EVENTS];
 
     int i, nfds;
+    struct message msg;
     int conn_socket;
 
 	while(should_run) {
@@ -3340,15 +3600,31 @@ void *worker(void *args){
                 // calc current max_wait_time
                 update_max_wait_time(conn);
 
-                if(FALSE == handle_read_event(conn)) {
-                    close_connection(conn);
-                    continue;
-                }
+                // handle manual task (connection closed here)
+                if(conn->index < MANUAL_WORKER) {
+                    if(FALSE == handle_read_event(conn)) {
+                        close_connection(conn);
+                        continue;
+                    }
 
-                if(conn->used != 0) {
-                    ev.events = EPOLLIN | EPOLLONESHOT;
-                    ev.data.fd = conn_socket;
-                    epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
+                    if(conn->used != 0) {
+                        ev.events = EPOLLIN | EPOLLONESHOT;
+                        ev.data.fd = conn_socket;
+                        epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
+                    }
+                } else {
+                // handle compute task (connection closed by receiver)
+
+                    memset(&msg, 0, sizeof(struct message));
+
+                    // receive message through the conn_socket
+                    if (TRUE == receive_message(conn->socketfd, &msg)) {
+                        process_message(conn, msg);
+                    } else {
+                        //  TODO: handle receive message failed
+                        printf("receive message failed.\n");
+                    }
+
                 }
 			}
 		}
@@ -3368,7 +3644,9 @@ void *compute_worker_monitor(void *args) {
 
 	int nfds;
     int conn_socket;
-    struct message msg;
+
+    // epoll index from MANUAL_WORKER ~ (WORKER_NUM - 1) used for compute worker
+    int index = MANUAL_WORKER;
 
 	while(should_run) {
 		nfds = epoll_wait(epfd, &event, 1, -1);
@@ -3383,11 +3661,14 @@ void *compute_worker_monitor(void *args) {
                     // record enter_time of coming connection
                     clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
+                    g_conn_table[conn_socket].index = index; 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
-                    epoll_ctl(epfd, EPOLL_CTL_ADD, conn_socket, &ev);
-                    //index = (index + 1) % COMPUTE_WOKER_NUM;
+                    epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
+
+                    index++;
+                    index = (index == WORKER_NUM) ? MANUAL_WORKER : (index % WORKER_NUM);
                 }
-            } else if(event.events && EPOLLIN) { 
+            } /*else if(event.events && EPOLLIN) { 
 				conn_socket = event.data.fd;
                 connection_t conn = &g_conn_table[conn_socket];
 
@@ -3403,7 +3684,7 @@ void *compute_worker_monitor(void *args) {
 					//  TODO: handle receive message failed
 					printf("receive message failed.\n");
 				}
-            }
+            }*/
 		} 
 	}
 
