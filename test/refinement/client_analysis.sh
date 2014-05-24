@@ -22,6 +22,6 @@ do
     #echo $find_idle_node
     #echo $trajs_count
     #echo $max_trajs_count
-    echo $send_refinement
-    #echo $qt + $rct + $find_idle_node + $send_refinement | bc
+    #echo $send_refinement
+    echo $qt + $rct + $find_idle_node + $send_refinement | bc
 done
