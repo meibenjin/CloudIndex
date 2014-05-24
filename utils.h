@@ -65,7 +65,7 @@
 
 //limits for epoll
 #define MAX_EVENTS 10000 
-#define COMPUTE_WORKER 4
+#define COMPUTE_WORKER 4 
 #define MANUAL_WORKER 1
 #define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
@@ -89,9 +89,15 @@ typedef struct coordinate {
 	int z;
 } coordinate;
 
+
 typedef struct point {
     data_type axis[MAX_DIM_NUM];
 }point;
+
+typedef struct traj_point {
+    struct point p;
+    int t_id;
+}traj_point;
 
 
 // return value of functions
