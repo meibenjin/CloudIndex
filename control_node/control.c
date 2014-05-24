@@ -608,7 +608,7 @@ int dispatch_torus(torus_s *torus) {
 int traverse_torus(const char *entry_ip) {
 	int socketfd;
 
-	socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+	socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -662,7 +662,7 @@ int read_torus_ip_list() {
 int traverse_skip_list(const char *entry_ip) {
 	int socketfd;
 
-	socketfd = new_client_socket(entry_ip, LISTEN_PORT);
+	socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
@@ -894,7 +894,7 @@ int send_file(char *entry_ip) {
 		ret = FALSE;
 	}
 
-	socketfd = new_client_socket(entry_ip, DATA_PORT);
+	socketfd = new_client_socket(entry_ip, COMPUTE_WORKER_PORT);
 	if (FALSE == socketfd) {
 		ret = FALSE;
 	}
@@ -960,8 +960,8 @@ int main(int argc, char **argv) {
 
 	char entry_ip[IP_ADDR_LENGTH];
     //int cnt = 5;
-    int i = 0;
-    while(i < 4) {
+    int cnt = 0;
+    while(cnt < 1) {
 
         // create a new torus by torus partition info
         struct torus_s *torus_ptr;
@@ -970,7 +970,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        strncpy(entry_ip, torus_ptr->leaders[i].ip, IP_ADDR_LENGTH);
+        //strncpy(entry_ip, torus_ptr->leaders[0].ip, IP_ADDR_LENGTH);
 
         // insert newly created torus cluster into cluster_list
         insert_torus_cluster(cluster_list, torus_ptr);
@@ -987,10 +987,11 @@ int main(int argc, char **argv) {
         printf("\n\n");
         //print_torus_cluster(cluster_list);
         printf("\n\n");
-        i++;
+        cnt++;
     }
 
-	/*int count = 0, i;
+    strncpy(entry_ip, "172.16.0.166", IP_ADDR_LENGTH);
+	int count = 0, i;
     struct query_struct query;
     FILE *fp;
 
@@ -1037,9 +1038,9 @@ int main(int argc, char **argv) {
         }
 	}
     printf("finish read.\n");
-	fclose(fp);*/
+	fclose(fp);
 
-	/*fp = fopen("./range_query", "rb");
+	fp = fopen("./range_query", "rb");
 	if (fp == NULL) {
 		printf("can't open file\n");
 		exit(1);
@@ -1048,37 +1049,28 @@ int main(int argc, char **argv) {
     count = 0;
     printf("begin query.\n");
 	while (!feof(fp)) {
-
+        fscanf(fp, "%d %d", &query.op, &query.data_id);
+        printf("%d %d %d ", ++count, query.op, query.data_id);
         fscanf(fp, "%d %d", &query.op, &query.data_id);
         printf("%d %d %d ", ++count, query.op, query.data_id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
             #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-                printf("%d ", query.intval[i].low);
+                fscanf(fp, "%d %d ", &query.intval[i].low, &query.intval[i].high);
+                printf("%d %d", query.intval[i].low, query.intval[i].high);
             #else
-                fscanf(fp, "%lf", &query.intval[i].low);
-                printf("%lf ", query.intval[i].low);
-            #endif
-        }
-
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].high);
-                printf("%d ", query.intval[i].high);
-            #else
-                fscanf(fp, "%lf", &query.intval[i].high);
-                printf("%lf ", query.intval[i].high);
+                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+                printf("%lf %lf", query.intval[i].low, query.intval[i].high);
             #endif
         }
         fscanf(fp, "\n");
         printf("\n");
 
-        search_skip_list_node(op, id, intval, entry_ip);
+        query_torus(query, entry_ip);
         printf("\n");
         //usleep(1000);
 	}
     printf("finish query.\n");
-	fclose(fp);*/
+	fclose(fp);
 
     //performance_test(entry_ip);
     //send_file(entry_ip);
