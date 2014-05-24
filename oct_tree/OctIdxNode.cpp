@@ -214,8 +214,7 @@ void OctIdxNode::nodeInsert(OctPoint *pt) {
 
 }
 
-void OctIdxNode::rangeQueryNode(double *low, double *high,
-		vector<OctPoint*> &pt_vector) {
+void OctIdxNode::rangeQueryNode(double *low, double *high, vector<OctPoint*> &pt_vector) {
 	for (int i = 0; i < 8; i++) {
 		if (n_children[i] == -1)
 			continue;
@@ -226,6 +225,19 @@ void OctIdxNode::rangeQueryNode(double *low, double *high,
             //tmp->printIt();
 			//cout<<tmp->n_id<<" "<<tmp->n_type<<endl;
 			tmp->rangeQueryNode(low, high, pt_vector);
+		}
+	}
+
+}
+
+void OctIdxNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
+	for (int i = 0; i < 8; i++) {
+		if (n_children[i] == -1)
+			continue;
+
+        OctTNode *tmp = g_NodeList.find(n_children[i])->second;
+		if (tmp->calOverlap(low, high)) {
+			tmp->NNQueryNode(low, high, pt_vector);
 		}
 	}
 

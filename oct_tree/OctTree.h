@@ -77,6 +77,7 @@ public:
 		return sizeof(OctPoint);
 	}
 };
+
 class Traj {
 public:
 	IDTYPE t_id;
@@ -96,6 +97,10 @@ public:
 	void storeToByteArray(char **data, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
 };
+
+class OctLeafNode; 
+class OctIdxNode; 
+class OctTNode; 
 
 class OctTNode {
 public:
@@ -123,8 +128,7 @@ public:
 	bool containPoint(OctPoint *pt,double *low,double *high);
 	bool containPoint(OctPoint *pt, int child_id);
 	bool containPoint(double* xyz, int idx);
-	void octsplit(double* slow, double* shigh, char idx, double* low,
-			double* high);
+	void octsplit(double* slow, double* shigh, char idx, double* low, double* high);
 
 	//virtual bool split_or_not(){cout<<"base insert!"<<endl;return false;}
 	virtual void nodeInsert(OctPoint *pt) {};
@@ -141,27 +145,16 @@ public:
 		cout << "base rangequery!" << endl;
 	};
 
+	virtual void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector){
+		cout << "base rangequery!" << endl;
+	};
+
 public:
     //void printIt();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **pdata, uint32_t &len);
 	void loadFromByteArray(const char *ptr);
 
-};
-class OctIdxNode: public OctTNode {
-public:
-	OctIdxNode() {
-	}
-	;
-	~OctIdxNode() {
-	}
-	;
-	OctIdxNode(int nid, NodeType type, double* low, double* high, int father);
-	void nodeInsert(OctPoint *pt);
-    void printIt();
-	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
-    int sum(int *a);
-    void specialInsert(OctPoint *pt);
 };
 
 class OctLeafNode: public OctTNode {
@@ -175,6 +168,7 @@ public:
 	;
 
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
+	void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector);
 	void nodeInsert(OctPoint *pt);
     void printIt();
 	void nodeSplit();
@@ -194,6 +188,24 @@ public:
 	IDTYPE pid);
 
 };
+
+class OctIdxNode: public OctTNode {
+public:
+	OctIdxNode() {
+	}
+	;
+	~OctIdxNode() {
+	}
+	;
+	OctIdxNode(int nid, NodeType type, double* low, double* high, int father);
+	void nodeInsert(OctPoint *pt);
+    void printIt();
+	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
+	void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector);
+    int sum(int *a);
+    void specialInsert(OctPoint *pt);
+};
+
 class OctTree {
 public:
 	int tree_root; //root node id
@@ -221,9 +233,10 @@ public:
 	void copy(OctTNode *root, double *treeNewLow, double *treeNewHigh);
 
 	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
+	void NNQuery(double *low,double *high,vector<OctPoint *> &pt_vector);
 	void insertBetweenServer();
-        void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point, double *low, double* high);
-        int pointInWhichNode(OctPoint *pt);
+    void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point, double *low, double* high);
+    int pointInWhichNode(OctPoint *pt);
 };
 
 void printNodes();
@@ -246,3 +259,5 @@ extern hash_map<IDTYPE, Traj*> g_TrajList;
 extern hash_map<int, OctTNode*> node_list;
 extern hash_map<IDTYPE, OctPoint*> point_list;
 extern hash_map<IDTYPE,Traj*> traj_list;
+
+

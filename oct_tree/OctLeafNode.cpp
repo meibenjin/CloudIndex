@@ -530,14 +530,26 @@ void OctLeafNode::convertToIndex() {
 	g_NodeList.insert(pair<int, OctTNode*>(n_id, newnode));
 }
 
-void OctLeafNode::rangeQueryNode(double *low, double *high,
-		vector<OctPoint*> &pt_vector) {
+void OctLeafNode::rangeQueryNode(double *low, double *high, vector<OctPoint*> &pt_vector) {
 
 	hash_set<IDTYPE>::iterator ite;
 	if (calOverlap(low, high)) {
 		for (ite = data.begin(); ite != data.end(); ite++) {
 			OctPoint *tmp = g_PtList.find(*ite)->second;
 			if (containPoint(tmp, low, high)) {
+				pt_vector.push_back(tmp);
+			}
+		}
+	}
+}
+
+void OctLeafNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
+	hash_set<IDTYPE>::iterator ite;
+	if (calOverlap(low, high)) {
+		for (ite = data.begin(); ite != data.end(); ite++) {
+			OctPoint *tmp = g_PtList.find(*ite)->second;
+            // check current oct point is in time interval between low[2] and high[2]
+            if(tmp->p_xyz[2] > low[2] && tmp->p_xyz[2] < high[2]) {
 				pt_vector.push_back(tmp);
 			}
 		}
