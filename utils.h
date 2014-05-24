@@ -18,8 +18,8 @@
 
 // limits for socket
 #define IP_ADDR_LENGTH 20
-#define LISTEN_PORT 10086
-#define DATA_PORT 10087
+#define MANUAL_WORKER_PORT 10086
+#define COMPUTE_WORKER_PORT 10087
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024 
@@ -32,7 +32,7 @@
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 640000 
+#define DEFAULT_CAPACITY 200000 
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 6
@@ -52,20 +52,23 @@
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
 #define RTREE_LOG "../logs/rtree.log"
+#define HEARTBEAT_LOG "../logs/heartbeat.log"
 
 #define TMP_DATA_DIR "/root/mbj/data"
 
 //limits for epoll
 #define MAX_EVENTS 10000 
-#define EPOLL_NUM 6
+#define COMPUTE_WORKER 4 
+#define MANUAL_WORKER 1
+#define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 #define CONN_MAXFD 65536 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
 
-#define INT_DATA
-typedef int data_type;
-//typedef double data_type;
+//define INT_DATA
+//typedef int data_type;
+typedef double data_type;
 
 // operation for rtree
 #define RTREE_INSERT 1
