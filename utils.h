@@ -43,7 +43,8 @@
 #define REFINEMENT_THRESHOLD 0.8
 
 // standard deviation sigma
-#define SIGMA 0.00005
+#define SIGMA 0.005
+#define PRECISION 1e-8
 
 // limits for skip list
 #define LEADER_NUM 3
