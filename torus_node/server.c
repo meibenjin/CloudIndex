@@ -13,6 +13,7 @@ __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 #include<sys/time.h>
 #include<time.h>
 #include<unistd.h>
+#include<math.h>
 #include<sys/epoll.h>
 #include<pthread.h>
 #include<errno.h>
@@ -82,9 +83,9 @@ char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 // internal functions 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs);
-double get_distance(struct point p1, struct point p2);
+double points_distance(struct point p1, struct point p2);
 void sort_by_distance(struct point qpt, vector<traj_point *> &samples);
-int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<int, double> &rst_pro);
+int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -1692,7 +1693,7 @@ int get_center_points(struct point qpt, hash_map<IDTYPE, Traj *> trajs, vector<t
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
         Traj *traj = tit->second;
         IDTYPE pid = traj->t_head;
-        p_cur =  g_PtList.find(pid)->second;
+        p_cur = g_PtList.find(pid)->second;
 
         while(p_cur->next != -1) {
             pid = p_cur->next; 
@@ -1727,9 +1728,9 @@ int get_nn_oct_points(struct point query_point, vector<traj_point *> &nn_points)
     if(size == 0) {
         return FALSE;
     }
-    min_dis = get_distance(query_point, nn_points[0]->p);
+    min_dis = points_distance(query_point, nn_points[0]->p);
     for(i = 1; i < size; i++) {
-        dis = get_distance(query_point, nn_points[i]->p);
+        dis = points_distance(query_point, nn_points[i]->p);
         if(dis < min_dis) {
             min_dis = dis;
         }
@@ -1738,13 +1739,15 @@ int get_nn_oct_points(struct point query_point, vector<traj_point *> &nn_points)
     // delete the points that the distance from query_point
     // is larger then extend_r
     double extend_r = min_dis + 6 * SIGMA;
-    extend_r *= extend_r;
     vector<traj_point *>::iterator it;
     for(it = nn_points.begin(); it != nn_points.end();) {
-        dis = get_distance(query_point, (*it)->p);
+        dis = points_distance(query_point, (*it)->p);
         if(dis > extend_r) {
             free(*it);
+            *it = NULL;
             it = nn_points.erase(it);
+        } else {
+            it++;
         }
     }
     return TRUE;
@@ -1763,10 +1766,12 @@ int local_oct_tree_nn_query(struct interval region[], double low[], double high[
     //step 1: get oct tree points which region overlap with query region
     vector<OctPoint *> pt_vector;
     the_torus_oct_tree->NNQuery(low, high, pt_vector);
+    write_log(RESULT_LOG, "nn query here\n");
 
     // recreate trajs from pt_vector;
     hash_map<IDTYPE, Traj*> trajs;
     recreate_trajs(pt_vector, trajs);
+    write_log(RESULT_LOG, "recreate trajs here\n");
 
     //step 2: filter phrase
     // init query point
@@ -1780,15 +1785,16 @@ int local_oct_tree_nn_query(struct interval region[], double low[], double high[
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
 
-
     // init qp_pro 
-    hash_map<IDTYPE, double> qp_pro;
+    hash_map<IDTYPE, double> qp_map;
     hash_map<IDTYPE, Traj *>::iterator tit;
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
         Traj *traj = tit->second;
         t_id = traj->t_id;
-        qp_pro.insert(pair<IDTYPE, double>(t_id, 0.0));
+        qp_map.insert(pair<IDTYPE, double>(t_id, 1.0));
     }
+
+    write_log(RESULT_LOG, "begin refinement here\n");
 
     /* for each sampled time between start and end
      * find the nearest neighbor object for query object
@@ -1796,49 +1802,94 @@ int local_oct_tree_nn_query(struct interval region[], double low[], double high[
      * */ 
     hash_map<IDTYPE, double>::iterator it;
     double qp, qpt;
+    double time_intvl = high[2] - low[2];
     for(i = 0; i < n; i++) {
         // sample z(time) axis with uniform distribution
-        query_point.axis[2] = gsl_ran_flat(r, low[2], high[2]);
+        //query_point.axis[2] = gsl_ran_flat(r, low[2], high[2]);
+        query_point.axis[2] = low[2] + (time_intvl * i / n);
 
         vector<traj_point *> nn_points;
+        vector<traj_point *>::iterator nit;
         // get center points for each trajs at time t
         get_center_points(query_point, trajs, nn_points);
         // get candidate nearest neighbor objects
         get_nn_oct_points(query_point, nn_points);
 
-        hash_map<IDTYPE, double> qpt_pro;
-        calc_QPT(query_point, nn_points, m, qpt_pro);
+        hash_map<IDTYPE, double> qpt_map;
+        calc_QPT(query_point, nn_points, m, qpt_map);
 
-        for(it = qpt_pro.begin(); it != qpt_pro.end(); it++) {
+        for(nit = nn_points.begin(); nit != nn_points.end(); nit++) {
+            if(*nit != NULL) {
+                free(*nit);
+                *nit = NULL;
+            }
+        }
+        nn_points.clear();
+
+        char b[1024];
+        memset(b, 0, 1024);
+        int l = 0;
+        l += sprintf(b + l, "q:[%lf %lf %lf]\n", query_point.axis[0], query_point.axis[1],query_point.axis[2]);
+        for(it = qpt_map.begin(); it != qpt_map.end(); it++) {
             t_id = it->first;
             qpt = it->second;
-            qp = qp_pro.find(t_id)->second;
-            qp *= (1 - qpt);
-            qp_pro.insert(pair<IDTYPE, double>(t_id, qp));
+            qp = qp_map.find(t_id)->second;
+            if(qpt > 1){
+                qp = 0;
+            } else {
+                qp *= (1 - qpt);
+            }
+            qp_map.find(t_id)->second = qp;
+
+            l += sprintf(b + l, "\ttid:%d p:%lf\n", t_id, qpt);
         }
+        write_log(RESULT_LOG, b);
     }
+
+    write_log(RESULT_LOG, "finish refinement here\n\n");
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int len = 0;
+    for(it = qp_map.begin(); it != qp_map.end(); it++) {
+        t_id = it->first;
+        qp = it->second;
+        len += sprintf(buf + len, "%d %lf\n", t_id, qp);
+    }
+    write_log(RESULT_LOG, buf);
     gsl_rng_free(r);
     return TRUE;
 }
 
-double get_distance(struct point p1, struct point p2) {
+double points_distance(struct point p1, struct point p2) {
     double distance = 0;
     int i;
     for(i = 0; i < MAX_DIM_NUM; i++) {
         distance += (p1.axis[i] - p2.axis[i]) * (p1.axis[i] - p2.axis[i]); 
     }
-    return distance;
+    return sqrt(distance);
 }
 
 void sort_by_distance(struct point qpt, vector<traj_point *> &samples) {
+    int i, j;
+    size_t size = samples.size();
+    traj_point *key;
+    for(i = 1; i < (int)size; i++) {
+        key = samples[i];
+        j = i - 1;
+        while(j >= 0 && (points_distance(key->p, qpt) < points_distance(samples[j]->p, qpt))) {
+            samples[j + 1] = samples[j];
+            j--;
+        }
+        samples[j + 1] = key;
+    }
 }
 
 
-int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_pro) {
-    size_t i, j;
+int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map) {
+    size_t i, j, traj_cnt;
     double value;
     vector<traj_point *> samples;
-    hash_map<int, double> cdf;
+    hash_map<IDTYPE, double> cdf;
 
     // init gsl lib
     gsl_rng *r;
@@ -1846,39 +1897,33 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
 
-    traj_point *points;
-    for (i = 0; i < nn_points.size(); i++) {
-        points = (traj_point *) malloc(sizeof(traj_point) * m);
+    traj_point *point;
 
+    traj_cnt = nn_points.size();
+    for (i = 0; i < traj_cnt; i++) {
         for(j = 0; j < m; j++) {
-            points[j].t_id = nn_points[i]->t_id;
-            points[j].p.axis[2] = nn_points[i]->p.axis[2];
-        }
+            point = (traj_point *) malloc(sizeof(traj_point));
+            point->t_id = nn_points[i]->t_id;
+            point->p.axis[2] = nn_points[i]->p.axis[2];
 
-        j = 0;
-        while(j < m) {
             value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+            while(value < -3 * SIGMA || value > 3 * SIGMA) {
+                value = gsl_ran_gaussian(r, SIGMA); 
                 continue;
             }
-            points[j].p.axis[0] = nn_points[i]->p.axis[0] + value;
-            j++;
-        }
+            point->p.axis[0] = nn_points[i]->p.axis[0] + value;
 
-        j = 0;
-        while(j < m) {
             value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
+            while(value < -3 * SIGMA || value > 3 * SIGMA) {
+                value = gsl_ran_gaussian(r, SIGMA); 
                 continue;
             }
-            points[j].p.axis[1] = nn_points[i]->p.axis[1] + value;
-            j++;
+            point->p.axis[1] = nn_points[i]->p.axis[1] + value;
+            samples.push_back(point);
         }
-        for(j = 0; j < m; j++) {
-            samples.push_back(&points[j]);
-        }
-        cdf.insert(pair<int, double>(nn_points[i]->t_id, 0.0));
-        rst_pro.insert(pair<int, double>(nn_points[i]->t_id, 0.0));
+
+        cdf.insert(pair<IDTYPE, double>(nn_points[i]->t_id, 0.0));
+        rst_map.insert(pair<IDTYPE, double>(nn_points[i]->t_id, 0.0));
     }
     gsl_rng_free(r);
 
@@ -1886,22 +1931,22 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
 
     // calc qpt
     int t_id = 0;
-    double pro, f = 1.0 / m, F = 1.0;
+    double f = 1.0 / m, F;
     for(i = 0; i < samples.size(); i++) {
         t_id = samples[i]->t_id;
 
-        pro = rst_pro.find(t_id)->second;
-        F *= f;
-        for(j = 0; j < samples.size(); j++) {
-            if(t_id != samples[j]->t_id) {
-                F *= 1 - cdf.find(samples[j]->t_id)->second;
+        F = f;
+        for (j = 0; j < traj_cnt; j++) {
+            if(t_id != nn_points[j]->t_id) {
+                F *= 1 - cdf.find(nn_points[j]->t_id)->second;
+                if(F < PRECISION) {
+                    break;
+                }
             }
         }
-        rst_pro.insert(pair<int, double>(t_id, pro + F));
+        rst_map.find(t_id)->second += F;
 
-        pro = cdf.find(t_id)->second;
-        cdf.insert(pair<int, double>(t_id, pro + f));
-        // TODO if F exceed a threshold, break;
+        cdf.find(t_id)->second += f;
     }
 
     //TODO: free memory
@@ -2266,7 +2311,8 @@ int operate_oct_tree(struct query_struct query) {
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RTREE_QUERY) {
         pthread_mutex_lock(&mutex);
-        local_oct_tree_query(query.intval, plow, phigh);
+        //local_oct_tree_query(query.intval, plow, phigh);
+        local_oct_tree_nn_query(query.intval, plow, phigh);
         pthread_mutex_unlock(&mutex);
     }
     return TRUE;
