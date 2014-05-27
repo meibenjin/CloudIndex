@@ -15,7 +15,7 @@ TESTDIR=./test
 BIN=./bin
 CC=gcc
 CXX=g++
-CFLAGS= -lrt -Wall -Wno-deprecated
+CFLAGS= -g -lrt -Wall -Wno-deprecated
 
 all: control start-node test1
 
