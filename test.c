@@ -13,6 +13,7 @@
 
 #include "utils.h"
 #include "socket/socket.h"
+#include "control_node/control.h"
 
 #include "gsl_rng.h"
 #include "gsl_randist.h"
@@ -212,7 +213,7 @@ double calc_Qp(struct interval region[], int n, int m, point **samples) {
 
 int main(int argc, char **argv) {
 
-    int i, j, k, n = 5, m = 5;
+    /*int i, j, k, n = 5, m = 5;
     struct point start, end;
     for(k = 0; k < MAX_DIM_NUM; k++) {
         start.axis[k] = 1;
@@ -242,7 +243,7 @@ int main(int argc, char **argv) {
     for(i = 0; i < n; i++){
         free(samples[i]);
     }
-    free(samples);
+    free(samples);*/
 
 
 	/*int i;
@@ -251,55 +252,7 @@ int main(int argc, char **argv) {
 		gen_range(1, 100, 0.4);
 	}*/
 
-	/*int count = 0, i;
-    struct query_struct query;
-    FILE *fp;
-
-    char data_file[MAX_FILE_NAME];
-    snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
-	fp = fopen(data_file, "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    printf("begin read.\n");
-    //1 1   39.984702   116.318417  39744.120185    1
-    //1 2   39.984683   116.318450  39744.120255    1
-	while (!feof(fp)) {
-
-        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
-        //printf("%d ", query.data_id);
-        count++;
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-                //printf("%d ", query.intval[i].low);
-            #else
-                double value;
-                fscanf(fp, "%lf", &value);
-                query.intval[i].low = value;
-                query.intval[i].high = value;
-                //printf("%lf ", query.intval[i].low);
-            #endif
-        }
-        fscanf(fp, "%d", &query.trajectory_id);
-        //printf("%d ", query.trajectory_id);
-
-        fscanf(fp, "\n");
-        //printf("\n");
-
-        if( FALSE == query_test(query, "172.16.0.166")) {
-            printf("%d\n", count);
-            break;
-        }
-        if(count % 1000 == 0) {
-            printf("%d\n", count);
-        }
-	}
-    printf("finish read.\n");
-	fclose(fp);*/
-    //performance_test("172.16.0.166");
+    performance_test("172.16.0.212");
     //performance_test(argv[1]);
 	return 0;
 }

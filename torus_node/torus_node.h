@@ -10,12 +10,11 @@
 
 #include"utils.h"
 
-
 void init_node_info(node_info *node_ptr);
 
 void init_torus_node(torus_node *node_ptr);
 
-int set_interval(node_info *node_ptr);
+int set_interval(node_info *node_ptr, torus_partitions tp, const interval data_region[]);
 
 // set torus node's capacity
 void set_node_capacity(node_info *info_ptr, int c);
@@ -59,6 +58,10 @@ extern void print_node_info(node_info node);
 void print_torus_leaders(node_info leaders[]);
 
 torus_node *new_torus_node();
+
+int write_torus_leaders(node_info leaders[]);
+
+int read_torus_leaders(leaders_info leaders[], int *nodes_num);
 
 #endif /* TORUS_NODE_H_ */
 

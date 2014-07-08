@@ -46,6 +46,7 @@ int new_client_socket(const char *ip, int port) {
 	}
 
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
+	//int client_socket = socket(AF_INET, SOCK_DGRAM, 0);
 	if (client_socket < 0) {
 		fprintf(stderr, "%s: socket()\n", strerror(errno));
 		return FALSE;
@@ -56,7 +57,7 @@ int new_client_socket(const char *ip, int port) {
 
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
 			sizeof(struct sockaddr)) < 0) {
-		printf("%s: connect failed.\n", ip);
+		fprintf(stderr, "%d, %s: connect()\n", errno, strerror(errno));
 		return FALSE;
 	}
 	return client_socket;
@@ -70,6 +71,7 @@ int new_server_socket(int port) {
 
 	//create server socket. type: TCP stream protocol
 	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+	//int server_socket = socket(AF_INET, SOCK_DGRAM, 0);
 	if (server_socket < 0) {
 		fprintf(stderr, "%s: socket()\n", strerror(errno));
 		return FALSE;
@@ -366,7 +368,7 @@ int performance_test(char *entry_ip) {
 
 
     struct message msg;
-    msg.op = PERFORMANCE_TEST;
+    msg.op = QUERY_TORUS_CLUSTER;
 	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
 	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
 	strncpy(msg.stamp, "", STAMP_SIZE);

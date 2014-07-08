@@ -22,29 +22,35 @@
 #define COMPUTE_WORKER_PORT 10087
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
-#define SOCKET_BUF_SIZE 1024 
+#define SOCKET_BUF_SIZE 1024
 #define DATA_SIZE 1000
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
+#define PI 3.1415926
 
 //limits for rtree
 #define MAX_DIM_NUM 3
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 200000
+#define DEFAULT_CAPACITY 20000000
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
-#define MAX_NEIGHBORS 6
-#define MAX_NODES_NUM 20 * 20 * 20
+#define MAX_NEIGHBORS 10
+#define MAX_NODES_NUM 1000 
+#define MAX_CLUSTERS_NUM 1000 
 #define HEARTBEAT_INTERVAL 5
 #define WORKLOAD_THRESHOLD 2
 #define MAX_ROUTE_STEP 3
 #define REFINEMENT_THRESHOLD 0.8
 
 // standard deviation sigma
-#define SIGMA 0.005
+//#define SIGMA 0.00005
+#define SIGMA 900 
 #define PRECISION 1e-8
+
+// use day present second
+#define ONE_SEC (1.0 /(24 * 60 * 60))
 
 // limits for skip list
 #define LEADER_NUM 3
@@ -61,8 +67,12 @@
 #define REFINEMENT_LOG "../logs/refinement.log"
 
 // Data file path
+//#define DATA_DIR "./"
 #define DATA_DIR "/root/mbj/data"
-#define RANGE_FILE_NAME "range"
+#define DATA_REGION "data_region"
+#define TORUS_IP_LIST "../etc/torus_ip_list"
+#define CLUSTER_PARTITONS "./cluster_partitions"
+#define TORUS_LEADERS "./torus_leaders"
 
 //limits for epoll
 #define MAX_EVENTS 10000 
@@ -71,8 +81,8 @@
 #define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
-#define CONN_MAXFD 65536 
-#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 4) 
+#define CONN_MAXFD 10240 
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 32) 
 
 //#define INT_DATA
 //typedef int data_type;
@@ -121,6 +131,7 @@ typedef enum OP {
 	TRAVERSE_TORUS,
     QUERY_TORUS_NODE, 
 	QUERY_TORUS_CLUSTER,
+    LOAD_DATA,
 	NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
@@ -136,7 +147,8 @@ typedef enum OP {
     LOAD_OCT_TREE_NODES,
     LOAD_OCT_TREE_TRAJECTORYS,
     TRAJ_QUERY,
-    REFINEMENT
+    RANGE_QUERY_REFINEMENT,
+    NN_QUERY_REFINEMENT
 } OP;
 
 // interval of each dimension
@@ -284,6 +296,13 @@ typedef struct line_segment {
     struct point *start;
     struct point *end;
 }line_segment ;
+
+// leaders info
+typedef struct leaders_info {
+    int cluster_id;
+    torus_partitions partition;
+    char ip[LEADER_NUM][IP_ADDR_LENGTH];
+}leaders_info;
 
 
 #endif /* UTILS_H_ */

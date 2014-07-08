@@ -152,10 +152,11 @@ bool OctTNode::containPoint(double* xyz, int idx) {
 	double shigh[3];
 	octsplit(slow, shigh, idx, n_domLow, n_domHigh);
 
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 3; i++) {
 		if (xyz[i] < slow[i] - eps || xyz[i] > shigh[i] + eps) {
 			return false;
 		}
+    }
 	return true;
 }
 void OctTNode::octsplit(double* slow, double* shigh, char idx, double* low,

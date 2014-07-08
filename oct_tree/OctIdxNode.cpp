@@ -230,11 +230,39 @@ void OctIdxNode::rangeQueryNode(double *low, double *high, vector<OctPoint*> &pt
 
 }
 
-void OctIdxNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
+int has_overlap(const double *slow, const double *shigh, const double *low, const double *high) {
+	int i, ovlp = 1;
+	i = 0;
+	while (ovlp && i < MAX_DIM_NUM) {
+		ovlp = !(shigh[i] < low[i] || slow[i] > high[i]);
+		i++;
+	}
+    return ovlp;
+}
+
+void OctIdxNode::getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector) {
 	for (int i = 0; i < 8; i++) {
 		if (n_children[i] == -1)
 			continue;
+        OctTNode *tmp = g_NodeList.find(n_children[i])->second;
+        tmp->getOctPoints(low, high, pt_vector);
+	}
+}
 
+void OctIdxNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
+    double child_low[3], child_high[3];
+    for(int i = 0; i < 8; i++) {
+        octsplit(child_low, child_high, i, n_domLow, n_domHigh);
+        if(n_children[i] == -1 && has_overlap(low, high, child_low, child_high) == 1) {
+            getOctPoints(low, high, pt_vector);
+            return;
+        }
+
+    }
+
+	for (int i = 0; i < 8; i++) {
+		if (n_children[i] == -1)
+			continue;
         OctTNode *tmp = g_NodeList.find(n_children[i])->second;
 		if (tmp->calOverlap(low, high)) {
 			tmp->NNQueryNode(low, high, pt_vector);

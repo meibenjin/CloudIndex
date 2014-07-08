@@ -9,12 +9,6 @@
 #define CONTROL_H_
 
 #include"utils.h"
-#include"torus_node/torus_node.h"
-#include"socket/socket.h"
-#include"skip_list/skip_list.h"
-
-#define TORUS_IP_LIST "../etc/torus_ip_list"
-
 
 torus_cluster *new_torus_cluster();
 
@@ -52,7 +46,7 @@ torus_s *new_torus(struct torus_partitions new_torus_p);
  *      set global variable torus_node_list
  *      set neighbors for every torus node
  */
-torus_s *create_torus(int p_x, int p_y, int p_z);
+torus_s *create_torus(struct torus_partitions tp);
 
 // append a extra new torus
 torus_s *append_torus(torus_s *to, torus_s *from, int direction);
@@ -67,8 +61,6 @@ int dispatch_torus(torus_s *torus);
 int traverse_torus(const char *entry_ip);
 
 void print_torus(torus_s *torus);
-
-int read_torus_ip_list();
 
 int traverse_skip_list(const char *entry_ip);
 

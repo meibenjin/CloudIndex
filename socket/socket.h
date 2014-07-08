@@ -36,6 +36,11 @@ typedef struct message
     char data[DATA_SIZE];
 }message;
 
+typedef struct packet {
+    char *data;
+    uint32_t data_len;
+}packet;
+
 /* reply message for transport among torus nodes
  * op: operation code
  * stamp unique request stamp for global system

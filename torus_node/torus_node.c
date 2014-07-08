@@ -47,12 +47,39 @@ void init_torus_node(torus_node *node_ptr) {
 }
 
 // TODO calc the region of this torus node by it's cluster_id and node_id
-int set_interval(node_info *node_ptr){
+int set_interval(node_info *node_ptr, torus_partitions tp, const interval data_region[]) {
     int i;
     int c_id = node_ptr->cluster_id;
     coordinate pc = node_ptr->node_id;
 
-    char range_file[MAX_FILE_NAME];
+    // calc each dimension's data range
+    double range[MAX_DIM_NUM];
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        range[i] = data_region[i].high - data_region[i].low;
+    }
+
+    // translation time region
+    interval time_region;
+    time_region = data_region[2];
+    time_region.low += range[2] * c_id;
+    time_region.high += range[2] * c_id;
+
+    double dim_intval;
+    // assine current torus node's data region
+    dim_intval = range[0] / tp.p_x;
+    node_ptr->region[0].low = data_region[0].low + dim_intval * pc.x;
+    node_ptr->region[0].high = node_ptr->region[0].low + dim_intval;
+
+    dim_intval = range[1] / tp.p_y;
+    node_ptr->region[1].low = data_region[1].low + dim_intval * pc.y;
+    node_ptr->region[1].high = node_ptr->region[1].low + dim_intval;
+
+    dim_intval = range[2] / tp.p_z;
+    node_ptr->region[2].low = time_region.low + dim_intval * pc.z;
+    node_ptr->region[2].high = node_ptr->region[2].low + dim_intval;
+	return TRUE;
+
+    /*char range_file[MAX_FILE_NAME];
     snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", DATA_DIR, c_id, pc.x, pc.y, pc.z);
     FILE *fp = fopen(range_file, "rb");
     if(fp == NULL) {
@@ -66,8 +93,7 @@ int set_interval(node_info *node_ptr){
             fscanf(fp, "%lf\t%lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
         #endif
     }
-    fclose(fp);
-	return TRUE;
+    fclose(fp);*/
 }
 
 void set_node_capacity(node_info *info_ptr, int c) {
@@ -271,6 +297,50 @@ void print_node_info(node_info node) {
         sprintf(buf+len, "\n");
         write_log(TORUS_NODE_LOG, buf);
     #endif
+}
+
+int read_torus_leaders(leaders_info leaders[], int *nodes_num) {
+    FILE *fp;
+    fp = fopen(TORUS_LEADERS, "rb");
+	if (fp == NULL) {
+		printf("read_torus_leaders: open file %s failed.\n", TORUS_LEADERS);
+		return FALSE;
+	}
+    
+    int i;
+    int count = 0;
+	while (!feof(fp)) {
+        fscanf(fp, "%d ", &leaders[count].cluster_id);
+        for(i = 0; i < LEADER_NUM; i++) {
+            fscanf(fp, "%s ", leaders[count].ip[i]);
+        }
+        fscanf(fp, "\n");
+        count++;
+    }
+    *nodes_num = count;
+    fclose(fp);
+    return TRUE;
+}
+
+// write torus leaders ip into file, one cluster per line
+int write_torus_leaders(node_info leaders[]) {
+    FILE *fp;
+    fp = fopen(TORUS_LEADERS, "ab+");
+	if (fp == NULL) {
+		printf("write_torus_leaders: open file %s error.\n", TORUS_LEADERS);
+		return FALSE;
+	}
+    
+    int i;
+    char ip[IP_ADDR_LENGTH];
+    fprintf(fp, "%d ", leaders[0].cluster_id);
+    for(i = 0; i < LEADER_NUM; i++) {
+        strncpy(ip, leaders[i].ip, IP_ADDR_LENGTH);
+        fprintf(fp, "%s ", ip);
+    }
+    fprintf(fp, "\n");
+    fclose(fp);
+    return TRUE;
 }
 
 void print_torus_leaders(node_info leaders[]) {

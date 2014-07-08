@@ -5,9 +5,6 @@
  *      Author: meibenjin
  */
 
-#include"control.h"
-
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
@@ -15,6 +12,12 @@
 #include<time.h>
 #include<unistd.h>
 #include<errno.h>
+
+#include"control.h"
+#include"torus_node/torus_node.h"
+#include"socket/socket.h"
+#include"skip_list/skip_list.h"
+#include"config/config.h"
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
@@ -25,9 +28,6 @@ torus_cluster *cluster_list;
 
 // skip list (multiple level linked list for torus cluster)
 skip_list *slist;
-
-char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
-int torus_nodes_num;
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -279,18 +279,27 @@ void assign_torus_leader(torus_s *torus) {
 		}
 	}
 
-    int index[nodes_num];
-    // this function rearrange a initial array indexed with 0~n
-    shuffle(index, nodes_num);
+    int num = nodes_num > LEADER_NUM ? nodes_num : LEADER_NUM;
+
+    int index[num];
+    // this function rearrange a initial array indexed with 0~n-1
+    shuffle(index, num);
 
     // random choose LEADER_NUM torus nodes as leader
+    int k;
     for(i = 0; i < LEADER_NUM; ++i) {
-        torus->leaders[i] = torus->node_list[index[i]].info;
-        for( j = 0; j < MAX_DIM_NUM; ++j) {
+        // in case the index is larger than the nodes_num
+        if(index[i] > nodes_num - 1) {
+            k = nodes_num - 1;
+        } else {
+            k = index[i];
+        }
+        torus->leaders[i] = torus->node_list[k].info;
+        for(j = 0; j < MAX_DIM_NUM; ++j) {
             torus->leaders[i].region[j] = total_region[j];
         } 
         // update leader flag
-        torus->node_list[index[i]].is_leader = 1;
+        torus->node_list[k].is_leader = 1;
     }
 }
 
@@ -302,14 +311,14 @@ void shuffle(int array[], int n) {
     }
 
     // TODO: uncomment it after all torus node has the same configuration
-    /*for(i = n; i > 0; --i) {
+    for(i = n; i > 0; --i) {
         int j = rand() % i;
 
         //swap
         tmp = array[i - 1];
         array[i - 1] = array[j];
         array[j] = tmp;
-    }*/
+    }
 }
 
 torus_s *new_torus(struct torus_partitions new_torus_p) {
@@ -367,11 +376,11 @@ torus_s *new_torus(struct torus_partitions new_torus_p) {
 	return torus_ptr;
 }
 
-torus_s *create_torus(int p_x, int p_y, int p_z) {
+torus_s *create_torus(torus_partitions tp) {
 	int i, j, k, index, nodes_num;
 
 	torus_partitions new_torus_p;
-	if (FALSE == set_partitions(&new_torus_p, p_x, p_y, p_z)) {
+	if (FALSE == set_partitions(&new_torus_p, tp.p_x, tp.p_y, tp.p_z)) {
 		return NULL;
 	}
 
@@ -388,7 +397,6 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
 		printf("create_torus: create a new torus failed.\n");
 		return NULL;
 	}
-
 
     #ifdef INT_DATA
         interval intvl[MAX_DIM_NUM];
@@ -421,7 +429,7 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
         }
     #endif
 
-    // set data interval for each torus node
+    // set data region for each torus node
 	index = 0;
 	struct torus_node *pnode;
 	for (i = 0; i < new_torus_p.p_x; ++i) {
@@ -442,7 +450,7 @@ torus_s *create_torus(int p_x, int p_y, int p_z) {
                         pnode->info.region[t].high = intvl[t].high;
                     }
                 #else
-                    if(FALSE == set_interval(&pnode->info)){
+                    if(FALSE == set_interval(&pnode->info, new_torus_p, data_region)){
                        return NULL;
                     }
                 #endif
@@ -641,24 +649,6 @@ void print_torus(torus_s *torus) {
 	}
 }
 
-int read_torus_ip_list() {
-	FILE *fp;
-	char ip[IP_ADDR_LENGTH];
-	int count;
-	fp = fopen(TORUS_IP_LIST, "rb");
-	if (fp == NULL) {
-		printf("read_torus_ip_list: open file %s failed.\n", TORUS_IP_LIST);
-		return FALSE;
-	}
-
-	count = 0;
-	while ((fgets(ip, IP_ADDR_LENGTH, fp)) != NULL) {
-		ip[strlen(ip) - 1] = '\0';
-		strncpy(torus_ip_list[count++], ip, IP_ADDR_LENGTH);
-	}
-	torus_nodes_num = count;
-	return TRUE;
-}
 
 int traverse_skip_list(const char *entry_ip) {
 	int socketfd;
@@ -885,6 +875,45 @@ int query_torus(struct query_struct query, const char *entry_ip) {
 	return TRUE;
 }
 
+int range_query(const char *entry_ip) {
+	int count = 0, i;
+    struct query_struct query;
+    FILE *fp;
+
+	fp = fopen("./range_query", "rb");
+	if (fp == NULL) {
+		printf("can't open file\n");
+		exit(1);
+	}
+
+    printf("begin query.\n");
+	while (!feof(fp)) {
+        fscanf(fp, "%d %d", &query.op, &query.data_id);
+        printf("%d %d %d ", ++count, query.op, query.data_id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d %d ", &query.intval[i].low, &query.intval[i].high);
+                printf("%d %d", query.intval[i].low, query.intval[i].high);
+            #else
+                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+                printf("%lf %lf", query.intval[i].low, query.intval[i].high);
+            #endif
+        }
+        fscanf(fp, "\n");
+        printf("\n");
+
+        if(FALSE == query_oct_tree(query, entry_ip)) {
+            printf("%d\n", count);
+            break;
+        }
+        printf("\n");
+        usleep(2000);
+	}
+    printf("finish query.\n");
+	fclose(fp);
+    return TRUE;
+}
+
 int query_oct_tree(struct query_struct query, const char *entry_ip) {
 
 	// get local ip address
@@ -977,8 +1006,18 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	cluster_list = new_torus_cluster();
+    // read test data region from file 
+    if(FALSE == read_data_region()) {
+        exit(1);
+    }
 
+    // read cluster partitions from file 
+    if(FALSE == read_cluster_partitions()) {
+        exit(1);
+    }
+
+    // create a cluster list
+	cluster_list = new_torus_cluster();
 	if (NULL == cluster_list) {
 		exit(1);
 	}
@@ -989,137 +1028,41 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	char entry_ip[IP_ADDR_LENGTH];
+	//char entry_ip[IP_ADDR_LENGTH];
     int cnt = 0;
-    while(cnt < 1) {
-
+    while(cnt < cluster_num) {
         // create a new torus by torus partition info
         struct torus_s *torus_ptr;
-        torus_ptr = create_torus(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+        torus_ptr = create_torus(cluster_partitions[cnt]);
         if (torus_ptr == NULL) {
             exit(1);
         }
 
-        strncpy(entry_ip, torus_ptr->leaders[cnt].ip, IP_ADDR_LENGTH);
+        // write current torus leader ip into file
+        write_torus_leaders(torus_ptr->leaders);
+
+        //strncpy(entry_ip, torus_ptr->leaders[cnt].ip, IP_ADDR_LENGTH);
 
         // insert newly created torus cluster into cluster_list
         insert_torus_cluster(cluster_list, torus_ptr);
-
-        //print_torus_cluster(cluster_list);
+        print_torus_cluster(cluster_list);
 
         if (TRUE == dispatch_torus(torus_ptr)) {
             if (TRUE == dispatch_skip_list(slist, torus_ptr->leaders)) {
                 print_skip_list(slist);
-                //printf("traverse skip list success!\n");
+                printf("traverse skip list success!\n");
             }
         }
-
         printf("\n\n");
-        //print_torus_cluster(cluster_list);
+        print_torus_cluster(cluster_list);
         printf("\n\n");
         cnt++;
     }
 
-	int count = 0, i;
-    struct query_struct query;
-    FILE *fp;
+    // insert points
+    //insert_points(entry_ip);
 
-    char data_file[MAX_FILE_NAME];
-    snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
-	fp = fopen(data_file, "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    printf("begin read.\n");
-    //1 1   39.984702   116.318417  39744.120185    1
-    //1 2   39.984683   116.318450  39744.120255    1
-	while (!feof(fp)) {
-
-        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
-        //printf("%d ", query.data_id);
-        count++;
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-                //printf("%d ", query.intval[i].low);
-            #else
-                double value;
-                fscanf(fp, "%lf", &value);
-                query.intval[i].low = value;
-                query.intval[i].high = value;
-                //printf("%lf ", query.intval[i].low);
-            #endif
-        }
-        fscanf(fp, "%d", &query.trajectory_id);
-        //printf("%d ", query.trajectory_id);
-
-        fscanf(fp, "\n");
-        //printf("\n");
-
-        if( FALSE == query_oct_tree(query, entry_ip)) {
-            printf("%d\n", count);
-            break;
-        }
-        if(count % 1000 == 0) {
-            printf("%d\n", count);
-        }
-	}
-    printf("finish read.\n");
-	fclose(fp);
-
-	fp = fopen("./range_query", "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    count = 0;
-    printf("begin query.\n");
-	while (!feof(fp)) {
-        fscanf(fp, "%d %d", &query.op, &query.data_id);
-        printf("%d %d %d ", ++count, query.op, query.data_id);
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d %d ", &query.intval[i].low, &query.intval[i].high);
-                printf("%d %d", query.intval[i].low, query.intval[i].high);
-            #else
-                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
-                printf("%lf %lf", query.intval[i].low, query.intval[i].high);
-            #endif
-        }
-        /*for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-                printf("%d ", query.intval[i].low);
-            #else
-                fscanf(fp, "%lf", &query.intval[i].low);
-                printf("%lf ", query.intval[i].low);
-            #endif
-        }
-
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].high);
-                printf("%d ", query.intval[i].high);
-            #else
-                fscanf(fp, "%lf", &query.intval[i].high);
-                printf("%lf ", query.intval[i].high);
-            #endif
-        }*/
-        fscanf(fp, "\n");
-        printf("\n");
-
-        query_oct_tree(query, entry_ip);
-        printf("\n");
-        usleep(2000);
-	}
-    printf("finish query.\n");
-	fclose(fp);
-
-    //performance_test(entry_ip);
-    //send_file(entry_ip);
+    //range_query(entry_ip);
 
 	return 0;
 }

@@ -543,6 +543,16 @@ void OctLeafNode::rangeQueryNode(double *low, double *high, vector<OctPoint*> &p
 	}
 }
 
+void OctLeafNode::getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector) {
+	hash_set<IDTYPE>::iterator ite;
+    for (ite = data.begin(); ite != data.end(); ite++) {
+        OctPoint *tmp = g_PtList.find(*ite)->second;
+        if(tmp->p_xyz[2] > low[2] && tmp->p_xyz[2] < high[2]) {
+            pt_vector.push_back(tmp);
+        }
+    }
+}
+
 void OctLeafNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
 	hash_set<IDTYPE>::iterator ite;
 	if (calOverlap(low, high)) {

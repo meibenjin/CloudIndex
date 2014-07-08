@@ -145,6 +145,10 @@ public:
 		cout << "base rangequery!" << endl;
 	};
 
+    virtual void getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector) {
+
+    };
+
 	virtual void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector){
 		cout << "base rangequery!" << endl;
 	};
@@ -169,6 +173,7 @@ public:
 
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector);
+    void getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector);
 	void nodeInsert(OctPoint *pt);
     void printIt();
 	void nodeSplit();
@@ -202,6 +207,7 @@ public:
     void printIt();
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector);
+    void getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector);
     int sum(int *a);
     void specialInsert(OctPoint *pt);
 };
