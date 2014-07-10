@@ -121,9 +121,11 @@ int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp) {
         //printf("%lf %lf %lf\n", query.intval[0].low, query.intval[1].low, query.intval[2].low);
 
         // for each data, generate more data
+        static int point_id = 0;
         for(i = 0; i < tp.p_x; i++) {
             for(j = 0; j < tp.p_y; j++) {
                 for(k = 0; k < tp.p_z; k++) {
+                    query.data_id = point_id;
                     node_id.x = i; node_id.y = j; node_id.z = k;
                     new_query = query;
                     gen_query(cluster_id, node_id, tp, &new_query); 
@@ -139,11 +141,11 @@ int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp) {
                     cpy_len += sizeof(struct query_struct);
                     send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
 
+                    point_id++;
                     count++;
                 }
             }
         }
-
 
         if(count % 10000 == 0) {
             printf("%d\n", count);
@@ -191,7 +193,7 @@ int main(int argc, char const* argv[]) {
     index = rand() % LEADER_NUM;
 
     strncpy(entry_ip, leaders[cluster_id].ip[index], IP_ADDR_LENGTH);
-    strncpy(entry_ip, "172.16.0.212", IP_ADDR_LENGTH);
+    strncpy(entry_ip, "172.16.0.20", IP_ADDR_LENGTH);
     printf("send ip: %s\n", entry_ip);
 
     insert_points(entry_ip, cluster_id, leaders[cluster_id].partition);

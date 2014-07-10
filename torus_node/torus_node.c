@@ -52,6 +52,25 @@ int set_interval(node_info *node_ptr, torus_partitions tp, const interval data_r
     int c_id = node_ptr->cluster_id;
     coordinate pc = node_ptr->node_id;
 
+    if(c_id == -1) {
+        char range_file[MAX_FILE_NAME];
+        snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", DATA_DIR, c_id, pc.x, pc.y, pc.z);
+        FILE *fp = fopen(range_file, "rb");
+        if(fp == NULL) {
+            printf("can't open range file %s\n", range_file);
+            return FALSE;
+        }
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d\t%d", &node_ptr->region[i].low, &node_ptr->region[i].high);
+            #else
+                fscanf(fp, "%lf\t%lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
+            #endif
+        }
+        fclose(fp);
+        return TRUE;
+    }
+
     // calc each dimension's data range
     double range[MAX_DIM_NUM];
     for(i = 0; i < MAX_DIM_NUM; i++) {

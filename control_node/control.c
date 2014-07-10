@@ -875,44 +875,6 @@ int query_torus(struct query_struct query, const char *entry_ip) {
 	return TRUE;
 }
 
-int range_query(const char *entry_ip) {
-	int count = 0, i;
-    struct query_struct query;
-    FILE *fp;
-
-	fp = fopen("./range_query", "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    printf("begin query.\n");
-	while (!feof(fp)) {
-        fscanf(fp, "%d %d", &query.op, &query.data_id);
-        printf("%d %d %d ", ++count, query.op, query.data_id);
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d %d ", &query.intval[i].low, &query.intval[i].high);
-                printf("%d %d", query.intval[i].low, query.intval[i].high);
-            #else
-                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
-                printf("%lf %lf", query.intval[i].low, query.intval[i].high);
-            #endif
-        }
-        fscanf(fp, "\n");
-        printf("\n");
-
-        if(FALSE == query_oct_tree(query, entry_ip)) {
-            printf("%d\n", count);
-            break;
-        }
-        printf("\n");
-        usleep(2000);
-	}
-    printf("finish query.\n");
-	fclose(fp);
-    return TRUE;
-}
 
 int query_oct_tree(struct query_struct query, const char *entry_ip) {
 

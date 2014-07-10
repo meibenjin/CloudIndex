@@ -36,7 +36,7 @@
 #define DEFAULT_CAPACITY 20000000
 //#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
-#define MAX_NEIGHBORS 10
+#define MAX_NEIGHBORS 12
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
 #define HEARTBEAT_INTERVAL 5
@@ -92,6 +92,7 @@ typedef double data_type;
 #define RTREE_INSERT 1
 #define RTREE_DELETE 0
 #define RTREE_QUERY 2
+#define RANGE_QUERY 3
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -304,6 +305,10 @@ typedef struct leaders_info {
     char ip[LEADER_NUM][IP_ADDR_LENGTH];
 }leaders_info;
 
+typedef struct neighbor_sock_t {
+    char ip[IP_ADDR_LENGTH];
+    int sockfd;
+}neighbor_sock_t;
 
 #endif /* UTILS_H_ */
 

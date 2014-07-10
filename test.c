@@ -211,6 +211,102 @@ double calc_Qp(struct interval region[], int n, int m, point **samples) {
     return qp;
 }
 
+int query_oct_tree(struct query_struct query, const char *entry_ip) {
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+		return FALSE;
+	}
+
+	struct message msg;
+	msg.op = QUERY_TORUS_CLUSTER;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+
+    size_t cpy_len = 0; 
+	int count = 0;
+	memcpy(msg.data, &count, sizeof(int));
+    cpy_len += sizeof(int);
+
+    memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
+    cpy_len += sizeof(struct query_struct);
+
+    if(FALSE == forward_message(msg, 0)) {
+        return FALSE;
+    }
+
+	return TRUE;
+}
+
+int range_query(const char *entry_ip, char *file_name) {
+	int count = 0, i;
+    struct query_struct query;
+    FILE *fp;
+
+    char file[20];
+    snprintf(file, 20, "./%s", file_name);
+	fp = fopen(file, "rb");
+	if (fp == NULL) {
+		printf("can't open file %s\n", file);
+		exit(1);
+	}
+
+    if(strcmp(file_name, "range_query") == 0){
+        printf("begin range query.\n");
+        while (!feof(fp)) {
+            fscanf(fp, "%d %d", &query.op, &query.data_id);
+            //printf("%d. ", ++count);
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+            }
+            printf("X:[%lf,%lf] ", query.intval[0].low, query.intval[0].high);
+            printf("Y:[%lf,%lf] ", query.intval[1].low, query.intval[1].high);
+            printf("T:[%lf,%lf] ", query.intval[2].low, query.intval[2].high);
+            fscanf(fp, "\n");
+            printf("\n");
+
+            if(FALSE == query_oct_tree(query, entry_ip)) {
+                printf("%d\n", count);
+                break;
+            }
+            printf("\n");
+            usleep(2000);
+        }
+        printf("finish range query.\n");
+        fclose(fp);
+    }
+
+    if(strcmp(file_name, "nn_query") == 0){
+        printf("begin nn query.\n");
+        while (!feof(fp)) {
+            fscanf(fp, "%d %d", &query.op, &query.data_id);
+            //printf("%d. ", ++count);
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+            }
+            printf("x:%lf ", query.intval[0].low);
+            printf("y:%lf ", query.intval[1].low);
+            printf("T:[%lf,%lf]", query.intval[2].low, query.intval[2].high);
+            fscanf(fp, "\n");
+            printf("\n");
+
+            if(FALSE == query_oct_tree(query, entry_ip)) {
+                printf("%d\n", count);
+                break;
+            }
+            printf("\n");
+            usleep(2000);
+        }
+        printf("finish nn query.\n");
+        fclose(fp);
+    }
+
+    return TRUE;
+}
+
 int main(int argc, char **argv) {
 
     /*int i, j, k, n = 5, m = 5;
@@ -252,7 +348,8 @@ int main(int argc, char **argv) {
 		gen_range(1, 100, 0.4);
 	}*/
 
-    performance_test("172.16.0.212");
+    range_query("172.16.0.20", argv[1]);
+    //performance_test("172.16.0.212");
     //performance_test(argv[1]);
 	return 0;
 }

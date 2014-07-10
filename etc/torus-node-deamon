@@ -30,6 +30,7 @@ case $start_stop in
         fi
         cd ${bin_dir}
         nohup ./start-node > /dev/null 2>&1 &
+        #nohup ./start-node > ./debug_out 2>&1 &
         echo $! > $pid
         echo "$ip:starting $command"
         ;;

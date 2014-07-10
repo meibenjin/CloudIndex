@@ -32,10 +32,10 @@ void write_log(const char *file_name, const char *buffer) {
 		printf("log: open file %s error.\n", file_name);
 		return;
 	}
-	char now[32];
+	/*char now[32];
 	memset(now, 0, sizeof(now));
 	get_local_time(now);
-	fwrite(now, strlen(now), 1, fp);
+	fwrite(now, strlen(now), 1, fp);*/
 	fwrite(buffer, strlen(buffer), 1, fp);
 	fclose(fp);
 	fp = NULL;
