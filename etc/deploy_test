@@ -1,0 +1,74 @@
+#!/bin/bash
+# this shell runs on control node
+
+root_dir=${HOME}/mbj/CloudIndex
+etc_dir=${root_dir}/etc
+bin_dir=${root_dir}/bin
+gene_ip_list=${etc_dir}/generator_ip_list
+leader_ip_list=${bin_dir}/torus_leaders
+
+if [ ! -f $leader_ip_list ]; then
+    echo "$leader_ip_list not found"
+    exit 1
+fi
+
+# leader ip array
+#leader_ip_array=(`head -n 1 $leader_ip_list | awk '{for(i=2;i<=NF;i++) {if(i<NF) {printf "%s ",$i}else {print $i}}}'`)
+leader_ip_array=(`head -n 1 $leader_ip_list | awk '{for(i=2;i<=NF;i++) {print $i}}'`)
+
+# generator ip array
+gene_ip_array=(`cat $gene_ip_list`)
+
+host_prefix="root@"
+
+leader_num=`head -n 1 $leader_ip_list | awk '{for(i=2;i<=NF;i++) {print $i}}' | wc -l`
+
+for((i=1;i<=$leader_num;i++)); do
+    echo "begin split data and query"
+    cd ${bin_dir}
+    ./data_split 0 $i
+    ./query_split $i
+    cd ${etc_dir}
+    ./forward-to-generator
+    echo "finish split data and query"
+
+    cd ${etc_dir}
+    bash ${etc_dir}/stop-torus-nodes
+    echo "sleep 100s"
+    sleep 100
+    bash ${etc_dir}/start-torus-nodes
+    bash ${etc_dir}/start-torus-nodes
+    cd ${bin_dir}
+    ./control
+
+    sleep 2
+    echo "begin $i leaders insert data"
+    for((j=0;j<$i;j++)); do
+        echo "start data_generator ${gene_ip_array[$j]}"
+        remote_host="${host_prefix}${gene_ip_array[$j]}"
+        if [ $j -ne $(($i-1)) ]; then
+            remote_shell="cd ${bin_dir}; nohup ./data_generator 0 ${leader_ip_array[$j]} >> ./${i}_leader 2>&1 &"
+        else
+            remote_shell="cd ${bin_dir}; ./data_generator 0 ${leader_ip_array[$j]} >> ./${i}_leader 2>&1"
+        fi
+        ssh ${remote_host} "${remote_shell}"
+    done
+    echo "wait for insert data finish"
+    sleep 600 
+    echo "finish $i leaders insert data"
+
+    echo "begin $i leaders range query"
+    for((j=0;j<$i;j++)); do
+        echo "start query generator ${gene_ip_array[$j]}"
+        remote_host="${host_prefix}${gene_ip_array[$j]}"
+        if [ $j -ne $(($i-1)) ]; then
+            remote_shell="cd ${bin_dir}; nohup ./test1 ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1 &"
+        else
+            remote_shell="cd ${bin_dir}; ./test1 ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1"
+        fi
+        ssh ${remote_host} "${remote_shell}"
+    done
+    echo "wait for range query finish"
+    sleep 200
+    echo "finish $i leaders range query"
+done
