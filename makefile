@@ -19,7 +19,7 @@ CC=gcc
 CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator test1 del_obj_file
+all: control start-node data_generator data_split query_split test1 del_obj_file
 
 control: control.o torus-node.o socket.o skip-list.o log.o config.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o
@@ -33,8 +33,20 @@ start-node: torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o oct_t
 data_generator: data_generator.o socket.o config.o torus-node.o log.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
 
+data_split: data_split.o config.o torus-node.o log.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_split.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
+
+query_split: query_split.o 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/query_split.o
+
 data_generator.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/generator.c -I$(VPATH)
+
+data_split.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/data_split.c -I$(VPATH)
+
+query_split.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/query_split.c -I$(VPATH)
 
 control.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONTROLDIR)/control.c -I$(VPATH)
