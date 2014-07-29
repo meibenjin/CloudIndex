@@ -8,8 +8,13 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
-#include<time.h>
 #include<sys/time.h>
+#include<time.h>
+#include<unistd.h>
+#include<math.h>
+#include<sys/epoll.h>
+#include<pthread.h>
+#include<errno.h>
 
 #include "utils.h"
 #include "socket/socket.h"
@@ -76,57 +81,6 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 	return 1000000000L * (end.tv_sec - start.tv_sec)
 			+ (end.tv_nsec - start.tv_nsec);
 }
-
-/*int gen_sample_point(point start, point end, int n, int m, point **samples) {
-    int i, j;
-    double value, x, y;
-
-    gsl_rng *r;
-    gsl_rng_env_setup();
-    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
-    r = gsl_rng_alloc(gsl_rng_default);
-
-    for(i = 0; i < n; i++) {
-        if(i == 0) {
-            value = start.z;
-        } else if(i == n - 1) {
-            value = end.z;
-        } else {
-            // sample z(time) axis with uniform distribution
-            value = gsl_ran_flat(r, start.z, end.z);
-        }
-
-        for(j = 0; j < m; j++) {
-            samples[i][j].z = value;
-        }
-
-        // sample x, y axis with gaussian distribution
-        j = 0;
-        while(j < m) {
-            value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
-                continue;
-            }
-            x = ((samples[i][j].z - start.z) * end.x + (end.z - samples[i][j].z) * start.x) / (end.z - start.z);
-            samples[i][j].x = x + value;
-            j++;
-        }
-
-        j = 0;
-        while(j < m) {
-            value = gsl_ran_gaussian(r, SIGMA); 
-            if(value < -3 * SIGMA || value > 3 * SIGMA) {
-                continue;
-            }
-            y = ((samples[i][j].z - start.z) * end.y + (end.z - samples[i][j].z) * start.y) / (end.z - start.z);
-            samples[i][j].y = y + value;
-            j++;
-        }
-    }
-
-    gsl_rng_free(r);
-    return TRUE;
-}*/
 
 int gen_sample_point(point start, point end, int n, int m, point **samples) {
     int i, j;
@@ -213,6 +167,7 @@ double calc_Qp(struct interval region[], int n, int m, point **samples) {
 
 int query_oct_tree(struct query_struct query, const char *entry_ip) {
 
+
 	// get local ip address
 	char local_ip[IP_ADDR_LENGTH];
 	memset(local_ip, 0, IP_ADDR_LENGTH);
@@ -246,13 +201,38 @@ int range_query(const char *entry_ip, char *file_name) {
     struct query_struct query;
     FILE *fp;
 
-    char file[20];
-    snprintf(file, 20, "./%s", file_name);
+    char file[MAX_FILE_NAME];
+    snprintf(file, MAX_FILE_NAME, "%s/%s", DATA_DIR, file_name);
 	fp = fopen(file, "rb");
 	if (fp == NULL) {
 		printf("can't open file %s\n", file);
 		exit(1);
 	}
+
+    // create socket to server for transmitting data points
+    int socketfd;
+    socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
+    if (FALSE == socketfd) {
+        return FALSE;
+    }
+
+    // get local ip
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+        close(socketfd);
+		return FALSE;
+	}
+
+    // basic packet to be sent
+    struct message msg;
+    msg.op = QUERY_TORUS_CLUSTER;
+	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
+	strncpy(msg.stamp, "", STAMP_SIZE);
+
+    size_t cpy_len = 0; 
+	int hops= 0;
 
     if(strcmp(file_name, "range_query") == 0){
         printf("begin range query.\n");
@@ -262,22 +242,30 @@ int range_query(const char *entry_ip, char *file_name) {
             for (i = 0; i < MAX_DIM_NUM; i++) {
                 fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
             }
-            printf("X:[%lf,%lf] ", query.intval[0].low, query.intval[0].high);
-            printf("Y:[%lf,%lf] ", query.intval[1].low, query.intval[1].high);
-            printf("T:[%lf,%lf] ", query.intval[2].low, query.intval[2].high);
             fscanf(fp, "\n");
-            printf("\n");
+            /*printf("%d %d %lf %lf %lf %lf %lf %lf\n", query.op, query.data_id, \
+                    query.intval[0].low, query.intval[0].high, \
+                    query.intval[1].low, query.intval[1].high,\
+                    query.intval[2].low, query.intval[2].high);*/
 
-            if(FALSE == query_oct_tree(query, entry_ip)) {
+            // package query into message struct
+            cpy_len = 0;
+            memset(msg.data, 0, DATA_SIZE);
+            memcpy(msg.data, &hops, sizeof(int));
+            cpy_len += sizeof(int);
+            memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
+            cpy_len += sizeof(struct query_struct);
+            send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+            if(count % 100 == 0) {
                 printf("%d\n", count);
-                break;
             }
-            printf("\n");
-            usleep(2000);
+            count++;
+            usleep(5000);
         }
         printf("finish range query.\n");
         fclose(fp);
     }
+    close(socketfd);
 
     if(strcmp(file_name, "nn_query") == 0){
         printf("begin nn query.\n");
@@ -298,7 +286,7 @@ int range_query(const char *entry_ip, char *file_name) {
                 break;
             }
             printf("\n");
-            usleep(2000);
+            sleep(2);
         }
         printf("finish nn query.\n");
         fclose(fp);
@@ -307,13 +295,39 @@ int range_query(const char *entry_ip, char *file_name) {
     return TRUE;
 }
 
-int main(int argc, char **argv) {
+double points_distance(struct point p1, struct point p2) {
+    double distance = 0;
+    int i;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        distance += (p1.axis[i] - p2.axis[i]) * (p1.axis[i] - p2.axis[i]); 
+    }
+    return sqrt(distance);
+}
 
-    /*int i, j, k, n = 5, m = 5;
+int Comp(const void *p1,const void *p2){
+    int i;
+    point qpt;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        qpt.axis[i] = 0;
+    }
+    double dis1 = points_distance((*(point *)p2), qpt);
+    double dis2 = points_distance((*(point *)p1), qpt);
+    return dis1 < dis2;
+}
+
+void sort_by_dis(int n, int m, point **samples) {
+    qsort(samples[0], m, sizeof(samples[0][0]), Comp);
+}
+
+int evaluate_abg(double  * alpha, double * beta, double * gama) {
+    clock_t s, e;
+    s = clock(); 
+
+    int i, j, k, n = 1, m = 10000;
     struct point start, end;
     for(k = 0; k < MAX_DIM_NUM; k++) {
         start.axis[k] = 1;
-        end.axis[k] = 10;
+        end.axis[k] = 1000;
     }
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
@@ -325,33 +339,54 @@ int main(int argc, char **argv) {
             }
         }
     } 
-
+    s = clock();
     gen_sample_point(start, end, n, m, samples);
+    e = clock();
 
-    for(i = 0; i < n; i++) {
-        for(j = 0; j < m; j++) {
-            printf("[%.2lf,%.2lf,%.2lf] ", samples[i][j].axis[0], samples[i][j].axis[1], samples[i][j].axis[2]);
+    *alpha =  (double)(e - s) / CLOCKS_PER_SEC; 
+
+    s = clock(); 
+    //sort 
+    sort_by_dis(n, m, samples);
+    e = clock();
+
+    *beta =  (double)(e - s) / CLOCKS_PER_SEC; 
+  
+    s = clock();
+    // for i = n*m 
+    //  for i = n*m 
+    //      m = m * a; 
+    double mul = 1.0;
+    for(i = 0; i < m; i++) {
+        for(j = 0; j < m; j++){
+            mul *= samples[0][j].axis[0]; 
         }
-        printf("\n");
     }
-    printf("\n");
-
+    e = clock();
+    *gama =  (double)(e - s) / CLOCKS_PER_SEC; 
+    
+    e = clock(); 
     for(i = 0; i < n; i++){
         free(samples[i]);
     }
-    free(samples);*/
-
-
-	/*int i;
-    srand(time(NULL));
-	for(i = 0; i< 10000;i++){
-		gen_range(1, 100, 0.4);
-	}*/
-
-    range_query("172.16.0.20", argv[1]);
-    //performance_test("172.16.0.212");
-    //performance_test(argv[1]);
+    free(samples);
 	return 0;
+}
+
+int main(int argc, char **argv){
+    /*double alpha, beta, gama; 
+    double a, b, g;
+    a = b =g =0;
+    int i;
+    for (i=0;i<10;i++){
+       evaluate_abg(&alpha, &beta, &gama);
+       a += alpha;
+       b += beta;
+       g += gama;
+    }
+    printf("avg alpha=%lf, avg beta = %lf, avg gama=%lf\n",a,b,g);*/
+    range_query(argv[1], argv[2]);
+    return 0;
 }
 
 
