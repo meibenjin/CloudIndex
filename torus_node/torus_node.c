@@ -244,6 +244,20 @@ node_info *get_neighbor_by_id(torus_node *node_ptr, struct coordinate node_id){
     return NULL;
 }
 
+int is_first_torus_node(node_info cur_node, node_info lower_node, int d) {
+    if (cur_node.region[d].low < lower_node.region[d].low) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+int is_last_torus_node(node_info cur_node, node_info upper_node, int d) {
+    if(cur_node.region[d].high > upper_node.region[d].high){
+        return TRUE;
+    }
+    return FALSE;
+}
+
 void print_neighbors(torus_node node) {
 	//int neighbors_num = get_neighbors_num(node);
 

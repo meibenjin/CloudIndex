@@ -51,6 +51,10 @@ node_info *get_neighbor_by_id(torus_node *node_ptr, struct coordinate node_id);
 
 void print_neighbors(torus_node node);
 
+int is_first_torus_node(node_info cur_node, node_info lower_node, int d);
+
+int is_last_torus_node(node_info cur_node, node_info upper_node, int d);
+
 void print_torus_node(torus_node torus);
 
 extern void print_node_info(node_info node);
