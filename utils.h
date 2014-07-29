@@ -9,6 +9,7 @@
 #define UTILS_H_
 
 #include<time.h>
+#include<inttypes.h>
 
 // lock for rtree
 #define HAVE_PTHREAD_H 1
@@ -23,7 +24,7 @@
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024
-#define DATA_SIZE 1000
+#define DATA_SIZE 1400
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 #define PI 3.1415926
@@ -39,8 +40,8 @@
 #define MAX_NEIGHBORS 12
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
-#define HEARTBEAT_INTERVAL 5
-#define WORKLOAD_THRESHOLD 2
+#define HEARTBEAT_INTERVAL 1
+#define WORKLOAD_THRESHOLD 10
 #define MAX_ROUTE_STEP 3
 #define REFINEMENT_THRESHOLD 0.8
 
@@ -53,7 +54,7 @@
 #define ONE_SEC (1.0 /(24 * 60 * 60))
 
 // limits for skip list
-#define LEADER_NUM 3
+#define LEADER_NUM 8
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -65,6 +66,7 @@
 #define RTREE_LOG "../logs/rtree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
 #define REFINEMENT_LOG "../logs/refinement.log"
+#define ERROR_LOG "../logs/error.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -76,13 +78,13 @@
 
 //limits for epoll
 #define MAX_EVENTS 10000 
-#define COMPUTE_WORKER 4 
+#define COMPUTE_WORKER 2
 #define MANUAL_WORKER 1
 #define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
-#define CONN_MAXFD 10240 
-#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 32) 
+#define CONN_MAXFD 1024
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
 
 //#define INT_DATA
 //typedef int data_type;
@@ -143,6 +145,9 @@ typedef enum OP {
 	RECEIVE_QUERY,
     RECEIVE_DATA, 
     PERFORMANCE_TEST,
+    THROUGHPUT_TEST,
+    RANGE_QUERY_TEST_FILTER,
+    RANGE_QUERY_TEST_REFINEMENT,
     RELOAD_RTREE,
     LOAD_OCT_TREE_POINTS,
     LOAD_OCT_TREE_NODES,
@@ -286,7 +291,7 @@ typedef struct connection_st {
 // only max_wait_time now
 typedef struct node_stat {
     char ip[IP_ADDR_LENGTH];
-    long max_wait_time;
+    long fvalue;
 }node_stat;
 
 // used for refinement
@@ -305,10 +310,15 @@ typedef struct leaders_info {
     char ip[LEADER_NUM][IP_ADDR_LENGTH];
 }leaders_info;
 
-typedef struct neighbor_sock_t {
+typedef struct socket_st {
     char ip[IP_ADDR_LENGTH];
     int sockfd;
-}neighbor_sock_t;
+}socket_st;
+
+typedef struct refinement_stat {
+    uint32_t traj_num;
+    uint32_t data_volume;
+}refinement_stat;
 
 #endif /* UTILS_H_ */
 
