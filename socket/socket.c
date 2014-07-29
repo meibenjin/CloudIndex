@@ -233,9 +233,9 @@ int receive_message(int socketfd, struct message *msg) {
 	}
 
 	ssize_t recv_len = -1;
-	recv_len = recv(socketfd, (void *) msg, sizeof(struct message), 0);
-	if (recv_len < 0) {
-		fprintf(stderr, "%s: recv()\n", strerror(errno));
+	recv_len = recv_safe(socketfd, (void *) msg, sizeof(struct message), 0);
+	if (recv_len <= 0) {
+		//fprintf(stderr, "%s: recv()\n", strerror(errno));
 		return FALSE;
 	}
 
@@ -278,7 +278,10 @@ int recv_safe(int socketfd, void *data, size_t len, int flags) {
     while (nrecv < len){
         irecv = recv(socketfd, data + nrecv, len - nrecv, flags);
         if(irecv < 0){
-            //usleep(10);
+            if(errno != EINTR && errno != EAGAIN) {
+                nrecv = 0;
+                break;
+            }
             continue;
         }else if(irecv == 0) {
             nrecv = 0;
@@ -296,7 +299,10 @@ int send_safe(int socketfd, void *data, size_t len, int flags) {
     while (nsend < len){
         isend = send(socketfd, data + nsend, len - nsend, flags);
         if(isend < 0){
-            //usleep(10);
+            if(errno != EINTR && errno != EAGAIN) {
+                nsend = 0;
+                break;
+            }
             continue;
         }else if(isend == 0) {
             nsend = 0;
