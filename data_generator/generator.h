@@ -12,6 +12,8 @@
 
 int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query);
 
-int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp);
+int read_data();
+
+int insert_data(char entry_ip[], int cluster_id);
 
 #endif /* GENERATOR_H_ */

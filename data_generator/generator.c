@@ -8,13 +8,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 #include <string.h>
+#include<pthread.h>
 
 #include "generator.h"
 #include"socket/socket.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
+leaders_info leaders[MAX_NODES_NUM];
+int cluster_id;
+
+struct query_struct query[6000000];
+int query_num = 0;
 
 int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query) {
     int i;
@@ -62,12 +69,13 @@ int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *q
     return TRUE;
 }
 
+int insert_data(char entry_ip[], int cluster_id) {
 
-int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp) {
     // create socket to server for transmitting data points
     int socketfd;
     socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
     if (FALSE == socketfd) {
+        printf("creat new socket failed!\n");
         return FALSE;
     }
 
@@ -89,48 +97,31 @@ int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp) {
     size_t cpy_len = 0; 
 	int hops= 0;
 
-    // read data file
-    char data_file[MAX_FILE_NAME];
-    snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
-    FILE *fp = fopen(data_file, "rb");
-	if (fp == NULL) {
-		printf("can't open file\n");
-		exit(1);
-	}
-
-    // data format in data file
-    // op data_id lat lon time obj_id(traj_id)
-    int i, j, k, count = 0;
-    struct query_struct query, new_query;
+    struct query_struct new_query;
+    int point_id;
     coordinate node_id;
-    printf("begin read.\n");
-	while (!feof(fp)) {
-        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            #ifdef INT_DATA
-                fscanf(fp, "%d", &query.intval[i].low);
-            #else
-                double value;
-                fscanf(fp, "%lf", &value);
-                query.intval[i].low = value;
-                query.intval[i].high = value;
-            #endif
-        }
-        fscanf(fp, "%d", &query.trajectory_id);
-        fscanf(fp, "\n");
-        //printf("%lf %lf %lf\n", query.intval[0].low, query.intval[1].low, query.intval[2].low);
 
-        // for each data, generate more data
-        static int point_id = 0;
+    //get torus partition
+    torus_partitions tp = cluster_partitions[cluster_id];
+
+    int i, j, k;
+    int query_idx = 0;
+    point_id = 0;
+    while(query_idx<query_num) {
+        new_query = query[query_idx];
+        query_idx++;
+
+        // for each data, generate several data that match the partitions
+        int traj_idx = 0;
+        int id = 0;
         for(i = 0; i < tp.p_x; i++) {
             for(j = 0; j < tp.p_y; j++) {
                 for(k = 0; k < tp.p_z; k++) {
-                    query.data_id = point_id;
-                    node_id.x = i; node_id.y = j; node_id.z = k;
-                    new_query = query;
-                    gen_query(cluster_id, node_id, tp, &new_query); 
+                    new_query.data_id += id;
+                    new_query.trajectory_id += traj_idx * 1000000;
 
-                    //printf("\t%lf %lf %lf\n", new_query.intval[0].low, new_query.intval[1].low, new_query.intval[2].low);
+                    node_id.x = i; node_id.y = j; node_id.z = k;
+                    gen_query(cluster_id, node_id, tp, &new_query); 
 
                     // package query into message struct
                     cpy_len = 0;
@@ -140,27 +131,59 @@ int insert_points(const char *entry_ip, int cluster_id, torus_partitions tp) {
                     memcpy(msg.data + cpy_len, (void *)&new_query, sizeof(struct query_struct));
                     cpy_len += sizeof(struct query_struct);
                     send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
-
+                    traj_idx++;
                     point_id++;
-                    count++;
+                    id++;
+
+                    if(point_id % 10000 == 0) {
+                        printf("%s:%d\n", entry_ip, point_id);
+                    }
                 }
             }
         }
-
-        if(count % 10000 == 0) {
-            printf("%d\n", count);
-        }
-	}
-    printf("finish read.\n");
-	fclose(fp);
-
+    }
     close(socketfd);
+    return TRUE;
+}
+
+int read_data() {
+    // read data file
+    char data_file[MAX_FILE_NAME];
+    snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
+    FILE *fp = fopen(data_file, "rb");
+	if (fp == NULL) {
+		printf("can't open file\n");
+        return FALSE;
+	}
+
+    // data format in data file
+    // op data_id lat lon time obj_id(traj_id)
+    int i;
+    printf("begin read data.\n");
+	while (!feof(fp)) {
+        fscanf(fp, "%d\t%d\t", &query[query_num].op, &query[query_num].data_id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            #ifdef INT_DATA
+                fscanf(fp, "%d", &query[query_num].intval[i].low);
+            #else
+                double value;
+                fscanf(fp, "%lf", &value);
+                query[query_num].intval[i].low = value;
+                query[query_num].intval[i].high = value;
+            #endif
+        }
+        fscanf(fp, "%d", &query[query_num].trajectory_id);
+        fscanf(fp, "\n");
+        query_num++;
+    }
+    printf("finish read data.\n");
+	fclose(fp);
     return TRUE;
 }
 
 int main(int argc, char const* argv[]) {
     if (argc < 2) {
-        printf("usage: %s cluster_id\n", argv[0]);
+        printf("usage: %s cluster_id leader_ip\n", argv[0]);
         exit(1);
     }
 
@@ -174,29 +197,25 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    leaders_info leaders[MAX_NODES_NUM];
-    int nodes_num = 0;
-
-    int i;
-    for(i = 0; i < cluster_num; i++) {
+    /*for(i = 0; i < cluster_num; i++) {
         leaders[i].partition = cluster_partitions[i];
     }
 
     if(FALSE == read_torus_leaders(leaders, &nodes_num)) {
         exit(1);
-    }
-
-    int cluster_id, index;
-    char entry_ip[IP_ADDR_LENGTH];
+    }*/
 
     cluster_id = atoi(argv[1]);
-    index = rand() % LEADER_NUM;
 
-    strncpy(entry_ip, leaders[cluster_id].ip[index], IP_ADDR_LENGTH);
-    strncpy(entry_ip, "172.16.0.20", IP_ADDR_LENGTH);
-    printf("send ip: %s\n", entry_ip);
+    char entry_ip[IP_ADDR_LENGTH];
+    strncpy(entry_ip, argv[2], IP_ADDR_LENGTH);
+    printf("cluster:%d %s\n", cluster_id, entry_ip); 
 
-    insert_points(entry_ip, cluster_id, leaders[cluster_id].partition);
+    if(FALSE == read_data()) {
+        exit(1);
+    }
+
+    insert_data(entry_ip, cluster_id);
 
     return 0;
 }
