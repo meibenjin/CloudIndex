@@ -1,0 +1,53 @@
+#!/bin/bash
+# this shell runs on control node
+
+local_dir="${HOME}/mbj/data"
+etc_dir="${HOME}/mbj/CloudIndex/etc"
+# be careful! when change upload dir
+upload_dir="/root/mbj/data"
+remote_shell="test -d ${upload_dir} || mkdir ${upload_dir}"
+host_prefix="root@"
+generator_ip_list="${etc_dir}/generator_ip_list"
+
+function clean_remote_dir()
+{
+    for i in $(cat ${generator_ip_list} )
+    do 
+        remote_host="${host_prefix}$i"
+        ssh ${remote_host} "${remote_shell}"
+        echo "clean up directory ${remote_host}:${upload_dir}"
+    done
+}
+
+function copy_it()
+{
+    cd ${local_dir}
+    idx=0;
+    for i in $(cat ${generator_ip_list} )
+    do 
+        remote_host="${host_prefix}$i"
+        if [ -f "data_$idx" ]; then
+            scp -q "./data_$idx" "${remote_host}:${upload_dir}/data"
+            scp -q "./range_query_$idx" "${remote_host}:${upload_dir}/range_query"
+            scp -q "./data_region" "${remote_host}:${upload_dir}/data_region"
+            echo "copy to ${remote_host}"
+        fi
+        ((idx++))
+    done
+}
+
+if [ $# = 0 ]; then
+    clean_remote_dir
+    copy_it
+fi
+
+COMMAND=$1
+
+if [ "$COMMAND" = "clean" ]; then
+    clean_remote_dir
+elif [ "$COMMAND" = "copy" ]; then
+    copy_it
+fi
+
+
+
