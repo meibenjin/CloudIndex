@@ -10,7 +10,6 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
-#include<pthread.h>
 
 #include "generator.h"
 #include"socket/socket.h"
@@ -196,14 +195,6 @@ int main(int argc, char const* argv[]) {
     if(FALSE == read_cluster_partitions()) {
         exit(1);
     }
-
-    /*for(i = 0; i < cluster_num; i++) {
-        leaders[i].partition = cluster_partitions[i];
-    }
-
-    if(FALSE == read_torus_leaders(leaders, &nodes_num)) {
-        exit(1);
-    }*/
 
     cluster_id = atoi(argv[1]);
 
