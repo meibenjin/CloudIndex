@@ -10,6 +10,7 @@ TORUSDIR=./torus_node
 OCTTREEDIR=./oct_tree
 CONTROLDIR=./control_node
 DATAGENDIR=./data_generator
+SIMDIR=./simulation
 SKIPLISTDIR=./skip_list
 LOGDIR=./logs
 CONFIGDIR=./config
@@ -19,32 +20,37 @@ CC=gcc
 CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split test1 del_obj_file
+all: control start-node data_generator data_split query_split query_sim test data_partition load_data del_obj_file 
 
 control: control.o torus-node.o socket.o skip-list.o log.o config.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o
-
-#start-node:torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
-	#$(CXX) $(CFLAGS) $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -I$(VPATH) -I$(RTREE_INCLUDE) -I$(GSL_INCLUDE) -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 
 start-node: torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
 	$(CXX) $(CFLAGS) $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 
 data_generator: data_generator.o socket.o config.o torus-node.o log.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
-
-data_split: data_split.o config.o torus-node.o log.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_split.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
-
-query_split: query_split.o 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/query_split.o
-
 data_generator.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/generator.c -I$(VPATH)
 
+data_split: data_split.o config.o torus-node.o log.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_split.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
 data_split.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/data_split.c -I$(VPATH)
 
+load_data: load_data.o socket.o config.o torus-node.o log.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/load_data.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
+load_data.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/load_data.c -I$(VPATH)
+
+
+data_partition: data_partition.o config.o torus-node.o log.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/data_partition.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
+data_partition.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/data_partition.c -I$(VPATH)
+
+query_split: query_split.o 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/query_split.o
 query_split.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/query_split.c -I$(VPATH)
 
@@ -74,7 +80,6 @@ log.o:
 config.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONFIGDIR)/config.c -I$(VPATH) 
 
-
 oct_tree.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctTree.cpp -I$(VPATH)
 
@@ -90,12 +95,17 @@ oct_tree_leaf_node.o:
 oct_point.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/Point.cpp -I$(VPATH)
 
-test1: socket.o test1.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/socket.o $(BIN)/test1.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
+query_sim: socket.o query_sim.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/socket.o $(BIN)/query_sim.o 
 
-test1.o: 
+query_sim.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SIMDIR)/query_sim.c -I$(VPATH)
+
+test: socket.o test.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/socket.o $(BIN)/test.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
+
+test.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c test.c -I$(VPATH) -I$(GSL_INCLUDE) 
-	#-L$(GSL_LIB) -lgsl -lgslcblas -lm
 
 del_obj_file:
 	-rm $(BIN)/*.o
@@ -103,8 +113,4 @@ del_obj_file:
 .PHONY: clean
 clean:
 	-rm $(BIN)/*.o
-	-rm $(BIN)/control $(BIN)/start-node $(BIN)/test1
-
-
-
-
+	-rm $(BIN)/control $(BIN)/start-node $(BIN)/test
