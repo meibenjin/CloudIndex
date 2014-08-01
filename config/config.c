@@ -13,7 +13,6 @@
 
 char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
 int torus_nodes_num;
-
 torus_partitions cluster_partitions[MAX_CLUSTERS_NUM];
 int cluster_num;
 
@@ -84,5 +83,47 @@ int read_cluster_partitions() {
 }
 
 
+int update_properties(struct global_properties_struct global_props){
 
+    DEFAULT_CAPACITY=global_props.default_capacity;
+    HEARTBEAT_INTERVAL=global_props.heartbeat_interval;
+    MAX_ROUTE_STEP=global_props.max_route_step;
+    SIGMA=global_props.sigma;
+    SAMPLE_TIME_POINTS=global_props.sample_time_points;
+    SAMPLE_SPATIAL_POINTS=global_props.sample_spatial_points;
+    SAMPLE_TIME_RATE=global_props.sample_time_rate;
+    MAX_RESPONSE_TIME=global_props.max_response_time;
+    EXCHANGE_RATE_RANGE_QUERY=global_props.exchange_rate_range_query;
+    EXCHANGE_RATE_NN_QUERY=global_props.exchange_rate_nn_query;
+    ACTIVE_LEADER_NUM=global_props.active_leader_num;
+    FIXED_IDLE_NODE_NUM=global_props.fixed_idle_node_num;
+
+    return TRUE;
+
+}
+
+int read_properties(struct global_properties_struct *props) {
+    FILE *fp;
+    fp = fopen(PROPERTIES_FILE, "rb");
+    if(fp == NULL) {
+        printf("read_properties: open file %s failed.\n", PROPERTIES_FILE);
+        return FALSE;
+    }
+
+    fscanf(fp, "DEFAULT_CAPACITY=%u\n", &props->default_capacity);
+    fscanf(fp, "HEARTBEAT_INTERVAL=%d\n", &props->heartbeat_interval);
+    fscanf(fp, "MAX_ROUTE_STEP=%d\n", &props->max_route_step);
+    fscanf(fp, "SIGMA=%lf\n", &props->sigma);
+    fscanf(fp, "SAMPLE_TIME_POINTS=%d\n", &props->sample_time_points);
+    fscanf(fp, "SAMPLE_SPATIAL_POINTS=%d\n", &props->sample_spatial_points);
+    fscanf(fp, "SAMPLE_TIME_RATE=%lf\n", &props->sample_time_rate);
+    fscanf(fp, "MAX_RESPONSE_TIME=%d\n", &props->max_response_time);
+    fscanf(fp, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", &props->exchange_rate_range_query);
+    fscanf(fp, "EXCHANGE_RATE_NN_QUERY=%lf\n", &props->exchange_rate_nn_query);
+    fscanf(fp, "ACTIVE_LEADER_NUM=%d\n", &props->active_leader_num);
+    fscanf(fp, "FIXED_IDLE_NODE_NUM=%d\n", &props->fixed_idle_node_num);
+    fclose(fp);
+
+    return TRUE;
+}
 

@@ -24,8 +24,14 @@ int read_torus_ip_list();
  * */
 int read_cluster_partitions();
 
+int read_properties(struct global_properties_struct *props);
+
+int update_properties(struct global_properties_struct global_props);
+// global config 
+
 extern char torus_ip_list[MAX_NODES_NUM][IP_ADDR_LENGTH];
 extern int torus_nodes_num;
+
 //data region
 extern interval data_region[MAX_DIM_NUM];
 
