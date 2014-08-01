@@ -398,37 +398,6 @@ torus_s *create_torus(torus_partitions tp) {
 		return NULL;
 	}
 
-    #ifdef INT_DATA
-        interval intvl[MAX_DIM_NUM];
-        int d_x[new_torus_p.p_x + 1];
-        int d_y[new_torus_p.p_y + 1];
-        int d_z[new_torus_p.p_z + 1];
-
-        int range = 100;
-
-        for (i = 1, d_x[0] = 0; i <= new_torus_p.p_x; ++i) {
-            if (i == new_torus_p.p_x) {
-                d_x[i] = 100;
-                break;
-            }
-            d_x[i] = d_x[i - 1] + range / new_torus_p.p_x;
-        }
-        for (j = 1, d_y[0] = 0; j <= new_torus_p.p_y; ++j) {
-            if (j == new_torus_p.p_y) {
-                d_y[j] = 100;
-                break;
-            }
-            d_y[j] = d_y[j - 1] + range / new_torus_p.p_y;
-        }
-        for (k = 1, d_z[0] = 0; k <= new_torus_p.p_z; ++k) {
-            if (k == new_torus_p.p_z) {
-                d_z[k] = 100;
-                break;
-            }
-            d_z[k] = d_z[k - 1] + range / new_torus_p.p_z;
-        }
-    #endif
-
     // set data region for each torus node
 	index = 0;
 	struct torus_node *pnode;
@@ -436,24 +405,9 @@ torus_s *create_torus(torus_partitions tp) {
 		for (j = 0; j < new_torus_p.p_y; ++j) {
 			for (k = 0; k < new_torus_p.p_z; ++k) {
                 pnode = &torus_ptr->node_list[index];
-                #ifdef INT_DATA
-                    intvl[0].low = d_x[i] + 1;
-                    intvl[0].high = d_x[i + 1];
-                    intvl[1].low = d_y[j] + 1;
-                    intvl[1].high = d_y[j + 1];
-                    intvl[2].low = d_z[k] + 1;
-                    intvl[2].high = d_z[k + 1];
-
-                    int t;
-                    for (t = 0; t < MAX_DIM_NUM; ++t) {
-                        pnode->info.region[t].low = intvl[t].low;
-                        pnode->info.region[t].high = intvl[t].high;
-                    }
-                #else
-                    if(FALSE == set_interval(&pnode->info, new_torus_p, data_region)){
-                       return NULL;
-                    }
-                #endif
+                if(FALSE == set_interval(&pnode->info, new_torus_p, data_region)){
+                   return NULL;
+                }
                 index++;
             }
         }
@@ -846,116 +800,6 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
 
 	return TRUE;
 }
-
-int query_torus(struct query_struct query, const char *entry_ip) {
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-
-	struct message msg;
-	msg.op = QUERY_TORUS_CLUSTER;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-
-    size_t cpy_len = 0; 
-	int count = 0;
-	memcpy(msg.data, &count, sizeof(int));
-    cpy_len += sizeof(int);
-
-    memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
-    cpy_len += sizeof(struct query_struct);
-
-    forward_message(msg, 0);
-
-	return TRUE;
-}
-
-
-int query_oct_tree(struct query_struct query, const char *entry_ip) {
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-
-	struct message msg;
-	msg.op = QUERY_TORUS_CLUSTER;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-
-    size_t cpy_len = 0; 
-	int count = 0;
-	memcpy(msg.data, &count, sizeof(int));
-    cpy_len += sizeof(int);
-
-    memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
-    cpy_len += sizeof(struct query_struct);
-
-    if(FALSE == forward_message(msg, 0)) {
-        return FALSE;
-    }
-
-	return TRUE;
-}
-
-int send_file(char *entry_ip) {
-	int socketfd, ret = TRUE;
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		ret = FALSE;
-	}
-
-	socketfd = new_client_socket(entry_ip, COMPUTE_WORKER_PORT);
-	if (FALSE == socketfd) {
-		ret = FALSE;
-	}
-
-    struct message msg;
-    msg.op = RECEIVE_DATA;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-    strncpy(msg.data, "", DATA_SIZE);
-    send_message(socketfd, msg);
-
-    FILE *fp = fopen("/root/mbj/send_test", "r");
-    if(fp == NULL) {
-        printf("open range_query failed.\n");
-        ret = FALSE;
-    } else {
-        int block_len = 0;
-        char buf[SOCKET_BUF_SIZE];
-        memset(buf, 0, SOCKET_BUF_SIZE);
-        int len = 0;
-        int count = 0;
-        
-        while((block_len = fread(buf, sizeof(char), SOCKET_BUF_SIZE, fp)) > 0) {
-            count++;
-            len = send(socketfd, (void *) buf, block_len, 0);
-            if(len < 0) {
-                printf("%d, %d\n", errno, count);
-                break;
-            }
-        }
-        fclose(fp);
-    }
-
-	close(socketfd);
-
-    return ret;
-}
-
 
 int main(int argc, char **argv) {
 	/*if (argc < 4) {

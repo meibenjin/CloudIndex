@@ -52,8 +52,6 @@ torus_s *create_torus(struct torus_partitions tp);
 torus_s *append_torus(torus_s *to, torus_s *from, int direction);
 
 
-//int send_partition_info(const char *dst_ip, struct torus_partitions torus_p);
-
 // dispatch all nodes and theirs neighbors info via socket
 int dispatch_torus(torus_s *torus);
 
@@ -65,10 +63,6 @@ void print_torus(torus_s *torus);
 int traverse_skip_list(const char *entry_ip);
 
 int dispatch_skip_list(skip_list *list, node_info leaders[]);
-
-int query_torus(struct query_struct query, const char *entry_ip);
-
-int query_oct_tree(struct query_struct query, const char *entry_ip);
 
 // used for choose leaders
 void shuffle(int array[], int n);
