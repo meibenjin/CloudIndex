@@ -280,6 +280,7 @@ int recv_safe(int socketfd, void *data, size_t len, int flags) {
         if(irecv < 0){
             if(errno != EINTR && errno != EAGAIN) {
                 nrecv = 0;
+                //write_log(ERROR_LOG, "recv_safe: network error.\n");
                 break;
             }
             continue;
