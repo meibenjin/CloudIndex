@@ -17,6 +17,10 @@
 // limits for common
 #define MAX_FILE_NAME 255 
 #define INT_MAX 0x7fffffff
+#define PI 3.1415926
+#define PRECISION 1e-8
+// use day present second
+#define ONE_SEC (1.0 /(24 * 60 * 60))
 
 // limits for socket
 #define IP_ADDR_LENGTH 20
@@ -28,40 +32,16 @@
 #define DATA_SIZE 1400
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
-#define PI 3.1415926
 
-//limits for rtree
+//limits for index 
 #define MAX_DIM_NUM 3
 
 // limits for torus
 // a torus node's max capacity(pages)
-#define DEFAULT_CAPACITY 20000000
-//#define DEFAULT_CAPACITY 3000
 #define DIRECTIONS 6
 #define MAX_NEIGHBORS 12
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
-#define HEARTBEAT_INTERVAL 1
-#define MAX_ROUTE_STEP 3
-#define REFINEMENT_THRESHOLD 0.8
-
-// standard deviation sigma
-//#define SIGMA 0.00005
-#define SIGMA 900 
-#define PRECISION 1e-8
-
-// limit for refinement
-#define SAMPLE_TIME_POINTS 20
-#define SAMPLE_SPATIAL_POINTS 200
-#define SAMPLE_TIME_RATE 1 
-
-// limit for user
-#define MAX_RESPONSE_TIME 200
-#define EXCHANGE_RATE_RANGE_QUERY 1.66e-4
-#define EXCHANGE_RATE_NN_QUERY 3.6e-6
-
-// use day present second
-#define ONE_SEC (1.0 /(24 * 60 * 60))
 
 // limits for skip list
 #define LEADER_NUM 8
@@ -86,6 +66,7 @@
 #define TORUS_IP_LIST "../etc/torus_ip_list"
 #define CLUSTER_PARTITONS "./cluster_partitions"
 #define TORUS_LEADERS "./torus_leaders"
+#define PROPERTIES_FILE "./properties"
 
 //limits for epoll
 #define MAX_EVENTS 10000 
@@ -94,6 +75,7 @@
 #define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
+
 #define CONN_MAXFD 1024 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
 
@@ -106,6 +88,21 @@ typedef double data_type;
 #define DATA_DELETE 0
 #define RANGE_NN_QUERY 2
 #define RANGE_QUERY 3
+
+//global properties 
+extern uint32_t DEFAULT_CAPACITY;
+extern int HEARTBEAT_INTERVAL;
+extern int MAX_ROUTE_STEP;
+extern double SIGMA; 
+extern int SAMPLE_TIME_POINTS;
+extern int SAMPLE_SPATIAL_POINTS;
+extern double SAMPLE_TIME_RATE;
+extern int MAX_RESPONSE_TIME;
+extern double EXCHANGE_RATE_RANGE_QUERY;
+extern double EXCHANGE_RATE_NN_QUERY;
+extern int ACTIVE_LEADER_NUM;
+extern int FIXED_IDLE_NODE_NUM;
+
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -152,10 +149,6 @@ typedef enum OP {
 	TRAVERSE_SKIP_LIST,
     SEEK_IDLE_NODE,
     HEARTBEAT,
-	RECEIVE_RESULT,
-	RECEIVE_QUERY,
-    RECEIVE_DATA, 
-    PERFORMANCE_TEST,
     THROUGHPUT_TEST,
     RECEIVE_FILTER_LOG,
     RECEIVE_REFINEMENT_LOG,
@@ -166,7 +159,8 @@ typedef enum OP {
     TRAJ_QUERY,
     RANGE_QUERY_REFINEMENT,
     NN_QUERY_REFINEMENT,
-    NOTIFY_MESSAGE
+    NOTIFY_MESSAGE,
+    RELOAD_PROPERTIES
 } OP;
 
 // interval of each dimension
@@ -358,6 +352,23 @@ typedef struct refinement_log_struct {
     uint32_t result_size;   
     double avg_qp;
 }refinement_log_struct;
+
+typedef struct global_properties_struct {
+    uint32_t default_capacity;
+    int heartbeat_interval;
+    int max_route_step;
+    double sigma; 
+    int sample_time_points;
+    int sample_spatial_points;
+    double sample_time_rate;
+    int max_response_time;
+    double exchange_rate_range_query;
+    double exchange_rate_nn_query;
+    int active_leader_num;
+    int fixed_idle_node_num;
+}global_properties_struct;
+
+
 
 #endif /* UTILS_H_ */
 
