@@ -325,7 +325,7 @@ int rtree_insert_test() {
 			fin >> op >> id >> x1 >> y1 >> z1 >> x2 >> y2 >> z2;
 			if (! fin.good()) continue; // skip newlines, etc.
 
-			if (op == RTREE_INSERT)
+			if (op == DATA_INSERT)
 			{
 				plow[0] = x1; plow[1] = y1; plow[2] = z1;
 				phigh[0] = x2; phigh[1] = y2; phigh[2] = z2;
