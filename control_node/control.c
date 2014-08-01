@@ -1003,8 +1003,6 @@ int main(int argc, char **argv) {
         // write current torus leader ip into file
         write_torus_leaders(torus_ptr->leaders);
 
-        //strncpy(entry_ip, torus_ptr->leaders[cnt].ip, IP_ADDR_LENGTH);
-
         // insert newly created torus cluster into cluster_list
         insert_torus_cluster(cluster_list, torus_ptr);
         print_torus_cluster(cluster_list);
@@ -1020,11 +1018,6 @@ int main(int argc, char **argv) {
         printf("\n\n");
         cnt++;
     }
-
-    // insert points
-    //insert_points(entry_ip);
-
-    //range_query(entry_ip);
 
 	return 0;
 }
