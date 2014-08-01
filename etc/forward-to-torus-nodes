@@ -16,7 +16,7 @@ function clean_remote_dir()
     do 
         remote_host="${host_prefix}$i"
         ssh ${remote_host} "${remote_shell}"
-        echo "clean up directory ${remote_host}:${upload_dir}"
+        echo "clean up directory ${remote_host}:${upload_dir}/CloudIndex"
     done
 }
 
