@@ -11,7 +11,8 @@
 #include <time.h>
 #include <string.h>
 
-#include"socket/socket.h"
+#include "utils.h"
+#include "socket/socket.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
