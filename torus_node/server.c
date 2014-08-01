@@ -23,6 +23,7 @@ extern "C" {
 #include"torus_node/torus_node.h"
 #include"skip_list/skip_list.h"
 #include"socket/socket.h"
+#include"config/config.h"
 }; 
 
 #include"server.h"
@@ -254,7 +255,6 @@ int gen_request_stamp(char *stamp) {
 		printf("gen_request_stamp: stamp is null pointer.\n");
 		return FALSE;
 	}
-	// TODO automatic generate number stamp
 	static long number_stamp = 1;
 	char ip_stamp[IP_ADDR_LENGTH];
     get_node_ip(the_torus->info, ip_stamp);
@@ -373,13 +373,11 @@ int do_create_torus(struct message msg) {
     memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
 
-    #ifdef WRITE_LOG
-        char buf[1024];
-        memset(buf, 0, 1024);
-        sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-                the_partition.p_y, the_partition.p_z);
-        write_log(TORUS_NODE_LOG, buf);
-    #endif
+    char buf[1024];
+    memset(buf, 0, 1024);
+    sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+            the_partition.p_y, the_partition.p_z);
+    write_log(TORUS_NODE_LOG, buf);
 
     // get torus leaders info 
     memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
@@ -564,7 +562,7 @@ int do_traverse_skip_list(struct message msg) {
         write_log(TORUS_NODE_LOG, "visit myself:");
     #endif
     //rand choose a leader
-    i = rand() % LEADER_NUM;
+    i = rand() % ACTIVE_LEADER_NUM;
     print_node_info(cur_sln->leader[i]);
     get_node_ip(cur_sln->leader[i], src_ip);
     strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
@@ -1344,7 +1342,6 @@ int torus_split() {
         new_node->info.region[i].low = low[i];
         new_node->info.region[i].high = high[i];
     }
-    //TODO update the_torus region
     the_torus->info.region[d].low = (the_torus->info.region[d].low + the_torus->info.region[d].high) * 0.5; 
 
     // Step 2: update neighbor information
@@ -1554,7 +1551,6 @@ int local_rtree_query(double low[], double high[]) {
     memset(idle_ip, 0, IP_ADDR_LENGTH);
     //find_idle_torus_node(idle_ip);
 
-    //TODO do refinement use idle torus node 
     return TRUE;
 }
 
@@ -1792,7 +1788,7 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
         }
         
         // random choose a leader;
-        int index = rand() % LEADER_NUM;
+        int index = rand() % ACTIVE_LEADER_NUM;
         char *src_ip = the_torus->info.ip;
         char *dst_ip = the_torus_leaders[index].ip;
 
@@ -2433,8 +2429,14 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     struct refinement_stat overall_stat;
     compute_range_query_stat(trajs, query, &overall_stat);
 
-    expect_response = estimate_response_time(overall_stat, query);
-    requested_num = (expect_response / MAX_RESPONSE_TIME) + 1;
+    // if the num of fixed idle node is 0, 
+    // this means to estimate response and requested node num
+    if(FIXED_IDLE_NODE_NUM != 0) {
+        requested_num = FIXED_IDLE_NODE_NUM;
+    } else {
+        expect_response = estimate_response_time(overall_stat, query);
+        requested_num = (expect_response / MAX_RESPONSE_TIME) + 1;
+    }
 
     //step 3:try to find requested_num idle torus nodes to do refinement
     // return actual_got_num idle torus nodes, if actual_got_num is 0,
@@ -2497,7 +2499,6 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
 }
 
 int estimate_response_time(struct refinement_stat r_stat, struct query_struct query) {
-    //TODO should think how to handle nn query
     int res_time = 0;
     int num = SAMPLE_SPATIAL_POINTS * SAMPLE_TIME_POINTS; 
     num *= r_stat.segs_num;
@@ -2593,10 +2594,6 @@ double calc_QP(struct interval region[], point start, point end, int n, int m, p
             }
         }
         MF *= (1 - F[i]);
-        // check MF < 1 - theta
-        if( MF < 1 - REFINEMENT_THRESHOLD) {
-            return (1 - MF);
-        }
     }
     qp = 1 - MF;
     return qp;
@@ -2662,10 +2659,8 @@ int operate_oct_tree(struct query_struct query, int hops) {
         sprintf(b, "%d\n", count);
         write_log(TORUS_NODE_LOG, b);
     }*/
-    if(the_torus_rtree == NULL) {
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "torus oct tree didn't create.\n");
-        #endif
+    if(the_torus_oct_tree == NULL) {
+        write_log(ERROR_LOG, "torus oct tree didn't create.\n");
         return FALSE;
     }
 
@@ -3131,7 +3126,6 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
         }
     }
 
-    // TODO set max_n_id to oct tree
     g_nodeCount = max_n_id + 1;
     g_ptCount = g_NodeList.find(1)->second->n_ptCount;
 
@@ -3226,25 +3220,6 @@ int do_query_torus_node(struct message msg) {
 
 		if (1 == overlaps(query.intval, the_torus->info.region)) {
 
-			// only for test
-            /*
-             * when recieve query and search torus node finished
-             * record curent time and send to collect-result node
-             */
-            /*struct timespec query_end;
-            clock_gettime(CLOCK_REALTIME, &query_end);
-            new_msg.op = RECEIVE_RESULT;
-            strncpy(new_msg.src_ip, msg.src_ip, IP_ADDR_LENGTH);
-            strncpy(new_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-            strncpy(new_msg.stamp, stamp, STAMP_SIZE);
-            cpy_len = 0;
-            memcpy(new_msg.data, &count, sizeof(int));
-            cpy_len += sizeof(int);
-            memcpy(new_msg.data + cpy_len, &query, sizeof(struct query_struct));
-            cpy_len += sizeof(struct query_struct);
-            memcpy(new_msg.data + cpy_len, &query_end, sizeof(struct timespec));
-            forward_message(new_msg, 0);*/
-
             #ifdef WRITE_LOG
                 write_log(TORUS_NODE_LOG, "search torus success!\n\t");
                 print_node_info(the_torus->info);
@@ -3314,6 +3289,37 @@ int do_query_torus_node(struct message msg) {
 	return TRUE;
 }
 
+int write_global_properties() {
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int len = 0;
+    len += sprintf(buf + len, "DEFAULT_CAPACITY=%u\n", DEFAULT_CAPACITY);
+    len += sprintf(buf + len, "HEARTBEAT_INTERVAL=%d\n", HEARTBEAT_INTERVAL);
+    len += sprintf(buf + len, "MAX_ROUTE_STEP=%d\n", MAX_ROUTE_STEP);
+    len += sprintf(buf + len, "SIGMA=%lf\n", SIGMA);
+    len += sprintf(buf + len, "SAMPLE_TIME_POINTS=%d\n", SAMPLE_TIME_POINTS);
+    len += sprintf(buf + len, "SAMPLE_SPATIAL_POINTS=%d\n", SAMPLE_SPATIAL_POINTS);
+    len += sprintf(buf + len, "SAMPLE_TIME_RATE=%lf\n", SAMPLE_TIME_RATE);
+    len += sprintf(buf + len, "MAX_RESPONSE_TIME=%d\n", MAX_RESPONSE_TIME);
+    len += sprintf(buf + len, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", EXCHANGE_RATE_RANGE_QUERY);
+    len += sprintf(buf + len, "EXCHANGE_RATE_NN_QUERY=%lf\n", EXCHANGE_RATE_NN_QUERY);
+    len += sprintf(buf + len, "ACTIVE_LEADER_NUM=%d\n", ACTIVE_LEADER_NUM);
+    len += sprintf(buf + len, "FIXED_IDLE_NODE_NUM=%d\n", FIXED_IDLE_NODE_NUM);
+    write_log(TORUS_NODE_LOG, buf);
+    return TRUE;
+}
+
+int do_reload_properties(struct message msg){
+    //parse message to get the struct properties
+    struct global_properties_struct props;
+    memcpy(&props, msg.data, sizeof(struct global_properties_struct));
+    
+    update_properties(props);
+
+    write_global_properties();
+    return TRUE;
+}
+
 int do_notify_message(struct message msg) {
     char buf[1024];
     memset(buf, 0, 1024);
@@ -3329,7 +3335,7 @@ int do_load_data(struct message msg) {
     sprintf(file_name, "%s/data", DATA_DIR);
     fp = fopen(file_name, "rb");
 	if (fp == NULL) {
-		write_log(ERROR_LOG, "do_load_data: can't open data file\n");
+		write_log(ERROR_LOG, "do_load_data: can't open data file.\n");
         return FALSE;
 	}
 
@@ -3399,7 +3405,7 @@ int do_query_torus_cluster(struct message msg) {
 
     // all leaders has the same region
     // random choose a leader 
-    int index = rand() % LEADER_NUM;
+    int index = rand() % ACTIVE_LEADER_NUM;
 
 	if (0 == interval_overlap(sln_ptr->leader[index].region[2], query.intval[2])) { // node searched
 		if (FALSE == gen_request_stamp(stamp)) {
@@ -3626,69 +3632,6 @@ int do_receive_query(struct message msg) {
 	return TRUE;
 }
 
-int do_receive_data(int socketfd) {
-
-    char file_name[30];
-    sprintf(file_name, "./files/receive_file");
-
-    FILE *fp = fopen(file_name, "a");
-    if(fp == NULL) {
-        printf("open receive_file to write failed.\n");
-        return FALSE;
-    }
-
-    struct timespec start, end;
-    double elasped = 0L;
-
-    char buf[SOCKET_BUF_SIZE];
-    memset(buf, 0, SOCKET_BUF_SIZE);
-    int length = 0, loop = 1;
-
-    while(loop) {
-        clock_gettime(CLOCK_REALTIME, &start);
-        length = recv(socketfd, buf, SOCKET_BUF_SIZE, 0);
-        clock_gettime(CLOCK_REALTIME, &end);
-        elasped += get_elasped_time(start, end);
-        if(length == 0) {
-            //write_log(RESULT_LOG, "length 0\n");
-            loop = 0;
-        } else if(length < 0) {
-            if(errno == EAGAIN) {
-                ;
-                //write_log(RESULT_LOG, "recv eagain\n");
-                //regisiter event
-                //epoll_event event;
-                //event.data.fd = socketfd;
-                //event.events = EPOLLIN | EPOLLONESHOT;
-                //epoll_ctl(epfd, EPOLL_CTL_MOD, socketfd, &event);
-                //is_eagain = 1;
-                //loop = 0;
-            } else {
-                //write_log(RESULT_LOG, "errno occur\n");
-                ;
-            }
-            continue;
-        } else {
-            int block_len = fwrite(buf, sizeof(char), length, fp);
-            if(block_len < length){
-                printf("write file failed.\n");
-                break;
-            }
-            memset(buf, 0, SOCKET_BUF_SIZE);
-        }
-    }
-    fwrite("---------\n", sizeof(char), 10, fp);
-    fclose(fp);
-    close(socketfd);
-
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "receive spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-    return TRUE;
-}
-
 int do_receive_filter_log(struct message msg) {
     struct filter_log_struct fl_st;
     memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
@@ -3761,21 +3704,6 @@ int do_throughput_test(struct message msg) {
 
     sprintf(buffer, "[%d%d%d] %d %lf %lf %d\n", cor.x, cor.y, cor.z, (int)time(NULL), cur_el, cur_hops, count);
     write_log(result_log, buffer);
-    return TRUE;
-}
-
-int do_performance_test(struct message msg) {
-    static int count = 1;
-    //pthread_mutex_lock(&mutex);
-    time_t start;
-    start = time(NULL);
-    char buf[30];
-    memset(buf, 0, 30);
-    snprintf(buf, 30, "%ld %d\n", start, count);
-    count++;
-    write_log(RESULT_LOG, buf);
-    //pthread_mutex_unlock(&mutex);
-
     return TRUE;
 }
 
@@ -3882,7 +3810,7 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
             if(backward != NULL) {
 
                 //rand choose a leader
-                i = rand() % LEADER_NUM;
+                i = rand() % ACTIVE_LEADER_NUM;
                 get_node_ip(backward->leader[i], dst_ip);
 
                 int backward_sockfd = sln_backward_sockfd[0][i]; 
@@ -3937,16 +3865,6 @@ int process_message(connection_t conn, struct message msg) {
 		if (FALSE == do_create_torus(msg)) {
 			reply_code = FAILED;
 		}
-
-		/*reply_msg.op = (OP)msg.op;
-		reply_msg.reply_code = (REPLY_CODE)reply_code;
-		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
-
-		if (FALSE == send_reply(socketfd, reply_msg)) {
-			// TODO handle send reply failed
-			return FALSE;
-		}*/
-		//print_torus_node(*the_torus);
 		break;
 
 	case UPDATE_PARTITION:
@@ -3965,7 +3883,6 @@ int process_message(connection_t conn, struct message msg) {
 			// TODO handle send reply failed
 			return FALSE;
 		}
-
 		break;
 
 	case TRAVERSE_TORUS:
@@ -4040,36 +3957,6 @@ int process_message(connection_t conn, struct message msg) {
 		do_traverse_skip_list(msg);
 		break;
 
-	case RECEIVE_QUERY:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request receive query.\n");
-        #endif
-
-		//do_receive_query(msg);
-		break;
-
-	case RECEIVE_RESULT:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request receive result.\n");
-        #endif
-
-		//do_receive_result(msg);
-		break;
-
-    case RECEIVE_DATA:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request receive data.\n");
-        #endif
-        do_receive_data(conn->socketfd);
-        break;
-    case PERFORMANCE_TEST:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request performance test.\n");
-        #endif
-
-        do_performance_test(msg);
-        break;
-
     case THROUGHPUT_TEST:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request throughput test.\n");
@@ -4114,33 +4001,23 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload rtree data.\n");
         #endif
-
-        // reply to client for RTREE_LOAD requet is necessary because 
-        // the client should receive this reply before send more data
-        // if not, the following data from client will send to epoll
-		/*reply_msg.op = (OP)msg.op;
-		reply_msg.reply_code = (REPLY_CODE)reply_code;
-		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
-
-		if (FALSE == send_reply(conn->socketfd, reply_msg)) {
-			// TODO handle send reply failed
-			return FALSE;
-		}*/
-
         do_rtree_load_data(conn, msg);
         break;
+
     case LOAD_OCT_TREE_POINTS:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload oct tree points.\n");
         #endif
         do_load_oct_tree_points(conn, msg);
         break;
+
     case LOAD_OCT_TREE_NODES:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload oct tree nodes.\n");
         #endif
         do_load_oct_tree_nodes(conn, msg);
         break;
+
     case LOAD_OCT_TREE_TRAJECTORYS:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request reload oct tree trajectorys.\n");
@@ -4176,6 +4053,13 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request notify message .\n");
         #endif
         do_notify_message(msg);
+        break;
+    
+    case RELOAD_PROPERTIES:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request reload properties message .\n");
+        #endif
+        do_reload_properties(msg);
         break;
 
 	default:
@@ -4284,7 +4168,6 @@ void close_connection(connection_t conn) {
     close(conn->socketfd);
 }
 
-//TODO use better strategy to calc the fvalue
 void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op) {
     // estimate response time based on the r_stat and query type
     int res_time = estimate_response_time(r_stat, query);
@@ -4333,9 +4216,8 @@ void *worker(void *args){
                     if (TRUE == receive_message(conn->socketfd, &msg)) {
                         process_message(conn, msg);
                     } else {
-                        //  TODO: handle receive message failed
+                        write_log(ERROR_LOG, "receive compute task request failed.\n");
                         close_connection(conn);
-                        //printf("receive message failed.\n");
                     }
 
                 }
@@ -4390,20 +4272,7 @@ void *compute_worker_monitor(void *args) {
                         index = MANUAL_WORKER;
                     }
                 }
-            } /*else if(event.events && EPOLLIN) { 
-				conn_socket = event.data.fd;
-                connection_t conn = &g_conn_table[conn_socket];
-
-				memset(&msg, 0, sizeof(struct message));
-
-				// receive message through the conn_socket
-				if (TRUE == receive_message(conn->socketfd, &msg)) {
-					process_message(conn, msg);
-				} else {
-					// TODO: handle receive message failed
-					printf("receive message failed.\n");
-				}
-            }*/
+            }
 		} 
 	}
 
@@ -4437,13 +4306,12 @@ int send_node_status(const char *dst_ip, struct node_stat stat) {
     memcpy(msg.data, &stat, sizeof(struct node_stat));
 
     send_message(socketfd, msg);
-    //close(socketfd);
     return TRUE;
 }
 
-void send_heartbeat_to_torus_leaders() {
+void send_heartbeat() {
     int i;
-    for(i = 0; i < LEADER_NUM; i++) {
+    for(i = 0; i < ACTIVE_LEADER_NUM; i++) {
         if(strcmp(the_torus_leaders[i].ip, "") == 0){
             break;
         }
@@ -4462,19 +4330,27 @@ void send_heartbeat_to_torus_leaders() {
     }
 }
 
-void *send_heartbeat(void *args){
+void *heartbeat_worker(void *args){
     while(should_run) {
         //send heart beat
-        send_heartbeat_to_torus_leaders();
+        send_heartbeat();
         sleep(HEARTBEAT_INTERVAL);
     }
     return NULL;
 }
 
 int main(int argc, char **argv) {
-
-	printf("start torus node.\n");
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
+
+    // step 1: read global properties file 
+    struct global_properties_struct props;
+    int ret = read_properties(&props);
+    if(ret == FALSE) {
+        return 0;
+    }
+    update_properties(props);
+	write_log(TORUS_NODE_LOG, "read global properties.\n");
+    write_global_properties();
 
     // only for test
     struct tm *local;
@@ -4489,18 +4365,23 @@ int main(int argc, char **argv) {
     sprintf(refinement_log, "../logs/refinement_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, \
             local->tm_hour, local->tm_min, local->tm_sec);
 
+
+    // step 2: initialize global variables
 	int i, j;
 	should_run = 1;
 
-	// new a torus node
-	the_torus = NULL; // = new_torus_node();
+	// init the torus ptr 
+	the_torus = NULL; 
 
+    // init the torus's leaders info
     for(i = 0; i < LEADER_NUM; i++) {
         memset(the_torus_leaders[i].ip, 0, IP_ADDR_LENGTH);
     }
 
-	the_skip_list = NULL; //*new_skip_list_node();
+	// init the skip list ptr 
+	the_skip_list = NULL; 
 
+    // init the skip list node socket fd 
     for(i = 0; i < MAXLEVEL; i++) {
         for(j = 0; j < LEADER_NUM; j++) {
             sln_forward_sockfd[i][j] = -1;
@@ -4512,19 +4393,17 @@ int main(int argc, char **argv) {
 	req_list = new_request();
 
 	// create rtree
-    the_torus_rtree = NULL;
+    /*the_torus_rtree = NULL;
 	the_torus_rtree = rtree_create();
     if(the_torus_rtree == NULL){
         write_log(TORUS_NODE_LOG, "create rtree failed.\n");
         exit(1);
     }
-	printf("create rtree.\n");
-	write_log(TORUS_NODE_LOG, "create rtree.\n");
+	write_log(TORUS_NODE_LOG, "create rtree.\n");*/
 
-    // start oct_tree
+    // init oct_tree
     // do nothing, all structure are stored in global hash_maps in OctTree;
 	the_torus_oct_tree = NULL;
-
 
     // init torus neighbors socket
     neighbor_sock_num = 0;
@@ -4533,6 +4412,11 @@ int main(int argc, char **argv) {
         neighbor_sock[i].sockfd = -1;
     }
 
+    // init mutex;
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&global_variable_mutex, NULL);
+
+    // create two server socket to process different kind of requests
 	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
 	if (manual_worker_socket == FALSE) {
         write_log(TORUS_NODE_LOG, "start manual-worker server failed.\n");
@@ -4553,11 +4437,8 @@ int main(int argc, char **argv) {
 	set_nonblocking(manual_worker_socket);
 	set_nonblocking(compute_worker_socket);
 
-    // init mutex;
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&global_variable_mutex, NULL);
 
-
+    // step 3: create several threads and start service for client 
     // create listen thread for epoll listerner
     pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, NULL);
 
@@ -4578,16 +4459,13 @@ int main(int argc, char **argv) {
     pthread_create(&compute_worker_monitor_thread, NULL, compute_worker_monitor, NULL);
 
     // create heartbeat thread to send status info
-    pthread_create(&heartbeat_thread, NULL, send_heartbeat, NULL);
+    pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
     pthread_join(heartbeat_thread, NULL);
-
     pthread_join(compute_worker_monitor_thread, NULL);
-
     for (i = 0; i < WORKER_NUM; i++) {
         pthread_join(worker_thread[i], NULL);
     }
-
     pthread_join(manual_worker_monitor_thread, NULL);
 
     // close worker epoll fds
