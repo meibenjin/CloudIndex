@@ -24,13 +24,6 @@ host_prefix="root@"
 leader_num=`head -n 1 $leader_ip_list | awk '{for(i=2;i<=NF;i++) {print $i}}' | wc -l`
 
 for((i=1;i<=$leader_num;i++)); do
-    echo "begin split data and query"
-    cd ${bin_dir}
-    ./data_split 0 $i
-    ./query_split $i
-    cd ${etc_dir}
-    ./forward-to-generator
-    echo "finish split data and query"
 
     cd ${etc_dir}
     bash ${etc_dir}/stop-torus-nodes
@@ -39,9 +32,11 @@ for((i=1;i<=$leader_num;i++)); do
     bash ${etc_dir}/start-torus-nodes
     bash ${etc_dir}/start-torus-nodes
     cd ${bin_dir}
+    echo "begin split data and query"
     ./control
-
     sleep 2
+    echo "finish split data and query"
+
     echo "begin $i leaders insert data"
     for((j=0;j<$i;j++)); do
         echo "start data_generator ${gene_ip_array[$j]}"
@@ -62,9 +57,9 @@ for((i=1;i<=$leader_num;i++)); do
         echo "start query generator ${gene_ip_array[$j]}"
         remote_host="${host_prefix}${gene_ip_array[$j]}"
         if [ $j -ne $(($i-1)) ]; then
-            remote_shell="cd ${bin_dir}; nohup ./test1 ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1 &"
+            remote_shell="cd ${bin_dir}; nohup ./query_sim ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1 &"
         else
-            remote_shell="cd ${bin_dir}; ./test1 ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1"
+            remote_shell="cd ${bin_dir}; ./query_sim ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1"
         fi
         ssh ${remote_host} "${remote_shell}"
     done
