@@ -46,7 +46,7 @@ OctTree *the_torus_oct_tree;
 int should_run;
 
 torus_node *the_torus;
-struct node_stat the_node_stat;
+struct node_stat the_node_stat = {"", 0};
 struct skip_list *the_skip_list;
 node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
@@ -91,8 +91,8 @@ pthread_mutex_t global_variable_mutex;
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 int result_sockfd;
 char result_log[100];
-char range_query_filter_log[100];
-char range_query_refinement_log[100];
+char filter_log[100];
+char refinement_log[100];
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -100,11 +100,15 @@ char range_query_refinement_log[100];
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs);
 double points_distance(struct point p1, struct point p2);
-void sort_by_distance(struct point qpt, vector<traj_point *> &samples);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
 int find_leader_sock(const char ip[]);
-
+int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, char **buf_ptr, uint32_t *data_size, struct refinement_stat *r_stat);
+int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, struct refinement_stat *r_stat);
+int partition_query(struct query_struct query, struct query_struct sub_queries[], int num);
+int parse_refinement_head(struct message msg, struct refinement_stat *r_stat, struct query_struct *query, uint32_t *data_size);
+int receive_refinement_data(connection_t conn, uint32_t data_size, struct traj_segments traj_segs[], uint32_t traj_num);
+int get_center_points(struct point qpt, struct traj_segments traj_segs[], uint32_t traj_num, vector<traj_point *> &center_points);
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -1496,11 +1500,14 @@ int torus_split() {
     return TRUE;
 }
 
-int get_idle_torus_node(char idle_ip[]) {
+int get_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int *actual_got_num) {
+
     // this means current torus node is not a leader
     if(the_torus_stat == NULL) {
+        *actual_got_num = 0;
         return FALSE;
     }
+
     struct node_stat cur_torus_stat[MAX_NODES_NUM];
     int torus_num = 0;
 
@@ -1515,30 +1522,25 @@ int get_idle_torus_node(char idle_ip[]) {
     int i, j;
     struct node_stat tmp;
     for(i = torus_num; i > 0; --i) {
-        int j = rand() % i;
-
+        j = rand() % i;
         //swap
         tmp = cur_torus_stat[i - 1];
         cur_torus_stat[i - 1] = cur_torus_stat[j];
         cur_torus_stat[j] = tmp;
     }
 
-    long min_fvalue = 10000000; 
+    int idle_idx = 0;
     for(i = 0; i < torus_num; i++) {
-        if(cur_torus_stat[i].fvalue < min_fvalue ) {
-            strncpy(idle_ip, cur_torus_stat[i].ip, IP_ADDR_LENGTH);
-            min_fvalue = cur_torus_stat[i].fvalue;
+        if(cur_torus_stat[i].fvalue < MAX_RESPONSE_TIME) {
+            strncpy(idle_ip[idle_idx], cur_torus_stat[i].ip, IP_ADDR_LENGTH);
+            idle_idx++;
+            if(idle_idx == requested_num) {
+                break;
+            }
         }
     }
 
-    /*while(ptr) {
-        if(ptr->node.fvalue < min_fvalue ) {
-            strncpy(idle_ip, ptr->node.ip, IP_ADDR_LENGTH);
-            min_fvalue = ptr->node.fvalue;
-        }
-        ptr = ptr->next;
-    }*/
-
+    *actual_got_num = idle_idx;
     return TRUE;
 }
 
@@ -1550,8 +1552,7 @@ int local_rtree_query(double low[], double high[]) {
     //find a idle torus node to do refinement
     char idle_ip[IP_ADDR_LENGTH];
     memset(idle_ip, 0, IP_ADDR_LENGTH);
-    find_idle_torus_node(idle_ip);
-
+    //find_idle_torus_node(idle_ip);
 
     //TODO do refinement use idle torus node 
     return TRUE;
@@ -1575,7 +1576,7 @@ int operate_rtree(struct query_struct query) {
     }
 
     // rtree operation 
-    if(query.op == RTREE_INSERT) {
+    if(query.op == DATA_INSERT) {
         // need lock when insert rtree
         pthread_mutex_lock(&mutex);
         if(FALSE == rtree_insert(query.trajectory_id, query.data_id, plow, phigh, the_torus_rtree)) {
@@ -1586,11 +1587,11 @@ int operate_rtree(struct query_struct query) {
             torus_split();
         }
         pthread_mutex_unlock(&mutex);
-    } else if(query.op == RTREE_DELETE) {
+    } else if(query.op == DATA_DELETE) {
         if(FALSE == rtree_delete(query.data_id, plow, phigh, the_torus_rtree)) {
             return FALSE;
         }
-    } else if(query.op == RTREE_QUERY) {
+    } else if(query.op == RANGE_QUERY) {
         // TODO add read lock
         if(FALSE == local_rtree_query(plow, phigh)) {
             return FALSE;
@@ -1609,7 +1610,7 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
     }
     query.trajectory_id = t_id;
     query.data_id = -1;
-    query.op = RTREE_QUERY;
+    query.op = RANGE_QUERY;
 
     int socketfd;
 	// get local ip address
@@ -1763,52 +1764,73 @@ int oct_tree_insert(OctPoint *pt) {
     return TRUE;
 }
 
-int find_idle_torus_node(char idle_ip[]) {
+int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int* actual_got_num) {
     /* check if the_torus itself is a idle torus node
      * then check if the_torus is a leader node, if true, find a 
      * idle node base on the_torus_stat; if not, send SEEK_IDLE_NODE
      * message to its leader
      * */
-    pthread_mutex_lock(&global_variable_mutex);
-    int cur_fvalue = the_node_stat.fvalue;
-    pthread_mutex_unlock(&global_variable_mutex);
+    *actual_got_num = 0;
 
-    if(cur_fvalue < WORKLOAD_THRESHOLD) {
-        strncpy(idle_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    } else {
-        //current torus node is a leader node
-        if(the_torus->is_leader == 1) {
-            get_idle_torus_node(idle_ip);
+    if (the_torus->is_leader == 1){
+        //this node is leader
+        get_idle_torus_node(idle_ip, requested_num, actual_got_num);
+    }else{
+        pthread_mutex_lock(&global_variable_mutex);
+        int cur_fvalue = the_node_stat.fvalue;
+        pthread_mutex_unlock(&global_variable_mutex);
+
+        int idle_idx = 0;
+        if(cur_fvalue < MAX_RESPONSE_TIME) {
+            strncpy(idle_ip[idle_idx], the_torus->info.ip, IP_ADDR_LENGTH);
+            idle_idx++;
+            requested_num--;
+        }
+        if(requested_num == 0) {
+            *actual_got_num = idle_idx;
+            return TRUE;
+        }
+        
+        // random choose a leader;
+        int index = rand() % LEADER_NUM;
+        char *src_ip = the_torus->info.ip;
+        char *dst_ip = the_torus_leaders[index].ip;
+
+        int socketfd;
+        socketfd = find_leader_sock(dst_ip);
+        //socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
+        if (FALSE == socketfd) {
+            write_log(ERROR_LOG, "find_idle_torus_node: find leader sock failed.\n");
+            return FALSE;
+        }
+
+        int route_count = MAX_ROUTE_STEP;
+        struct message msg;
+        msg.op = SEEK_IDLE_NODE;
+        strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
+        strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+        strncpy(msg.stamp, "", STAMP_SIZE);
+        memcpy(msg.data, &route_count, sizeof(int));
+        memcpy(msg.data + sizeof(int), &requested_num, sizeof(int));
+        send_message(socketfd, msg);
+
+        struct message reply_msg;
+        if(TRUE == receive_message(socketfd, &reply_msg)) {
+            int cpy_len = 0;
+            int ret_num = 0;
+            memcpy(&ret_num, reply_msg.data, sizeof(int));
+            cpy_len += sizeof(int);
+            int i;
+            for (i=0;i<ret_num;i++){
+                memcpy(idle_ip[idle_idx], reply_msg.data + cpy_len, IP_ADDR_LENGTH);            
+                cpy_len += IP_ADDR_LENGTH; 
+                idle_idx++;
+            }
+            *actual_got_num = idle_idx;
         } else {
-            // random choose a leader;
-            int index = rand() % LEADER_NUM;
-            char *src_ip = the_torus->info.ip;
-            char *dst_ip = the_torus_leaders[index].ip;
-
-            int socketfd;
-            socketfd = find_leader_sock(dst_ip);
-            //socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
-            if (FALSE == socketfd) {
-                write_log(ERROR_LOG, "find_idle_torus_node: find leader sock failed.\n");
-                return FALSE;
-            }
-
-            int route_count = MAX_ROUTE_STEP;
-            struct message msg;
-            msg.op = SEEK_IDLE_NODE;
-            strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
-            strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-            strncpy(msg.stamp, "", STAMP_SIZE);
-            memcpy(msg.data, &route_count, sizeof(int));
-            send_message(socketfd, msg);
-
-            struct reply_message reply_msg;
-            if( TRUE == receive_reply(socketfd, &reply_msg)) {
-                if (SUCCESS != reply_msg.reply_code) {
-                    return FALSE;
-                }
-            }
-            memcpy(idle_ip, reply_msg.stamp, IP_ADDR_LENGTH);
+            *actual_got_num = idle_idx;
+            write_log(ERROR_LOG, "find_idle_torus_node: receive seek idle ip reply failed.\n");
+            return FALSE;
         }
     }
     return TRUE;
@@ -1822,38 +1844,36 @@ int find_idle_torus_node(char idle_ip[]) {
  * the intersect point of line z = 9 and line segment(here is (2,2,5)-(4,4,10) ) 
  * of the trajs is one of the output.
  * */
-int get_center_points(struct point qpt, hash_map<IDTYPE, Traj *> trajs, vector<traj_point *> &center_points) {
+int get_center_points(struct point qpt, struct traj_segments traj_segs[], uint32_t traj_num, vector<traj_point *> &center_points) {
     double z;
-    int i;
-    OctPoint *p_cur, *p_next;
+    uint32_t i, traj_idx, pair_idx;
     point start, end;
-    hash_map<IDTYPE, Traj *>::iterator tit;
+    int has_intersection;
 
-    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
-        Traj *traj = tit->second;
-        IDTYPE pid = traj->t_head;
-        p_cur = g_PtList.find(pid)->second;
-
-        while(p_cur->next != -1) {
-            pid = p_cur->next; 
-            p_next = g_PtList.find(pid)->second; 
+    for(traj_idx = 0; traj_idx < traj_num; traj_idx++) {
+        has_intersection = FALSE;
+        for(pair_idx = 0; pair_idx < traj_segs[traj_idx].pair_num; pair_idx++) {
             for(i = 0; i < MAX_DIM_NUM; i++) {
-                start.axis[i] = p_cur->p_xyz[i];
-                end.axis[i] = p_next->p_xyz[i];
+                start.axis[i] = traj_segs[traj_idx].start[pair_idx].axis[i];
+                end.axis[i] = traj_segs[traj_idx].end[pair_idx].axis[i];
             }
 
             if(qpt.axis[2] > start.axis[2] && qpt.axis[2] < end.axis[2]) {
                 z = qpt.axis[2];
                 traj_point *tpt = (traj_point *) malloc(sizeof(traj_point));
-                tpt->t_id = traj->t_id;
-                tpt->p.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / (end.axis[2] - start.axis[2]);
-                tpt->p.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / (end.axis[2] - start.axis[2]);
+                tpt->t_id = traj_segs[traj_idx].t_id;
+                tpt->p.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / \
+                                 (end.axis[2] - start.axis[2]);
+                tpt->p.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / \
+                                 (end.axis[2] - start.axis[2]);
                 tpt->p.axis[2] = z;
                 center_points.push_back(tpt);
+                has_intersection = TRUE;
+            }
+
+            if(has_intersection == TRUE) {
                 break;
             }
-            // move next
-            p_cur = p_next;
         }
     }
     return TRUE;
@@ -1864,21 +1884,6 @@ int get_nn_oct_points(struct point query_point, vector<traj_point *> &nn_points)
     double min_dis, dis;
     size_t i, size;
     size = nn_points.size();
-
-    /*if(size == 0) {
-        double qlow[3], qhigh[3];
-        for(i = 0; i < MAX_DIM_NUM; i++) {
-            qlow[i] = query_point.axis[i] - extend_r;
-            qhigh[i] = query_point.axis[i] + extend_r;
-            // TODO: the time dimension 
-        }
-        qlow[2] = query_point.axis[2] - 3 * SIGMA;
-        qhigh[2] = query_point.axis[2] + 3 * SIGMA;
-        vector<OctPoint *> pt_vector;
-        the_torus_oct_tree->rangeQuery(qlow, qhigh, pt_vector);
-        return TRUE;
-    }*/
-
     if(size == 0) {
         return FALSE;
     }
@@ -1917,150 +1922,56 @@ double calc_distance(double lata_p, double lona_p, double latb_p, double lonb_p)
     return distance;
 }
 
-/* given a object o and time interval [start, end] which represent by region, 
- * this function find nearest neighbor objects in this time interval.
- * note that the low is equal to high at x dimension in query region, 
- * same as at y dimension. 
- * 
+/* given a query, calc qp of each candidate trajs.
  * */
-int local_oct_tree_nn_query(struct interval region[], double low[], double high[]) {
-
-    //static int file_index = 0;
-    char log_res[30], buffer[1024];
-    memset(log_res, 0, 30);
-    sprintf(log_res, "../logs/nn_results");//, (file_index / 1000) + 1);
-    //file_index += 1;
-
-    /* step 1: get oct tree points which region overlap with query region
-     *
-     * */
-    timespec start, end;
-    double elasped = 0L;
-    clock_gettime(CLOCK_REALTIME, &start);
-
-    vector<OctPoint *> pt_vector;
-    the_torus_oct_tree->NNQuery(low, high, pt_vector);
-    //write_log(RESULT_LOG, "nn query here\n");
-
-    // recreate trajs from pt_vector;
-    hash_map<IDTYPE, Traj*> trajs;
-    recreate_trajs(pt_vector, trajs);
-    //write_log(RESULT_LOG, "recreate trajs here\n");
-
-    clock_gettime(CLOCK_REALTIME, &end);
-    elasped = get_elasped_time(start, end);
-
-    /* step 2:find a idle torus node to do refinement
-     *
-     * */
-    //clock_gettime(CLOCK_REALTIME, &s);
-    /*char idle_ip[IP_ADDR_LENGTH];
-    memset(idle_ip, 0, IP_ADDR_LENGTH);
-    find_idle_torus_node(idle_ip);
-
-    //clock_gettime(CLOCK_REALTIME, &e);
-    //elasped = get_elasped_time(s, e);
-    //memset(buffer, 0, 1024);
-    //sprintf(buffer, "find idle torus node spend:%lf ms\n", (double) elasped/ 1000000.0);
-    //write_log(RESULT_LOG, buffer);
-
-    //for test;
-    strcpy(idle_ip, "172.16.0.167");
-
-    // create a data socket to send refinement data
-	int socketfd;
-	socketfd = new_client_socket(idle_ip, COMPUTE_WORKER_PORT);
-	if (FALSE == socketfd) {
-		return FALSE;
-	}
- 
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}*/
-
-
-    /* step 3: filter phrase
-     * 
-     * */
-
-    // init gsl lib
-    gsl_rng *r;
-    gsl_rng_env_setup();
-    gsl_rng_default_seed = ((unsigned long)(time(NULL)));
-    r = gsl_rng_alloc(gsl_rng_default);
-
+int calc_nn_query_refinement(struct query_struct query, struct traj_segments traj_segs[], uint32_t traj_num, double *avg_qp) {
+    // step 1: generate time samples points 
     // init query point
     struct point query_point;
-    query_point.axis[0] = low[0];
-    query_point.axis[1] = low[1];
+    query_point.axis[0] = (query.intval[0].low + query.intval[0].high) / 2.0;
+    query_point.axis[1] = (query.intval[1].low + query.intval[1].high) / 2.0;
 
-    //calc the size of time samples
+    //calc the size of time samples points
     size_t time_samples = 0;
-    double three_sec = 1;//3 * ONE_SEC;
-    time_samples = (size_t)((high[2] - low[2]) / three_sec) + 1;
+    double time_step = SAMPLE_TIME_RATE;
+    double tmp_size = ceil((query.intval[2].high - query.intval[2].low) / time_step);
+    time_samples = (size_t)(tmp_size) + 1; 
 
-    /*size_t len = 0;
-    struct message msg;
-    // send ctl message to tell idle node to receive refinement data next
-    msg.op = NN_QUERY_REFINEMENT;
-    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-    strncpy(msg.dst_ip, idle_ip, IP_ADDR_LENGTH);
-    strncpy(msg.stamp, "", STAMP_SIZE);
-    memcpy(msg.data, region, sizeof(interval) * MAX_DIM_NUM);
-    len += sizeof(interval) * MAX_DIM_NUM;
-    memcpy(msg.data + len, &time_samples, sizeof(size_t));
-    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);*/
-
-    /* for each sampled time between low[2] and high[2] 
+    /* for each sampled time between time low and time high 
      * find the nearest neighbor object for query object
      * and calc the qp at time t
      * */ 
-
-    double time = low[2]; 
-
+    IDTYPE t_id;
+    double qp, qpt;
     hash_map<IDTYPE, double> qp_map;
     hash_map<IDTYPE, double>::iterator it;
 
-    double qp, qpt;
-    IDTYPE t_id;
-
     size_t i;
-    timespec gcp_start, gcp_end, gnn_start, gnn_end, qpt_start, qpt_end, qp_start, qp_end;
-    double gcp_sum, gnn_sum, qpt_sum, qp_sum;
-    gcp_sum = gnn_sum = qpt_sum = qp_sum = 0L;
+    double time = query.intval[2].low; 
     for(i = 1; i <= time_samples; i++) {
+        if( i ==  time_samples) {
+            time = query.intval[2].high;
+        }
         query_point.axis[2] = time;
-        time += three_sec;
+        time += time_step;
 
         vector<traj_point *> nn_points;
         vector<traj_point *>::iterator nit;
 
         // get center points for each trajs at time t
-        clock_gettime(CLOCK_REALTIME, &gcp_start);
-        get_center_points(query_point, trajs, nn_points);
-        clock_gettime(CLOCK_REALTIME, &gcp_end);
-        gcp_sum += get_elasped_time(gcp_start, gcp_end);
+        get_center_points(query_point, traj_segs, traj_num, nn_points);
 
         // get candidate nearest neighbor objects
-        clock_gettime(CLOCK_REALTIME, &gnn_start);
         get_nn_oct_points(query_point, nn_points);
-        clock_gettime(CLOCK_REALTIME, &gnn_end);
-        gnn_sum += get_elasped_time(gnn_start, gnn_end);
 
-        clock_gettime(CLOCK_REALTIME, &qpt_start);
         hash_map<IDTYPE, double> qpt_map;
-        calc_QPT(query_point, nn_points, 500, qpt_map);
-        clock_gettime(CLOCK_REALTIME, &qpt_end);
-        qpt_sum += get_elasped_time(qpt_start, qpt_end);
+        calc_QPT(query_point, nn_points, SAMPLE_SPATIAL_POINTS, qpt_map);
 
-        clock_gettime(CLOCK_REALTIME, &qp_start);
         for(it = qpt_map.begin(); it != qpt_map.end(); it++) {
             t_id = it->first;
             qpt = it->second;
 
+            //meets a new trajectory
             if(qp_map.find(t_id) == qp_map.end()) {
                 qp_map.insert(pair<IDTYPE, double>(t_id, 1.0));
             }
@@ -2073,72 +1984,24 @@ int local_oct_tree_nn_query(struct interval region[], double low[], double high[
             qp_map.find(t_id)->second = qp;
 
         }
-        clock_gettime(CLOCK_REALTIME, &qp_end);
-        qp_sum += get_elasped_time(qp_start, qp_end);
-
-        // send to idle torus node
-        /*size_t tp_size = nn_points.size();
-        size_t send_len = sizeof(size_t) + sizeof(query_point) + \
-                          sizeof(size_t) + sizeof(traj_point) * tp_size;
-        char send_buf[send_len + 1];
-        size_t cpy_len = 0;
-        memset(send_buf, 0, send_len + 1);
-
-        memcpy(send_buf, &send_len, sizeof(size_t));
-        cpy_len += sizeof(size_t);
-
-        memcpy(send_buf + cpy_len, &query_point, sizeof(query_point));
-        cpy_len += sizeof(query_point);
-
-        memcpy(send_buf + cpy_len, &tp_size, sizeof(size_t));
-        cpy_len += sizeof(size_t);
-
-        for(nit = nn_points.begin(); nit != nn_points.end(); nit++) {
-            memcpy(send_buf + cpy_len, (*nit), sizeof(traj_point));
-            cpy_len += sizeof(traj_point);
-
-            if(*nit != NULL) {
-                free(*nit);
-                *nit = NULL;
-            }
-        }
-        nn_points.clear();
-        send_safe(socketfd, (void *)send_buf, send_len, 0);*/
     }
-    //close(socketfd);
-    gsl_rng_free(r);
 
-    int len = 0;
-    memset(buffer, 0, 1024);
-    len += sprintf(buffer + len, "nn query filtering phrase spend: %lf ms\n",(double) (elasped + gcp_sum + gnn_sum)/ 1000000.0);
-    len += sprintf(buffer + len, "nn query calc qp phrase spend: %lf ms\n",(double) (qpt_sum + qp_sum)/ 1000000.0);
-    len += sprintf(buffer + len, "nn query total spend: %lf ms\n",(double)(elasped + gcp_sum + gnn_sum + qpt_sum + qp_sum)/ 1000000.0);
-
-    /*len += sprintf(buffer, "nn query spend:%lf ms\n", (double) elasped/ 1000000.0);
-    len += sprintf(buffer + len, "get center points spend:%lf ms\n", (double) gcp_sum / 1000000.0);
-    len += sprintf(buffer + len, "get nn points spend:%lf ms\n", (double) gnn_sum / 1000000.0);
-    len += sprintf(buffer + len, "calc qpt spend:%lf ms\n", (double) qpt_sum / 1000000.0);
-    len += sprintf(buffer + len, "calc qp spend:%lf ms\n\n", (double) qp_sum / 1000000.0);
-    len += sprintf(buffer + len, "query time:[%lf, %lf]\ttime samples:%lu\ttrajs count:%lu\n", \
-            low[2], high[2], time_samples, trajs.size());*/
-    write_log(log_res, buffer);
-
-    char buf[10240];
-    memset(buf, 0, 10240);
-    len = 0;
+    double total_qp = 0.0;
     for(it = qp_map.begin(); it != qp_map.end(); it++) {
         t_id = it->first;
         qp = it->second;
         qp = 1 - qp;
         if(qp < 0) {
-            qp = -qp;
+            qp = 0.0;
         }
-        len += sprintf(buf + len, "nn trajectory:%d %lf\n", t_id, qp);
+        total_qp += qp;
     }
-    len += sprintf(buf + len, "\n");
-    write_log(log_res, buf);
 
-    //write_log(RESULT_LOG, "finish refinement here\n\n");
+    if(traj_num == 0) {
+        *avg_qp = 0.0;
+    } else {
+        *avg_qp = total_qp / traj_num;
+    }
     return TRUE;
 }
 
@@ -2151,18 +2014,14 @@ double points_distance(struct point p1, struct point p2) {
     return sqrt(distance);
 }
 
-void sort_by_distance(struct point qpt, vector<traj_point *> &samples) {
-    int i, j;
-    size_t size = samples.size();
-    traj_point *key;
-    for(i = 1; i < (int)size; i++) {
-        key = samples[i];
-        j = i - 1;
-        while(j >= 0 && (points_distance(key->p, qpt) < points_distance(samples[j]->p, qpt))) {
-            samples[j + 1] = samples[j];
-            j--;
-        }
-        samples[j + 1] = key;
+int Comp(const void *p1,const void *p2, void *p0){
+    point qpt = *(point *)p0;
+    double dis1 = points_distance(*(point *)p1, qpt);
+    double dis2 = points_distance(*(point *)p2, qpt);
+    if(dis1 < dis2) {
+        return -1;
+    } else {
+        return 1;
     }
 }
 
@@ -2170,7 +2029,6 @@ void sort_by_distance(struct point qpt, vector<traj_point *> &samples) {
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map) {
     size_t i, j, traj_cnt;
     double value;
-    vector<traj_point *> samples;
     hash_map<IDTYPE, double> cdf;
 
     // init gsl lib
@@ -2179,29 +2037,38 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
 
-    traj_point *point;
+    traj_point point;
 
     traj_cnt = nn_points.size();
+    traj_point * samples;
+    samples = (traj_point *) malloc(sizeof(traj_point) * traj_cnt * m);
+    if (samples == NULL){
+        //err handling
+        write_log(ERROR_LOG, "calc_QPT: malloc failed!\n");
+        return FALSE;
+    }
+    uint32_t sample_num = 0;
     for (i = 0; i < traj_cnt; i++) {
         for(j = 0; j < m; j++) {
-            point = (traj_point *) malloc(sizeof(traj_point));
-            point->t_id = nn_points[i]->t_id;
-            point->p.axis[2] = nn_points[i]->p.axis[2];
+            point.t_id = nn_points[i]->t_id;
+            point.p.axis[2] = nn_points[i]->p.axis[2];
 
             value = gsl_ran_gaussian(r, SIGMA); 
             while(value < -3 * SIGMA || value > 3 * SIGMA) {
                 value = gsl_ran_gaussian(r, SIGMA); 
                 continue;
             }
-            point->p.axis[0] = nn_points[i]->p.axis[0] + value;
+            point.p.axis[0] = nn_points[i]->p.axis[0] + value;
 
             value = gsl_ran_gaussian(r, SIGMA); 
             while(value < -3 * SIGMA || value > 3 * SIGMA) {
                 value = gsl_ran_gaussian(r, SIGMA); 
                 continue;
             }
-            point->p.axis[1] = nn_points[i]->p.axis[1] + value;
-            samples.push_back(point);
+            point.p.axis[1] = nn_points[i]->p.axis[1] + value;
+            
+            samples[sample_num] = point;
+            sample_num++;
         }
 
         cdf.insert(pair<IDTYPE, double>(nn_points[i]->t_id, 0.0));
@@ -2209,13 +2076,14 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     }
     gsl_rng_free(r);
 
-    sort_by_distance(qpt, samples);
+    //sort the samples asscendingly by distance to qpt
+    qsort_r(samples, sample_num, sizeof(samples[0]), Comp, (void *)&qpt);
 
     // calc qpt
     int t_id = 0;
     double f = 1.0 / m, F;
-    for(i = 0; i < samples.size(); i++) {
-        t_id = samples[i]->t_id;
+    for(i = 0; i < sample_num; i++) {
+        t_id = samples[i].t_id;
 
         F = f;
         for (j = 0; j < traj_cnt; j++) {
@@ -2231,15 +2099,8 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
         cdf.find(t_id)->second += f;
     }
 
-    //TODO: free memory
-    vector<traj_point *>::iterator it;
-    for(it = samples.begin(); it != samples.end(); ++it) {
-        if(NULL != *it) {
-            free(*it);
-            *it = NULL;
-        }
-    }
-    samples.clear();
+    //free memory
+    free(samples);
 
     return TRUE;
 }
@@ -2257,68 +2118,23 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
     return TRUE;
 }
 
-int local_oct_tree_query(struct query_struct query, double low[], double high[]) {
-    //step 1: query trajs which overlap with region(low, high)
-    struct timespec filter_begin, filter_end;
-    static double elasped = 0L;
+int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
+        struct query_struct query, char **buf_ptr, uint32_t *data_size, \
+        struct refinement_stat * r_stat) {
 
-    //char buffer[1024];
-    clock_gettime(CLOCK_REALTIME, &filter_begin);
-    vector<OctPoint*> pt_vector;
+    uint32_t buf_size = SOCKET_BUF_SIZE * 10;
 
-    // local range query
-    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
-
-    // recreate all trajs with pt_vector(range query result)
-    hash_map<IDTYPE, Traj*> trajs;
-    recreate_trajs(pt_vector, trajs);
-
-
-    //step 2:find a idle torus node to do refinement
-    char idle_ip[IP_ADDR_LENGTH];
-    memset(idle_ip, 0, IP_ADDR_LENGTH);
-    find_idle_torus_node(idle_ip);
-    if(strcmp(idle_ip, "0.0.0.0") == 0) {
-        strncpy(idle_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    char *buf = (char *) malloc(buf_size);
+    if(buf == NULL) {
+        write_log(ERROR_LOG, "package_refinement_data: malloc buf failed.\n");
+        return FALSE;
     }
 
-    // get refinement statistic info
-    struct refinement_stat r_stat;
-    r_stat.traj_num = trajs.size();
-    r_stat.data_volume = 0;
-
-    // create a data socket to send refinement data
-	int socketfd;
-	socketfd = new_client_socket(idle_ip, COMPUTE_WORKER_PORT);
-	if (FALSE == socketfd) {
-        write_log(TORUS_NODE_LOG, "range query: create socket failed\n");
-		return FALSE;
-	}
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-
-    size_t len = 0;
-    struct message msg;
-    msg.op = RANGE_QUERY_REFINEMENT;
-    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-    strncpy(msg.dst_ip, idle_ip, IP_ADDR_LENGTH);
-    strncpy(msg.stamp, "", STAMP_SIZE);
-
-    memcpy(msg.data, &query, sizeof(query_struct));
-    len += sizeof(query_struct);
-    memcpy(msg.data + len, &r_stat, sizeof(refinement_stat));
-
-    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
-
-    // begin to send points to idle_ip
-    char buf[SOCKET_BUF_SIZE];
+    uint32_t traj_num = trajs.size();
     size_t cpy_len = 0, i;
+    size_t pair_num_pos = 0;
     uint32_t pair_num = 0;
+    uint32_t segs_num = 0;
 
     OctPoint *p_cur, *p_next;
     struct point start, end;
@@ -2329,8 +2145,17 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
         IDTYPE pid = traj->t_head;
 
         p_cur =  g_PtList.find(pid)->second;
+        pair_num = 0;
 
-        cpy_len = sizeof(uint32_t) * 2;
+        memcpy(buf + cpy_len, &traj->t_id, sizeof(uint32_t));
+        cpy_len += sizeof(uint32_t);
+
+        // reserve this space for store pair num
+        pair_num_pos = cpy_len;
+        cpy_len += sizeof(uint32_t);
+
+        int traj_contained = FALSE;
+
         while(p_cur->next != -1) {
             pid = p_cur->next; 
 
@@ -2340,88 +2165,358 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
                 pid = p_next->p_id; 
                 p_next = g_PtList.find(pid)->second; 
             }
-
+            
+            //construct a line segment  
             for(i = 0; i < MAX_DIM_NUM; i++) {
                 start.axis[i] = p_cur->p_xyz[i];
                 end.axis[i] = p_next->p_xyz[i];
             }
 
             if(1 == line_intersect(query.intval, start, end)){
-                // skip the line segments that total contain in the region
-                // here send pair_num 0 means this traj is a query result
-                memcpy(buf + 0, &traj->t_id, sizeof(uint32_t));
-                if(1 == line_contain(query.intval, start, end)) {
+                traj_contained = TRUE;
+
+                // if current start-end segment contained in the query
+                // move buf ptr back to pair_num_pos, so, no need to refine this trajectory. 
+                if (query.op == RANGE_QUERY && \
+                                line_contain(query.intval, start, end)) {
+                    cpy_len = pair_num_pos + sizeof(uint32_t);
                     pair_num = 0;
-                    memcpy(buf + sizeof(uint32_t), &pair_num, sizeof(uint32_t));
                     break;
                 }
+
                 pair_num++;
-                memcpy(buf + sizeof(uint32_t), &pair_num, sizeof(uint32_t));
 
                 memcpy(buf + cpy_len, &start, sizeof(struct point));
                 cpy_len += sizeof(struct point);
                 memcpy(buf + cpy_len, &end, sizeof(struct point));
                 cpy_len += sizeof(struct point);
 
-                if(cpy_len + sizeof(struct point) * 2 >= SOCKET_BUF_SIZE) {
-                    send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
-
-                    // the first 8 byte (tid, pair_num)
-                    cpy_len = sizeof(uint32_t) * 2;
-                    pair_num = 0;
-                    memset(buf, 0, SOCKET_BUF_SIZE);
+                //check if we need to increase the buf size;
+                // note that this also ensure we can store the first line segment of the next trajectory
+                if(cpy_len + sizeof(struct point) * 2 + sizeof(uint32_t)*2 >= buf_size) {
+                    buf_size += SOCKET_BUF_SIZE * 5;
+                    char *buf_cpy= (char *)realloc(buf, buf_size);
+                    if(buf_cpy == NULL) {
+                        // TODO release memory
+                        write_log(ERROR_LOG, "package_refinement_data: realloc buf_cpy failed.\n");
+                        return FALSE;
+                    }
+                    buf = buf_cpy; 
                 }
             }
             // move next
             p_cur = p_next;
+        }//end of processing a traj
+
+        //store the pair_num
+        memcpy(buf+pair_num_pos, &pair_num, sizeof(uint32_t));
+ 
+        // increase total num of segments 
+        segs_num += pair_num;
+
+        //update the traj_num if necessary
+        if (traj_contained == FALSE){
+            traj_num--;
+            //roll back the cpy_len
+            cpy_len = pair_num_pos - sizeof(uint32_t); 
         }
 
-        // ensure different traj in different buf
-        if(cpy_len > 0) {
-            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
-            // the first 8 byte (tid, pair_num)
-            cpy_len = sizeof(uint32_t) * 2;
-            pair_num = 0;
-            memset(buf, 0, SOCKET_BUF_SIZE);
+        //check if we need to increase the buf size;
+        // note that this also ensure we can store the first line segment of the next trajectory
+        if(cpy_len + sizeof(struct point) * 2 + sizeof(uint32_t)*2 >= buf_size) {
+            buf_size += SOCKET_BUF_SIZE * 5;
+            char *buf_cpy= (char *)realloc(buf, buf_size);
+            if(buf_cpy == NULL) {
+                // TODO release memory
+                write_log(ERROR_LOG, "package_refinement_data: realloc buf_cpy failed.\n");
+                return FALSE;
+            }
+            buf = buf_cpy; 
         }
-
-    }
-	close(socketfd);
-
-    clock_gettime(CLOCK_REALTIME, &filter_end);
-    elasped += (get_elasped_time(filter_begin, filter_end) / 1000000.0);
-
-    // send statistic to result node
-    static int count = 0;
-    count++;
-    if(count % 1 == 0) {
-        struct message msg;
-        msg.op = RANGE_QUERY_TEST_FILTER;
-        strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-        strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-        strncpy(msg.stamp, "", STAMP_SIZE);
-        int c = 1;
-        double el = elasped / (1 * 1.0);
-        elasped = 0;
-
-        int cpy_len = 0;
-        memcpy(msg.data, &query.data_id, sizeof(int));
-        cpy_len += sizeof(int);
-        memcpy(msg.data + cpy_len, &c, sizeof(int));
-        cpy_len += sizeof(int);
-        memcpy(msg.data + cpy_len, &el, sizeof(double));
-        cpy_len += sizeof(double);
-        memcpy(msg.data + cpy_len, &the_torus->info.node_id, sizeof(coordinate));
-        send_safe(result_sockfd, (void *) &msg, sizeof(struct message), 0);
     }
 
-    /*clock_gettime(CLOCK_REALTIME, &e);
-    elasped = get_elasped_time(s, e);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send refinement data spend:%lf ms\n\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);*/
+    *buf_ptr = buf;
+    *data_size = cpy_len;
+
+    r_stat->traj_num = traj_num;
+    r_stat->segs_num = segs_num;
+    r_stat->data_volume = cpy_len;
+    
+    return TRUE;
+}
+
+//partition the original query into num sub_queries on the time dimension
+int partition_query(struct query_struct query, struct query_struct sub_queries[], int num){
+    int i;
+    double low, high, step;
+    low = query.intval[2].low;
+    high = query.intval[2].high;
+    step = (high-low)/num;
+
+    for (i=0;i<num;i++){
+        sub_queries[i] = query;
+        sub_queries[i].intval[2].low = low + i*step;
+        sub_queries[i].intval[2].high = sub_queries[i].intval[2].low + step;
+        if (i == num-1){
+            sub_queries[i].intval[2].high = high;
+        }
+    }
+    return TRUE;
+}
+int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, struct refinement_stat *r_stat) {
+    uint32_t pair_num = 0;
+    uint32_t segs_num = 0;
+    double total_time_span = 0;
+    uint32_t traj_num = trajs.size();
+
+    OctPoint *p_cur, *p_next;
+    struct point start, end;
+    double traj_start_time, traj_end_time;
+
+    hash_map<IDTYPE, Traj *>::iterator tit;
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        IDTYPE pid = traj->t_head;
+
+        p_cur =  g_PtList.find(pid)->second;
+        traj_start_time = p_cur->p_xyz[2];
+        pair_num = 0;
+
+        while(p_cur->next != -1) {
+            pid = p_cur->next; 
+            p_next = g_PtList.find(pid)->second; 
+
+            // ignore the interpolation point
+            while(p_next->p_id < -1) {
+                pid = p_next->p_id; 
+                p_next = g_PtList.find(pid)->second; 
+            }
+            traj_end_time = p_next->p_xyz[2];
+            
+            //construct a line segment  
+            int i;
+            for(i = 0; i < MAX_DIM_NUM; i++) {
+                start.axis[i] = p_cur->p_xyz[i];
+                end.axis[i] = p_next->p_xyz[i];
+            }
+
+            if(1 == line_intersect(query.intval, start, end)){
+                if(query.op == RANGE_QUERY && 1 == line_contain(query.intval, start, end)) {
+                    pair_num = 0;
+                    break;
+                }
+                pair_num++;
+            }
+            // move next
+            p_cur = p_next;
+        }
+        // increase total num of segments 
+        segs_num += pair_num;
+
+        // calc total_time_span
+        if(pair_num > 0) {
+            total_time_span += (traj_end_time - traj_start_time);
+        }
+    }
+
+    r_stat->traj_num = traj_num;
+    r_stat->segs_num = segs_num;
+    if(traj_num > 0) {
+        r_stat->avg_time_span = total_time_span / traj_num;
+    } else {
+        r_stat->avg_time_span = 0;
+    }
+    r_stat->data_volume = segs_num * sizeof(point) * 2 + traj_num * sizeof(uint32_t)*2;
 
     return TRUE;
+}
+    
+int send_refinement_request(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, char *dst_ip){
+    uint32_t data_size;
+    char *data = NULL;
+    struct refinement_stat r_stat;
+
+    package_refinement_data(trajs, query, &data, &data_size, &r_stat);
+
+    // create a data socket to send refinement data
+	int socketfd;
+	socketfd = new_client_socket(dst_ip, COMPUTE_WORKER_PORT);
+	if (FALSE == socketfd) {
+        write_log(TORUS_NODE_LOG, "send_refinement_request: create socket failed\n");
+		return FALSE;
+	}
+
+	// get local ip address
+	char local_ip[IP_ADDR_LENGTH];
+	memset(local_ip, 0, IP_ADDR_LENGTH);
+	if (FALSE == get_local_ip(local_ip)) {
+	    //TODO Jinchuan write err log
+ 	    return FALSE;
+	}
+
+    size_t len = 0;
+    struct message msg;
+    if (query.op == RANGE_QUERY){
+        msg.op = RANGE_QUERY_REFINEMENT;
+    }else if (query.op == RANGE_NN_QUERY){
+        msg.op = NN_QUERY_REFINEMENT;
+    }
+    strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+
+    memcpy(msg.data, &query, sizeof(query_struct));
+    len += sizeof(query_struct);
+    memcpy(msg.data + len, &r_stat, sizeof(refinement_stat));
+    len += sizeof(refinement_stat);
+    memcpy(msg.data + len, &data_size, sizeof(uint32_t));
+    len += sizeof(uint32_t);
+    send_safe(socketfd, (void *)&msg, sizeof(struct message), 0);
+
+    // begin to send points to idle_ip
+    send_safe(socketfd, (void *)data, data_size, 0);
+    // release the buf's space
+    free(data);
+
+	close(socketfd);
+    return TRUE;
+}
+
+int localize_query(struct query_struct *query) {
+    int i;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        if(query->intval[i].low < the_torus->info.region[i].low) {
+            query->intval[i].low = the_torus->info.region[i].low;
+        }
+        if(query->intval[i].high > the_torus->info.region[i].high) {
+            query->intval[i].high = the_torus->info.region[i].high;
+        }
+    }
+    return TRUE;
+}
+
+
+int local_oct_tree_query(struct query_struct query, double low[], double high[]) {
+    int i;
+    struct timespec begin, end;
+    double elapsed = 0L;
+    struct filter_log_struct fl_st;
+
+    //char buffer[1024];
+    clock_gettime(CLOCK_REALTIME, &begin);
+
+    //step 0: localize query
+    localize_query(&query);
+
+    fl_st.query_id = query.data_id;
+    memcpy(fl_st.qry_region, query.intval, sizeof(struct interval) * MAX_DIM_NUM);
+
+    //step 1: query trajs which overlap with region(low, high)
+    vector<OctPoint*> pt_vector;
+
+    // local range query
+    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
+
+    // recreate all trajs with pt_vector(range query result)
+    hash_map<IDTYPE, Traj*> trajs;
+    recreate_trajs(pt_vector, trajs);
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    fl_st.index_elapsed = elapsed;
+    fl_st.size_after_index = trajs.size();
+    
+    //step 2: compute statistics and estimate the num of idle nodes
+
+    clock_gettime(CLOCK_REALTIME, &begin);
+    int expect_response = 0, requested_num = 0, actual_got_num = 0;
+    struct refinement_stat overall_stat;
+    compute_range_query_stat(trajs, query, &overall_stat);
+
+    expect_response = estimate_response_time(overall_stat, query);
+    requested_num = (expect_response / MAX_RESPONSE_TIME) + 1;
+
+    //step 3:try to find requested_num idle torus nodes to do refinement
+    // return actual_got_num idle torus nodes, if actual_got_num is 0,
+    // this means the whole torus is very busy, this query refinement will
+    // do itself
+    char idle_ip[requested_num][IP_ADDR_LENGTH];
+    memset(idle_ip, 0, requested_num * IP_ADDR_LENGTH);
+    find_idle_torus_node(idle_ip,requested_num,&actual_got_num);
+    if (actual_got_num == 0) {
+        strncpy(idle_ip[0], the_torus->info.ip, IP_ADDR_LENGTH);
+        actual_got_num = 1;
+    }
+    fl_st.requested_num = requested_num;
+    fl_st.actual_got_num = actual_got_num;
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    fl_st.obtain_idle_elapsed = elapsed;
+
+    //write log selected idle torus nodes
+    /*char buf[2048];
+    int len = 0;
+    memset(buf, 0 , 2048);
+    len += sprintf(buf + len, "%d %d [", requested_num, actual_got_num);
+    for(i = 0; i < actual_got_num; i++) {
+        len += sprintf(buf + len, "%s ", idle_ip[i]);
+    }
+    len += sprintf(buf + len, "]\n");
+    write_log(RESULT_LOG, buf);
+    */
+
+    //step 4: partition query into sub_queries
+    clock_gettime(CLOCK_REALTIME, &begin);
+    struct query_struct sub_queries[actual_got_num];
+    partition_query(query, sub_queries, actual_got_num);
+
+    //step 5: send_refinement_request to actual_got_num idle nodes
+    for(i = 0; i < actual_got_num; i++) {
+        send_refinement_request(trajs, sub_queries[i], idle_ip[i]);
+    }
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    fl_st.send_refinement_elapsed = elapsed;
+    //TODO should calculate the size after filter
+    fl_st.size_after_filter = 0;
+
+    //send statistic to result node
+    struct message msg;
+    msg.op = RECEIVE_FILTER_LOG; 
+    strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(msg.stamp, "", STAMP_SIZE);
+    
+    memcpy(msg.data, &fl_st, sizeof(struct filter_log_struct));
+
+    send_safe(result_sockfd, (void *) &msg, sizeof(struct message), 0);
+
+    return TRUE;
+}
+
+int estimate_response_time(struct refinement_stat r_stat, struct query_struct query) {
+    //TODO should think how to handle nn query
+    int res_time = 0;
+    int num = SAMPLE_SPATIAL_POINTS * SAMPLE_TIME_POINTS; 
+    num *= r_stat.segs_num;
+    if (query.op == RANGE_QUERY){
+        res_time = (int) (EXCHANGE_RATE_RANGE_QUERY * num);
+
+    } else if (query.op == RANGE_NN_QUERY){
+        double d_max = (query.intval[0].low + query.intval[0].high) / 2.0;
+        double qry_width = query.intval[2].high - query.intval[2].low;
+        double density = r_stat.traj_num * r_stat.avg_time_span / qry_width;
+        double rho = density / (4.0 * d_max * d_max);
+        double tmp = sqrt(-((log10(1 - 0.7) / log10(2.718281))/ (PI * rho)));
+
+        double num_snapshot_qrys = qry_width / SAMPLE_TIME_RATE;
+        double sample_points_per_time = rho * PI * pow(tmp + 3 * SIGMA, 2.0);
+
+        res_time = (int)(EXCHANGE_RATE_NN_QUERY * num_snapshot_qrys * pow(sample_points_per_time, 2.0));
+    }
+    return res_time;
 }
 
 double calc_QP(struct interval region[], point start, point end, int n, int m, point **samples) {
@@ -2507,10 +2602,35 @@ double calc_QP(struct interval region[], point start, point end, int n, int m, p
     return qp;
 }
 
+/*double calc_QP(struct interval region[], int n, int m, point **samples) {
+    //struct interval intval[MAX_DIM_NUM];
+    int i, j;
+    double qp = 0.0, F[n], MF = 1;
+    // the probability of each time samples(n)
+    double pt = 1.0 / m;
+    //char buf[1024];
+
+    for(i = 0; i < n; i++) {
+        F[i] = 0.0;
+        for(j = 0; j < m; j++) {
+            if(1 == point_contain(samples[i][j], region)) {
+                F[i] += pt;
+            }
+        }
+        MF *= (1 - F[i]);
+        // check MF < 1 - theta
+        if( MF < 1 - REFINEMENT_THRESHOLD) {
+            return (1 - MF);
+        }
+    }
+    qp = 1 - MF;
+    return qp;
+}*/
+
 double calc_refinement(struct interval region[], point start, point end) {
     // the time sampling size n 
     // and other two sampling size m
-    int i, j, k, n = 20, m = 500;
+    int i, j, k, n = SAMPLE_TIME_POINTS, m = SAMPLE_SPATIAL_POINTS;
     struct point **samples;
     samples = (point **)malloc(sizeof(point*) * n);
     for(i = 0; i < n; i++) {
@@ -2558,7 +2678,7 @@ int operate_oct_tree(struct query_struct query, int hops) {
     }
 
     // rtree operation 
-    if(query.op == RTREE_INSERT) {
+    if(query.op == DATA_INSERT) {
         pthread_mutex_lock(&mutex);
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, NONE, NONE);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
@@ -2603,10 +2723,11 @@ int operate_oct_tree(struct query_struct query, int hops) {
             hops_sum += hops;
 		}
         pthread_mutex_unlock(&mutex);
-    } else if(query.op == RTREE_QUERY) {
+    } else if(query.op == RANGE_NN_QUERY) {
         pthread_mutex_lock(&mutex);
         //write_log(TORUS_NODE_LOG, "torus node local nn query\n");
-        local_oct_tree_nn_query(query.intval, plow, phigh);
+        //local_oct_tree_nn_query(query.intval, plow, phigh);
+        local_oct_tree_query(query, plow, phigh);
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RANGE_QUERY) {
         pthread_mutex_lock(&mutex);
@@ -2704,285 +2825,209 @@ int do_rtree_load_data(connection_t conn, struct message msg){
 }
 
 int do_nn_query_refinement(connection_t conn, struct message msg) {
-    interval region[MAX_DIM_NUM];
-    size_t packet_num;
-    size_t cpy_len = 0;
+    struct timespec begin, end;
+    double elapsed = 0L;
+    struct refinement_log_struct rfmt_st;
 
-    // get message info: query region and packet number that will be received next
-    memcpy(region, msg.data, sizeof(interval) * MAX_DIM_NUM);
-    cpy_len += sizeof(interval) * MAX_DIM_NUM;
-    memcpy(&packet_num, msg.data + cpy_len, sizeof(size_t));
-    cpy_len += sizeof(size_t);
+    clock_gettime(CLOCK_REALTIME, &begin);
 
-    // receive packets
-    size_t data_len = 0, i;
-    int length = 0, loop = 1, cnt = 0;
+    //step 1: parse refinement head from message
+    struct query_struct query;
+    struct refinement_stat r_stat;
+    uint32_t data_size = 0;
+    parse_refinement_head(msg, &r_stat, &query, &data_size);
 
-    struct tmp_struct{
-        struct point query_point;
-        vector<traj_point *> nn_points;
-    };
+    // increase current torus node's stat (fvalue)
+    update_max_fvalue(r_stat, query, 1);
 
-    struct tmp_struct tmp_t[packet_num];
+    rfmt_st.query_id = query.data_id;
+    memcpy(rfmt_st.qry_region, query.intval, sizeof(struct interval) * MAX_DIM_NUM);
 
-    while(loop) {
-        // receive
-        length = recv_safe(conn->socketfd, &data_len, sizeof(size_t), 0);
-        if(length == 0) {
-            close_connection(conn);
-            loop = 0;
-        } else {
-            char buf[data_len + 1], *ptr;
-            ptr = buf;
-            memset(buf, 0, data_len + 1);
-            length = recv_safe(conn->socketfd, buf, data_len, 0);
+    //step 2: receive refinement data from conn
+    uint32_t traj_num;
+    traj_num = r_stat.traj_num;
+    struct traj_segments traj_segs[traj_num];
+    receive_refinement_data(conn, data_size, traj_segs, traj_num);
 
-            memcpy(&tmp_t[cnt].query_point, ptr, sizeof(point));
-            ptr += sizeof(point);
+    rfmt_st.result_size = traj_num;
 
-            size_t pt_size;
-            memcpy(&pt_size, ptr, sizeof(size_t));
-            ptr += sizeof(size_t);
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    rfmt_st.recv_refinement_elapsed = elapsed;
 
-            for(i = 0; i < pt_size; i++) {
-                traj_point *tp = (traj_point *) malloc(sizeof(traj_point));
-                memcpy(tp, ptr, sizeof(traj_point));
-                ptr += sizeof(traj_point);
-                tmp_t[cnt].nn_points.push_back(tp);
-            }
-            cnt++;
-        }
-    }
 
-    /*char b[10240];
-    memset(b, 0, 10240);
-    int l = 0;
-    l += sprintf(b + l, "q:[%lf %lf %lf] %lu\n", query_point.axis[0], query_point.axis[1],query_point.axis[2], qpt_map.size());
-    l += sprintf(b + l, "\ttid:%d p:%lf\n", t_id, qpt);
-    write_log(RESULT_LOG, b);*/
+    // step 3: nn query refinement
+    clock_gettime(CLOCK_REALTIME, &begin);
+    double avg_qp;
+    calc_nn_query_refinement(query,traj_segs,traj_num, &avg_qp);
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    rfmt_st.calc_qp_elapsed = elapsed;
+    rfmt_st.avg_qp = avg_qp;
 
-    // nn query refinement
-    hash_map<IDTYPE, double> qp_map;
-    hash_map<IDTYPE, double>::iterator it;
-    double qp, qpt;
-    IDTYPE t_id;
+    update_max_fvalue(r_stat, query, -1);
 
-    int m = 500;
-    for(i = 0; i < packet_num; i++) {
-        hash_map<IDTYPE, double> qpt_map;
-        calc_QPT(tmp_t[i].query_point, tmp_t[i].nn_points, m, qpt_map);
+    // send range query refinement result to result ip
+    struct message res_msg;
+    res_msg.op = RECEIVE_REFINEMENT_LOG;
+    strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.stamp, "", STAMP_SIZE);
+    memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
-        for(it = qpt_map.begin(); it != qpt_map.end(); it++) {
-            t_id = it->first;
-            qpt = it->second;
-
-            //
-            if(qp_map.find(t_id) == qp_map.end()) {
-                qp_map.insert(pair<IDTYPE, double>(t_id, 1.0));
-            }
-            qp = qp_map.find(t_id)->second;
-            if(qpt > 1){
-                qp = 0;
-            } else {
-                qp *= (1 - qpt);
-            }
-            qp_map.find(t_id)->second = qp;
-
-        }
-    }
-
-    /*char buf[1024];
-    memset(buf, 0, 1024);
-    int len = 0;
-    for(it = qp_map.begin(); it != qp_map.end(); it++) {
-        t_id = it->first;
-        qp = it->second;
-        len += sprintf(buf + len, "%d %lf\n", t_id, qp);
-    }
-    len += sprintf(buf + len, "\n");
-    write_log(RESULT_LOG, buf);*/
+    send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
 
     return TRUE;
 }
 
-int do_range_query_refinement(connection_t conn, struct message msg) {
-    struct timespec s, e;
-    static double elasped = 0L;
-    clock_gettime(CLOCK_REALTIME, &s);
-
-    //interval region[MAX_DIM_NUM];
-    struct query_struct query;
-    struct refinement_stat r_stat;
-
-    uint32_t traj_num, pair_num;
+int parse_refinement_head(struct message msg, struct refinement_stat *r_stat, struct query_struct *query, uint32_t *data_size) {
     size_t len = 0;
-
     // parse message 
-    memcpy(&query, msg.data, sizeof(query_struct));
+    memcpy(query, msg.data, sizeof(query_struct));
     len += sizeof(query_struct);
 
-    memcpy(&r_stat, msg.data + len, sizeof(refinement_stat));
+    memcpy(r_stat, msg.data + len, sizeof(refinement_stat));
     len += sizeof(refinement_stat);
 
-    traj_num = r_stat.traj_num;
+    memcpy(data_size, msg.data + len, sizeof(uint32_t));
+    len += sizeof(uint32_t);
 
-    // increase current torus node's stat (fvalue)
-    update_max_fvalue(r_stat, 1);
-
-    //receive refinement data
-    uint32_t i;
-    struct line_segment segments[traj_num];
+    return TRUE;
+}
+int receive_refinement_data(connection_t conn, uint32_t data_size, struct traj_segments traj_segs[], uint32_t traj_num) {
+    uint32_t i, pair_num;
     for(i = 0; i < traj_num; i++) {
-        segments[i].t_id = -1;
-        segments[i].pair_num = 0;
-        segments[i].start = NULL;
-        segments[i].end = NULL;
+        traj_segs[i].t_id = -1;
+        traj_segs[i].pair_num = 0;
+        traj_segs[i].start = NULL;
+        traj_segs[i].end = NULL;
     }
 
-    int length = 0, loop = 1, cnt = -1, traj_id, pre_tid = -1;
-    char buf[SOCKET_BUF_SIZE], *ptr;
+    int length = 0, loop = 1;
+    char buf[data_size];
+    memset(buf, 0, data_size);
 
-    while(loop) {
-        memset(buf, 0, SOCKET_BUF_SIZE);
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+    while(loop){
+        length = recv_safe(conn->socketfd, buf, data_size, 0);
         if(length <= 0) {
             close_connection(conn);
             loop = 0;
         } else {
-            length = 0;
-            ptr = buf; 
-            memcpy(&traj_id, ptr, sizeof(uint32_t));
-            ptr += sizeof(uint32_t);
-            if(traj_id != pre_tid){
-                cnt++;
-                pre_tid = traj_id;
-            }
-            segments[cnt].t_id = traj_id;
+            int traj_idx = 0;
+            uint32_t len = 0;
 
-            memcpy(&pair_num, ptr, sizeof(uint32_t));
-            ptr += sizeof(uint32_t);
-            if(0 == pair_num) {
-                segments[cnt].pair_num = 0;
-                continue;
-            }
-            if(segments[cnt].start == NULL) {
-                segments[cnt].start = (point *) malloc(sizeof(struct point) * pair_num);
-                segments[cnt].end = (point *) malloc(sizeof(struct point) * pair_num);
-            } else {
-                int append_size = segments[cnt].pair_num + pair_num;
-                point *tmp1 = (point *)realloc(segments[cnt].start, sizeof(struct point) * append_size);
-                if(tmp1 == NULL) {
-                    // TODO release memory
+            while(1){
+                memcpy(&traj_segs[traj_idx].t_id, buf + len, sizeof(uint32_t));
+                len += sizeof(uint32_t);
+                memcpy(&traj_segs[traj_idx].pair_num, buf + len, sizeof(uint32_t));
+                len += sizeof(uint32_t);
+
+                // allocate space to store current traj's segments
+                pair_num = traj_segs[traj_idx].pair_num;
+                traj_segs[traj_idx].start = (point *) malloc(sizeof(struct point) * pair_num);
+                traj_segs[traj_idx].end = (point *) malloc(sizeof(struct point) * pair_num);
+
+                // read segments of current trajectory from buf
+                for(i = 0; i < pair_num; i++) {
+                    memcpy(&traj_segs[traj_idx].start[i], buf + len, sizeof(struct point));
+                    len += sizeof(struct point);
+                    memcpy(&traj_segs[traj_idx].end[i], buf + len, sizeof(struct point));
+                    len += sizeof(struct point);
+                }
+                
+                // read finish
+                if(len >= data_size) {
                     break;
                 }
-                segments[cnt].start = tmp1;
-
-                point *tmp2 = (point *)realloc(segments[cnt].end, sizeof(struct point) * append_size);
-                if(tmp2 == NULL) {
-                    // TODO release memory
-                    break;
-                }
-                segments[cnt].end = tmp2;
+                traj_idx++;
             }
-            uint32_t index = segments[cnt].pair_num;
-
-            while(index < (segments[cnt].pair_num + pair_num)) {
-                memcpy(&segments[cnt].start[index], ptr, sizeof(struct point));
-                ptr += sizeof(struct point);
-                memcpy(&segments[cnt].end[index], ptr, sizeof(struct point));
-                ptr += sizeof(struct point);
-                index++;
-            }
-            segments[cnt].pair_num += pair_num;
         }
+
     }
-    //clock_gettime(CLOCK_REALTIME, &e);
-    //elasped = get_elasped_time(s, e);
+    return TRUE;
+}
 
-    //char b[100];
-    /*memset(b, 0, 100);
-    sprintf(b, "receive refinement data spend:%lf ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, b);*/
+int do_range_query_refinement(connection_t conn, struct message msg) {
+    struct timespec begin, end;
+    double elapsed = 0L;
+    struct refinement_log_struct rfmt_st;
 
-    //char buffer[81920];
+    clock_gettime(CLOCK_REALTIME, &begin);
 
-    int j, l = 0;
-    int res_cnt = 0;
-    //memset(buffer, 0, 81920);
-    //clock_gettime(CLOCK_REALTIME, &s);
-    /*l += sprintf(buffer + l, "range query: ");
-    for(i = 0; i < MAX_DIM_NUM; i++) {
-        l += sprintf(buffer + l, "[%lf, %lf] ", region[i].low, region[i].high);
-    }
-    l += sprintf(buffer + l, "\n");*/
+    //step 1: parse refinement head from message
+    struct query_struct query;
+    struct refinement_stat r_stat;
+    uint32_t data_size = 0;
+    parse_refinement_head(msg, &r_stat, &query, &data_size);
+
+    // increase current torus node's stat (fvalue)
+    update_max_fvalue(r_stat, query, 1);
+
+    rfmt_st.query_id = query.data_id; 
+    memcpy(rfmt_st.qry_region,query.intval, sizeof(struct interval) * MAX_DIM_NUM);  
+
+    //step 2: receive refinement data from conn
+    uint32_t traj_num;
+    traj_num = r_stat.traj_num;
+    struct traj_segments traj_segs[traj_num];
+    receive_refinement_data(conn, data_size, traj_segs, traj_num);
+
+    rfmt_st.result_size = traj_num;
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    rfmt_st.recv_refinement_elapsed = elapsed; 
+
+    clock_gettime(CLOCK_REALTIME, &begin);
+    //step 3: refinement
+    uint32_t i, j = 0;
+    double total_qp = 0.0;
+
     for(i = 0; i < traj_num; i++) {
-        if(segments[i].t_id != -1 && segments[i].t_id != 0) {
-            if(segments[i].pair_num != 0) {
-                res_cnt++;
-            }
-            if(segments[i].pair_num == 0) {
-                //l += sprintf(buffer + l, "tid:%d 1.0\n", segments[i].t_id);
-                ;
-            } else {
-                //l += sprintf(buffer + l, "tid:%d ", segments[i].t_id);
-                //double max_qp = -1;
-                for(j = 0; j < segments[i].pair_num; j++) {
-                    double qp = calc_refinement(query.intval, segments[i].start[j], segments[i].end[j]);
-                    /*if(qp > max_qp) {
-                        max_qp = qp;
-                    }*/
-                    //l += sprintf(buffer + l, "%lf ", qp);
+        double traj_qp = 1.0;
+        if(traj_segs[i].t_id != 0) {
+            if(traj_segs[i].pair_num == 0) {
+                continue;
+            } else { 
+                for(j = 0; j < traj_segs[i].pair_num; j++) {
+                   traj_qp *= (1.0 - calc_refinement(query.intval, traj_segs[i].start[j], traj_segs[i].end[j]));
                 }
-                //l += sprintf(buffer + l, "\n");
             }
 
             // release the memory
-            if(segments[i].start != NULL) {
-                free(segments[i].start);
+            if(traj_segs[i].start != NULL) {
+                free(traj_segs[i].start);
             }
-            if(segments[i].end != NULL) {
-                free(segments[i].end);
+            if(traj_segs[i].end != NULL) {
+                free(traj_segs[i].end);
             }
         }
+        traj_qp = 1.0 - traj_qp; 
+        total_qp += traj_qp; 
     }
+
+    if(traj_num == 0 ){
+        rfmt_st.avg_qp = 0;
+    }else{
+        rfmt_st.avg_qp = total_qp/ traj_num;
+    }
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    elapsed = get_elasped_time(begin, end) / 1000000.0;
+    rfmt_st.calc_qp_elapsed = elapsed; 
 
     // decrease current fvalue
-    update_max_fvalue(r_stat, -1);
+    update_max_fvalue(r_stat, query, -1);
 
-    clock_gettime(CLOCK_REALTIME, &e);
-    elasped += (get_elasped_time(s, e) / 1000000.0);
-    //write_log(REFINEMENT_LOG, buffer);
+    // send range query refinement result to result ip
+    struct message res_msg;
+    res_msg.op = RECEIVE_REFINEMENT_LOG;
+    strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.stamp, "", STAMP_SIZE);
+    memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
-    /*memset(b, 0, 100);
-    sprintf(b, "need refinement trajs count:%d \n", res_cnt);
-    write_log(RESULT_LOG, b);*/
-
-    /*memset(b, 0, 100);
-    sprintf(b, "calc refinement spend:%lf ms\n\n", (double) elasped/ 1000000.0);
-    write_log(REFINEMENT_LOG, b);*/
-
-    static int count = 0;
-    count++;
-    if(count % 1 == 0) {
-        struct message msg;
-        msg.op = RANGE_QUERY_TEST_REFINEMENT;
-        strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-        strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-        strncpy(msg.stamp, "", STAMP_SIZE);
-        int c = 1;
-        double el = elasped / (1 * 1.0);
-        elasped = 0;
-
-        int cpy_len = 0;
-        memcpy(msg.data, &query.data_id, sizeof(int));
-        cpy_len += sizeof(int);
-        memcpy(msg.data + cpy_len, &c, sizeof(int));
-        cpy_len += sizeof(int);
-        memcpy(msg.data + cpy_len, &el, sizeof(double));
-        cpy_len += sizeof(double);
-        memcpy(msg.data + cpy_len, &the_torus->info.node_id, sizeof(coordinate));
-        send_safe(result_sockfd, (void *) &msg, sizeof(struct message), 0);
-    }
+    send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
 
     return TRUE;
 }
@@ -3175,7 +3220,7 @@ int do_query_torus_node(struct message msg) {
 	if (NULL == req_ptr) {
         //TODO how can I delete the shit method to judge whether 
         //the request has been handled or not
-        if(query.op == RTREE_QUERY || query.op == RANGE_QUERY) {
+        if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
             req_ptr = insert_request(req_list, stamp);
         }
 
@@ -3237,7 +3282,7 @@ int do_query_torus_node(struct message msg) {
                 write_log(CTRL_NODE_LOG, buf);
             #endif
 
-            if(query.op == RTREE_QUERY || query.op == RANGE_QUERY) {
+            if(query.op == RANGE_QUERY || query.op == RANGE_NN_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     forward_search(query.op, query.intval, msg, i);
                 }
@@ -3251,7 +3296,7 @@ int do_query_torus_node(struct message msg) {
             operate_oct_tree(query, hops);
 
 		} else {
-            //if(query.op == RTREE_QUERY) {
+            //if(query.op == RANGE_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     if (interval_overlap(query.intval[i], the_torus->info.region[i]) != 0) {
                         forward_search(query.op, query.intval, msg, i);
@@ -3269,28 +3314,62 @@ int do_query_torus_node(struct message msg) {
 	return TRUE;
 }
 
-// used for load oct tree data from client
-int do_load_data(connection_t conn) {
-    struct message msg;
-    int loop = 1, length = 0;
-    while(loop) {
-        length = recv_safe(conn->socketfd, &msg, sizeof(struct message), 0);
-        if(length == 0) {
-            // client nomally closed
-            close_connection(conn);
-            loop = 0;
-        } else {
-            length = 0;
-            /*static int count = 0;
-            count++;
-            if(count % 10000 == 0) {
-                char b[10];
-                sprintf(b, "%d\n", count);
-                write_log(TORUS_NODE_LOG, b);
-            }*/
-            do_query_torus_cluster(msg);
+int do_notify_message(struct message msg) {
+    char buf[1024];
+    memset(buf, 0, 1024);
+    sprintf(buf, "%s %s\n", msg.src_ip, msg.data);
+    write_log(NOTIFY_LOG, buf);
+    return TRUE;
+}
+
+// used for load oct tree data command from client
+int do_load_data(struct message msg) {
+    FILE *fp;
+    char file_name[MAX_FILE_NAME];
+    sprintf(file_name, "%s/data", DATA_DIR);
+    fp = fopen(file_name, "rb");
+	if (fp == NULL) {
+		write_log(ERROR_LOG, "do_load_data: can't open data file\n");
+        return FALSE;
+	}
+
+    struct query_struct query;
+
+    // data format in data file
+    // op data_id lat lon time obj_id(traj_id)
+    int i, count;
+    count = 0;
+	while (!feof(fp)) {
+        fscanf(fp, "%d\t%d\t", &query.op, &query.data_id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            double value;
+            fscanf(fp, "%lf", &value);
+            query.intval[i].low = value;
+            query.intval[i].high = value;
+        }
+        fscanf(fp, "%d", &query.trajectory_id);
+        fscanf(fp, "\n");
+        operate_oct_tree(query, 0);
+        count++;
+        if(count % 10000 == 0) {
+            write_log(TORUS_NODE_LOG, "new 10000.\n");
         }
     }
+	fclose(fp);
+
+    // send message to result node;
+    //
+    struct message notify_msg;
+    notify_msg.op = NOTIFY_MESSAGE;//RANGE_QUERY_TEST_FILTER;
+    strncpy(notify_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(notify_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(notify_msg.stamp, "", STAMP_SIZE);
+
+    char note[128];
+    sprintf(note, "load data success.\n");
+    memcpy(notify_msg.data, &note, strlen(note));
+    send_safe(result_sockfd, (void *) &notify_msg, sizeof(struct message), 0);
+
     return TRUE;
 }
 
@@ -3351,7 +3430,7 @@ int do_query_torus_cluster(struct message msg) {
         fill_message((OP)QUERY_TORUS_NODE, src_ip, msg.dst_ip, stamp, msg.data, &new_msg);
 		do_query_torus_node(new_msg);
 
-        if(query.op == RTREE_QUERY || query.op == RANGE_QUERY) {
+        if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
 
             //decide whether forward message to it's forward and backward
             if (strcmp(msg.stamp, "") == 0) {
@@ -3610,53 +3689,51 @@ int do_receive_data(int socketfd) {
     return TRUE;
 }
 
-int do_range_query_test_filter(struct message msg) {
-    static int count = 0;
+int do_receive_filter_log(struct message msg) {
+    struct filter_log_struct fl_st;
+    memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
+    int cur_time;
+    cur_time = (int)(clock() * 1000.0 / CLOCKS_PER_SEC);
 
-    char buffer[100];
-    memset(buffer, 0, 100);
-    int cur_count;
-    double cur_el;
-    coordinate cor;
-    int cpy_len = 0, data_id;
-    memcpy(&data_id, msg.data, sizeof(int));
-    cpy_len += sizeof(int);
-    memcpy(&cur_count, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int cpy_len = 0;
+    //timestamp, query_id, region, index_elapsed, obtain_idle_elapsed, send_refinement_elapsed, 
+    //requested_num, actual_got_num, size_after_index, size_after_filter
+    cpy_len = sprintf(buf, "%d,%s,%d,[", cur_time,msg.src_ip,fl_st.query_id);
+    int i;
+    for (i=0;i<MAX_DIM_NUM;i++){
+        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", fl_st.qry_region[i].low, fl_st.qry_region[i].high);
+    }
+    cpy_len += sprintf(buf + cpy_len, "]");
+    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%d", fl_st.index_elapsed, fl_st.obtain_idle_elapsed, fl_st.send_refinement_elapsed);
+    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%u,%u\n", fl_st.requested_num, fl_st.actual_got_num,\
+            fl_st.size_after_index, fl_st.size_after_filter); 
 
-    memcpy(&cur_el, msg.data + cpy_len, sizeof(double));
-    cpy_len += sizeof(double);
-
-    memcpy(&cor, msg.data + cpy_len, sizeof(coordinate));
-    count += cur_count;
-
-    sprintf(buffer, "%d [%d%d%d] %d %lf %d\n", data_id, cor.x, cor.y, cor.z, (int)time(NULL), cur_el, count);
-    write_log(range_query_filter_log, buffer);
+    write_log(filter_log, buf);
     return TRUE;
 }
 
-int do_range_query_test_refinement(struct message msg) {
-    static int count = 0;
+int do_receive_refinement_log(struct message msg) {
+    struct refinement_log_struct rfmt_st;
+    memcpy(&rfmt_st, msg.data, sizeof(refinement_log_struct));
+    int cur_time;
+    cur_time = (int)(clock() * 1000.0 / CLOCKS_PER_SEC);
 
-    char buffer[100];
-    memset(buffer, 0, 100);
-    int cur_count;
-    double cur_el;
-    coordinate cor;
-    int cpy_len = 0, data_id;
-    memcpy(&data_id, msg.data, sizeof(int));
-    cpy_len += sizeof(int);
-    memcpy(&cur_count, msg.data + cpy_len, sizeof(int));
-    cpy_len += sizeof(int);
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int cpy_len = 0;
+    //timestamp, query_id, region, rece_data_elapsed, calc_qp_elapsed, result_size, avg_qp 
+    cpy_len = sprintf(buf, "%d,%s,%d,[", cur_time,msg.src_ip,rfmt_st.query_id);
+    int i;
+    for (i=0;i<MAX_DIM_NUM;i++){
+        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", rfmt_st.qry_region[i].low, rfmt_st.qry_region[i].high);
+    }
+    cpy_len += sprintf(buf + cpy_len, "],");
+    cpy_len += sprintf(buf + cpy_len, "%d,%d,%u,%lf\n", rfmt_st.recv_refinement_elapsed, rfmt_st.calc_qp_elapsed, \
+            rfmt_st.result_size, rfmt_st.avg_qp);
 
-    memcpy(&cur_el, msg.data + cpy_len, sizeof(double));
-    cpy_len += sizeof(double);
-
-    memcpy(&cor, msg.data + cpy_len, sizeof(coordinate));
-    count += cur_count;
-
-    sprintf(buffer, "%d [%d%d%d] %d %lf %d\n", data_id, cor.x, cor.y, cor.z, (int)time(NULL), cur_el, count);
-    write_log(range_query_refinement_log, buffer);
+    write_log(refinement_log, buf);
     return TRUE;
 }
 
@@ -3773,7 +3850,7 @@ int do_heartbeat(struct message msg) {
 
     char buf[200];
     memset(buf, 0, 200);
-    sprintf(buf, "%s %ld\n", stat.ip, stat.fvalue);
+    sprintf(buf, "%s %d\n", stat.ip, stat.fvalue);
     write_log(HEARTBEAT_LOG, buf);
     return TRUE;
 }
@@ -3783,16 +3860,20 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
     // get route_count from msg and decrease route_count
     memcpy(&route_count, msg.data, sizeof(int));
     route_count--;
+    int requested_num = 0;
+    memcpy(&requested_num, msg.data + sizeof(int), sizeof(int));    
 
-	struct reply_message reply_msg;
-    reply_msg.reply_code = SUCCESS;
+	struct message reply_msg;
 
-    char idle_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
-    strncpy(idle_ip, "", IP_ADDR_LENGTH);
+    char idle_ip[requested_num][IP_ADDR_LENGTH];
+    memset(idle_ip, 0, requested_num * IP_ADDR_LENGTH);
 
-    int ret = get_idle_torus_node(idle_ip);
+    int i;
+    int actual_got_num = 0;
+    int ret = get_idle_torus_node(idle_ip,requested_num,&actual_got_num);
     if(ret == FALSE) {
-        if(route_count == 0) {
+        actual_got_num = 0;
+        /*if(route_count == 0) {
             reply_msg.reply_code = FAILED;
         } else {
             // route to it's backward leader
@@ -3801,7 +3882,7 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
             if(backward != NULL) {
 
                 //rand choose a leader
-                int i = rand() % LEADER_NUM;
+                i = rand() % LEADER_NUM;
                 get_node_ip(backward->leader[i], dst_ip);
 
                 int backward_sockfd = sln_backward_sockfd[0][i]; 
@@ -3825,14 +3906,21 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
             } else {
                 reply_msg.reply_code = FAILED;
             }
-        }
+        }*/
     } 
 
     reply_msg.op = (OP)msg.op;
-    strncpy(reply_msg.stamp, idle_ip, STAMP_SIZE);
-    if (FALSE == send_reply(conn->socketfd, reply_msg)) {
-        return FALSE;
+    strncpy(reply_msg.src_ip, msg.dst_ip, IP_ADDR_LENGTH); 
+    strncpy(reply_msg.dst_ip, msg.src_ip, IP_ADDR_LENGTH);
+    strncpy(reply_msg.stamp, "", STAMP_SIZE);
+    int cpy_len = 0;
+    memcpy(reply_msg.data + cpy_len, &actual_got_num, sizeof(int)); 
+    cpy_len += sizeof(int);
+    for (i = 0; i < actual_got_num; i++){
+        memcpy(reply_msg.data + cpy_len, idle_ip[i], IP_ADDR_LENGTH); 
+        cpy_len += IP_ADDR_LENGTH;    
     }
+    send_message(conn->socketfd, reply_msg);
     return TRUE;
 }
 
@@ -3933,7 +4021,7 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
         #endif
-		do_load_data(conn);
+		do_load_data(msg);
         break;
 
 	case NEW_SKIP_LIST:
@@ -3990,20 +4078,20 @@ int process_message(connection_t conn, struct message msg) {
         do_throughput_test(msg);
         break;
 
-    case RANGE_QUERY_TEST_FILTER:
+    case RECEIVE_FILTER_LOG:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request range query test filter.\n");
         #endif
 
-        do_range_query_test_filter(msg);
+        do_receive_filter_log(msg);
         break;
 
-    case RANGE_QUERY_TEST_REFINEMENT:
+    case RECEIVE_REFINEMENT_LOG:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request range query test refinement.\n");
         #endif
 
-        do_range_query_test_refinement(msg);
+        do_receive_refinement_log(msg);
         break;
     
     case HEARTBEAT:
@@ -4081,6 +4169,13 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request calc nn query refinement.\n");
         #endif
         do_nn_query_refinement(conn, msg);
+        break;
+
+    case NOTIFY_MESSAGE:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request notify message .\n");
+        #endif
+        do_notify_message(msg);
         break;
 
 	default:
@@ -4190,8 +4285,10 @@ void close_connection(connection_t conn) {
 }
 
 //TODO use better strategy to calc the fvalue
-void update_max_fvalue(struct refinement_stat r_stat, int op) {
-    int val = r_stat.traj_num * op;
+void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op) {
+    // estimate response time based on the r_stat and query type
+    int res_time = estimate_response_time(r_stat, query);
+    int val = res_time * op;
 
     pthread_mutex_lock(&global_variable_mutex);
     the_node_stat.fvalue += val;
@@ -4351,11 +4448,16 @@ void send_heartbeat_to_torus_leaders() {
             break;
         }
         pthread_mutex_lock(&global_variable_mutex);
-
+        if(strcmp(the_node_stat.ip, "") == 0) {
+            break;
+        }
         struct node_stat stat = the_node_stat;
         //the_node_stat.fvalue = 0;
         pthread_mutex_unlock(&global_variable_mutex);
 
+        if(the_torus->is_leader == 1) {
+            stat.fvalue = INT_MAX;
+        }
         send_node_status(the_torus_leaders[i].ip, stat);
     }
 }
@@ -4378,17 +4480,14 @@ int main(int argc, char **argv) {
     struct tm *local;
     time_t t = time(NULL);
     local = localtime(&t);
-    sprintf(result_log, "../logs/result_%d%d%d%d%d%d.log", local->tm_year, \
-            local->tm_mon, local->tm_mday, local->tm_hour, \
+    sprintf(result_log, "../logs/result_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, local->tm_hour, \
             local->tm_min, local->tm_sec);
 
-    sprintf(range_query_filter_log, "../logs/range_query_filter_%d%d%d%d%d%d.log", local->tm_year, \
-            local->tm_mon, local->tm_mday, local->tm_hour, \
+    sprintf(filter_log, "../logs/filter_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, local->tm_hour, \
             local->tm_min, local->tm_sec);
 
-    sprintf(range_query_refinement_log, "../logs/range_query_refinement_%d%d%d%d%d%d.log", local->tm_year, \
-            local->tm_mon, local->tm_mday, local->tm_hour, \
-            local->tm_min, local->tm_sec);
+    sprintf(refinement_log, "../logs/refinement_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, \
+            local->tm_hour, local->tm_min, local->tm_sec);
 
 	int i, j;
 	should_run = 1;

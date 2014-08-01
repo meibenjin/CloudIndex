@@ -41,7 +41,7 @@ int rtree_recreate(double plow[], double phigh[]);
 // append a new torus node if current torus node is up to bound
 int torus_split();
 
-void update_max_fvalue(struct refinement_stat r_stat, int op);
+void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op);
 
 // query type can be insert, delete or query
 int operate_rtree(struct query_struct query);
@@ -106,7 +106,9 @@ void *send_heartbeat(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 
-int find_idle_torus_node(char idle_ip[]);
+int estimate_response_time(struct refinement_stat r_stat, struct query_struct query);
+
+int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int* actual_got_num);
 
 int local_oct_tree_nn_query(struct interval region[], double low[], double high[]);
 
