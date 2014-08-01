@@ -1,5 +1,5 @@
 /*
- * utils.h
+
  *
  *  Created on: Sep 16, 2013
  *      Author: meibenjin
@@ -16,6 +16,7 @@
 
 // limits for common
 #define MAX_FILE_NAME 255 
+#define INT_MAX 0x7fffffff
 
 // limits for socket
 #define IP_ADDR_LENGTH 20
@@ -41,7 +42,6 @@
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
 #define HEARTBEAT_INTERVAL 1
-#define WORKLOAD_THRESHOLD 10
 #define MAX_ROUTE_STEP 3
 #define REFINEMENT_THRESHOLD 0.8
 
@@ -49,6 +49,16 @@
 //#define SIGMA 0.00005
 #define SIGMA 900 
 #define PRECISION 1e-8
+
+// limit for refinement
+#define SAMPLE_TIME_POINTS 20
+#define SAMPLE_SPATIAL_POINTS 200
+#define SAMPLE_TIME_RATE 1 
+
+// limit for user
+#define MAX_RESPONSE_TIME 200
+#define EXCHANGE_RATE_RANGE_QUERY 1.66e-4
+#define EXCHANGE_RATE_NN_QUERY 3.6e-6
 
 // use day present second
 #define ONE_SEC (1.0 /(24 * 60 * 60))
@@ -65,8 +75,9 @@
 #define RESULT_LOG "../logs/query_result.log"
 #define RTREE_LOG "../logs/rtree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
-#define REFINEMENT_LOG "../logs/refinement.log"
+//#define REFINEMENT_LOG "../logs/refinement.log"
 #define ERROR_LOG "../logs/error.log"
+#define NOTIFY_LOG "../logs/notify.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -83,17 +94,17 @@
 #define EPOLL_NUM (COMPUTE_WORKER + MANUAL_WORKER)
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
-#define CONN_MAXFD 1024
+#define CONN_MAXFD 1024 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
 
 //#define INT_DATA
 //typedef int data_type;
 typedef double data_type;
 
-// operation for rtree
-#define RTREE_INSERT 1
-#define RTREE_DELETE 0
-#define RTREE_QUERY 2
+// operation for oct_tree
+#define DATA_INSERT 1
+#define DATA_DELETE 0
+#define RANGE_NN_QUERY 2
 #define RANGE_QUERY 3
 
 // 3-dimension coordinate
@@ -146,15 +157,16 @@ typedef enum OP {
     RECEIVE_DATA, 
     PERFORMANCE_TEST,
     THROUGHPUT_TEST,
-    RANGE_QUERY_TEST_FILTER,
-    RANGE_QUERY_TEST_REFINEMENT,
+    RECEIVE_FILTER_LOG,
+    RECEIVE_REFINEMENT_LOG,
     RELOAD_RTREE,
     LOAD_OCT_TREE_POINTS,
     LOAD_OCT_TREE_NODES,
     LOAD_OCT_TREE_TRAJECTORYS,
     TRAJ_QUERY,
     RANGE_QUERY_REFINEMENT,
-    NN_QUERY_REFINEMENT
+    NN_QUERY_REFINEMENT,
+    NOTIFY_MESSAGE
 } OP;
 
 // interval of each dimension
@@ -291,17 +303,9 @@ typedef struct connection_st {
 // only max_wait_time now
 typedef struct node_stat {
     char ip[IP_ADDR_LENGTH];
-    long fvalue;
+    int fvalue;
 }node_stat;
 
-// used for refinement
-typedef struct line_segment {
-    int t_id;
-    // the num of pair start and end point
-    int pair_num;
-    struct point *start;
-    struct point *end;
-}line_segment ;
 
 // leaders info
 typedef struct leaders_info {
@@ -315,10 +319,45 @@ typedef struct socket_st {
     int sockfd;
 }socket_st;
 
+// used for store trajectory line segments
+struct traj_segments{
+    uint32_t t_id;
+    // the num of pair start and end point
+    uint32_t pair_num;
+    struct point *start;
+    struct point *end;
+};
+
 typedef struct refinement_stat {
     uint32_t traj_num;
+    // segments num of all candidate trajs
+    uint32_t segs_num;
+    double avg_time_span;
     uint32_t data_volume;
 }refinement_stat;
+
+
+// structs for logs
+typedef struct filter_log_struct {
+    int query_id;
+    struct interval qry_region[MAX_DIM_NUM];
+    int index_elapsed;
+    int obtain_idle_elapsed;
+    int send_refinement_elapsed;
+    int requested_num;
+    int actual_got_num;
+    uint32_t size_after_index;
+    uint32_t size_after_filter;
+}filter_log_struct;
+
+typedef struct refinement_log_struct {
+    int query_id;
+    struct interval qry_region[MAX_DIM_NUM]; 
+    int recv_refinement_elapsed;
+    int calc_qp_elapsed;
+    uint32_t result_size;   
+    double avg_qp;
+}refinement_log_struct;
 
 #endif /* UTILS_H_ */
 
