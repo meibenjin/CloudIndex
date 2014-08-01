@@ -46,6 +46,9 @@ void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query,
 // query type can be insert, delete or query
 int operate_rtree(struct query_struct query);
 
+// query type can be insert, delete or query
+int operate_oct_tree(struct query_struct query, int hops);
+
 // query torus nodes
 int do_query_torus_node(struct message msg);
 
@@ -66,15 +69,6 @@ int do_new_skip_list(struct message msg);
 
 // get elasped time from start to end
 long get_elasped_time(struct timespec start, struct timespec end);
-
-// get search result ( only for collect result)
-int do_receive_result(struct message msg);
-
-// get search query( only for collect result)
-int do_receive_query(struct message msg);
-
-// receive data( thread handle)
-void *do_receive_data(void *args);
 
 /* dispatch request based on 
  * the operation code in message
@@ -99,10 +93,8 @@ void *compute_worker_monitor(void *args);
 // worker thread threads handler
 void *worker(void *args);
 
-void *do_performance_test_long(void *args);
-
-void send_heartbeat_to_torus_leaders();
-void *send_heartbeat(void *args);
+void send_heartbeat();
+void *heartbeat_worker(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 
