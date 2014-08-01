@@ -118,10 +118,6 @@ double calc_QP(struct interval region[], point start, point end, int n, int m, p
             }
         }
         MF *= (1 - F[i]);
-        // check MF < 1 - theta
-        if( MF < 1 - REFINEMENT_THRESHOLD) {
-            return (1 - MF);
-        }
     }
     qp = 1 - MF;
     return qp;
