@@ -54,6 +54,11 @@ int send_properties(struct global_properties_struct props, int cluster_id) {
 }
 
 int main(int argc, char const* argv[]) {
+    if (argc < 2) {
+        printf("usage: %s cluster_id \n", argv[0]);
+        exit(1);
+    }
+
     // read ip pool from file 
 	if (FALSE == read_torus_ip_list()) {
 		exit(1);
