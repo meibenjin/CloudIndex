@@ -93,8 +93,10 @@ int update_properties(struct global_properties_struct global_props){
     SAMPLE_SPATIAL_POINTS=global_props.sample_spatial_points;
     SAMPLE_TIME_RATE=global_props.sample_time_rate;
     MAX_RESPONSE_TIME=global_props.max_response_time;
+    TOLERABLE_RESPONSE_TIME=global_props.tolerable_response_time;
     EXCHANGE_RATE_RANGE_QUERY=global_props.exchange_rate_range_query;
     EXCHANGE_RATE_NN_QUERY=global_props.exchange_rate_nn_query;
+    EXCHANGE_RATE_PACKAGE_DATA=global_props.exchange_rate_package_data;
     ACTIVE_LEADER_NUM=global_props.active_leader_num;
     FIXED_IDLE_NODE_NUM=global_props.fixed_idle_node_num;
 
@@ -118,8 +120,10 @@ int read_properties(struct global_properties_struct *props) {
     fscanf(fp, "SAMPLE_SPATIAL_POINTS=%d\n", &props->sample_spatial_points);
     fscanf(fp, "SAMPLE_TIME_RATE=%lf\n", &props->sample_time_rate);
     fscanf(fp, "MAX_RESPONSE_TIME=%d\n", &props->max_response_time);
+    fscanf(fp, "TOLERABLE_RESPONSE_TIME=%d\n", &props->tolerable_response_time);
     fscanf(fp, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", &props->exchange_rate_range_query);
     fscanf(fp, "EXCHANGE_RATE_NN_QUERY=%lf\n", &props->exchange_rate_nn_query);
+    fscanf(fp, "EXCHANGE_RATE_PACKAGE_DATA=%lf\n", &props->exchange_rate_package_data);
     fscanf(fp, "ACTIVE_LEADER_NUM=%d\n", &props->active_leader_num);
     fscanf(fp, "FIXED_IDLE_NODE_NUM=%d\n", &props->fixed_idle_node_num);
     fclose(fp);
