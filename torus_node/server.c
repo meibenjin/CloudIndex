@@ -2141,14 +2141,58 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
 
 int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs) {
     size_t i;
-    hash_map<int, Traj *>::iterator tit;
+    hash_map<int, OctPoint *> traj_head; 
+    hash_map<int, OctPoint *> traj_tail; 
+    hash_map<int, OctPoint *>::iterator it; 
+    OctPoint *cur_point,*head, *tail;
     for (i = 0; i < pt_vector.size(); i++) {
-        tit = g_TrajList.find(pt_vector[i]->p_tid);
-		if (tit != g_TrajList.end()) {
-            Traj *t = tit->second;
-            trajs.insert(pair<int, Traj*>(t->t_id, t));
+        cur_point = pt_vector[i];
+
+        it = traj_head.find(cur_point->p_tid);
+        if(it == traj_head.end()) {
+            traj_head.insert(pair<int, OctPoint *>(cur_point->p_tid, cur_point));
+        } else {
+            head = it->second;
+            if(cur_point->p_xyz[2] < head->p_xyz[2]) {
+                it->second = cur_point;
+            }
+        }
+
+        it = traj_tail.find(cur_point->p_tid);
+        if(it == traj_tail.end()) {
+            traj_tail.insert(pair<int, OctPoint *>(cur_point->p_tid, cur_point));
+        } else {
+            tail = it->second;
+            if(cur_point->p_xyz[2] > tail->p_xyz[2]) {
+                it->second = cur_point;
+            }
         }
     }
+    
+    hash_map<int, Traj *>::iterator tit;
+    for(it = traj_head.begin(); it != traj_head.end(); ++it) {
+        head = it->second;
+        if(head->pre != -1) {
+            head = g_PtList.find(head->pre)->second;
+        }
+        Traj *t = new Traj(head->p_tid, head->p_id, -1);
+        trajs.insert(pair<int, Traj*>(t->t_id, t));
+    }
+
+    for(it = traj_tail.begin(); it != traj_tail.end(); ++it) {
+        tail = it->second;
+        if(tail->next != -1) {
+            tail = g_PtList.find(tail->next)->second;
+        }
+        tit = trajs.find(tail->p_tid);
+        if(tit == trajs.end()) {
+            write_log(ERROR_LOG, "recreate_trajs: trajs find failed.\n");
+            return FALSE;
+        }
+        Traj *t = tit->second;
+        t->t_tail = tail->p_id;
+    }
+
     return TRUE;
 }
 
@@ -2477,11 +2521,11 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     fl_st.size_after_index = trajs.size();
     
     //step 2: compute statistics and estimate the num of idle nodes
-    clock_gettime(CLOCK_REALTIME, &begin);
     int expect_response = 0, requested_num = 0, actual_got_num = 0;
     struct refinement_stat overall_stat;
     compute_range_query_stat(trajs, query, &overall_stat);
 
+    clock_gettime(CLOCK_REALTIME, &begin);
     // if the num of fixed idle node is 0, 
     // this means to estimate response and requested node num
     if(FIXED_IDLE_NODE_NUM != 0) {
@@ -2542,6 +2586,14 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     fl_st.send_refinement_elapsed = elapsed;
     //TODO should calculate the size after filter
     fl_st.size_after_filter = 0;
+
+    // free trajs hash_map
+    hash_map<IDTYPE, Traj*>::iterator tit;
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        delete traj;
+    }
+    trajs.clear();
 
     //send statistic to result node
     struct message msg;
