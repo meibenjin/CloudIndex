@@ -110,6 +110,10 @@ int partition_query(struct query_struct query, struct query_struct sub_queries[]
 int parse_refinement_head(struct message msg, struct refinement_stat *r_stat, struct query_struct *query, uint32_t *data_size);
 int receive_refinement_data(connection_t conn, uint32_t data_size, struct traj_segments traj_segs[], uint32_t traj_num);
 int get_center_points(struct point qpt, struct traj_segments traj_segs[], uint32_t traj_num, vector<traj_point *> &center_points);
+int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat);
+
+// given ip , return the index of the_torus_leader 
+int leader_nodes_index(const char ip[]);
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -1760,6 +1764,33 @@ int oct_tree_insert(OctPoint *pt) {
     return TRUE;
 }
 
+int leader_nodes_index(const char ip[]) {
+    int i;
+    for(i = 0; i < LEADER_NUM; i++) {
+        if(strcmp(ip, the_torus_leaders[i].ip) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// this function used to judge current torus node
+// is a active leader, a active leader is first i
+// a leader node, and in current global properties,
+// it will play as a true leader.
+// the LEADER_NUM - ACTIVE_LEADER_NUM will be the backup leader
+int is_active_leader() {
+    if(the_torus->is_leader == 0) {
+        return FALSE;
+    } else {
+        int index = leader_nodes_index(the_torus->info.ip);
+        if(index != -1  && index < ACTIVE_LEADER_NUM) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int* actual_got_num) {
     /* check if the_torus itself is a idle torus node
      * then check if the_torus is a leader node, if true, find a 
@@ -1768,7 +1799,7 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
      * */
     *actual_got_num = 0;
 
-    if (the_torus->is_leader == 1){
+    if (is_active_leader() == TRUE){
         //this node is leader
         get_idle_torus_node(idle_ip, requested_num, actual_got_num);
     }else{
@@ -1979,6 +2010,13 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
             }
             qp_map.find(t_id)->second = qp;
 
+        }
+
+        // free vector nn_points's memory
+        for(nit = nn_points.begin(); nit != nn_points.end();) {
+            free(*nit);
+            *nit = NULL;
+            nit = nn_points.erase(nit);
         }
     }
 
@@ -2391,6 +2429,22 @@ int localize_query(struct query_struct *query) {
     return TRUE;
 }
 
+int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat) {
+    struct message notify_msg;
+    notify_msg.op = NOTIFY_MESSAGE;
+    strncpy(notify_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(notify_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(notify_msg.stamp, "", STAMP_SIZE);
+
+    char note[200];
+    memset(note, 0, 200);
+    sprintf(note, "the query %d is very big and be thrown out. %u %u", \
+            query.data_id, overall_stat.traj_num, overall_stat.segs_num);
+    memcpy(notify_msg.data, &note, strlen(note));
+    send_safe(result_sockfd, (void *) &notify_msg, sizeof(struct message), 0);
+    return TRUE;
+}
+
 
 int local_oct_tree_query(struct query_struct query, double low[], double high[]) {
     int i;
@@ -2423,7 +2477,6 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     fl_st.size_after_index = trajs.size();
     
     //step 2: compute statistics and estimate the num of idle nodes
-
     clock_gettime(CLOCK_REALTIME, &begin);
     int expect_response = 0, requested_num = 0, actual_got_num = 0;
     struct refinement_stat overall_stat;
@@ -2446,8 +2499,11 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     memset(idle_ip, 0, requested_num * IP_ADDR_LENGTH);
     find_idle_torus_node(idle_ip,requested_num,&actual_got_num);
     if (actual_got_num == 0) {
-        strncpy(idle_ip[0], the_torus->info.ip, IP_ADDR_LENGTH);
-        actual_got_num = 1;
+        // this means the whole torus is busy now
+        send_throw_out_query_msg(query, overall_stat);
+        //strncpy(idle_ip[0], the_torus->info.ip, IP_ADDR_LENGTH);
+        //actual_got_num = 1;
+        return TRUE;
     }
     fl_st.requested_num = requested_num;
     fl_st.actual_got_num = actual_got_num;
@@ -2456,17 +2512,20 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     elapsed = get_elasped_time(begin, end) / 1000000.0;
     fl_st.obtain_idle_elapsed = elapsed;
 
-    //write log selected idle torus nodes
-    /*char buf[2048];
-    int len = 0;
-    memset(buf, 0 , 2048);
-    len += sprintf(buf + len, "%d %d [", requested_num, actual_got_num);
-    for(i = 0; i < actual_got_num; i++) {
-        len += sprintf(buf + len, "%s ", idle_ip[i]);
+    //step 3.1: test whether we need to throw out this query 
+    // when we estimate the query is very big
+    // the time for estimated send refinement and do refinement
+    int expect_process_time = 0;
+    //time to package and send refinement data
+    expect_process_time += overall_stat.segs_num * EXCHANGE_RATE_PACKAGE_DATA; 
+    //time to do refinement
+    expect_process_time += expect_response / actual_got_num; 
+    if (expect_process_time >= TOLERABLE_RESPONSE_TIME){
+        //send notify msg and return
+        send_throw_out_query_msg(query, overall_stat);
+        return TRUE;
     }
-    len += sprintf(buf + len, "]\n");
-    write_log(RESULT_LOG, buf);
-    */
+
 
     //step 4: partition query into sub_queries
     clock_gettime(CLOCK_REALTIME, &begin);
@@ -2652,13 +2711,7 @@ double calc_refinement(struct interval region[], point start, point end) {
 }
 
 int operate_oct_tree(struct query_struct query, int hops) {
-    /*static int count = 0;
-    count++;
-    if(count % 10000 == 0) {
-        char b[10];
-        sprintf(b, "%d\n", count);
-        write_log(TORUS_NODE_LOG, b);
-    }*/
+
     if(the_torus_oct_tree == NULL) {
         write_log(ERROR_LOG, "torus oct tree didn't create.\n");
         return FALSE;
@@ -3301,8 +3354,10 @@ int write_global_properties() {
     len += sprintf(buf + len, "SAMPLE_SPATIAL_POINTS=%d\n", SAMPLE_SPATIAL_POINTS);
     len += sprintf(buf + len, "SAMPLE_TIME_RATE=%lf\n", SAMPLE_TIME_RATE);
     len += sprintf(buf + len, "MAX_RESPONSE_TIME=%d\n", MAX_RESPONSE_TIME);
+    len += sprintf(buf + len, "TOLERABLE_RESPONSE_TIME=%d\n", TOLERABLE_RESPONSE_TIME);
     len += sprintf(buf + len, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", EXCHANGE_RATE_RANGE_QUERY);
     len += sprintf(buf + len, "EXCHANGE_RATE_NN_QUERY=%lf\n", EXCHANGE_RATE_NN_QUERY);
+    len += sprintf(buf + len, "EXCHANGE_RATE_PACKAGE_DATA=%lf\n", EXCHANGE_RATE_PACKAGE_DATA);
     len += sprintf(buf + len, "ACTIVE_LEADER_NUM=%d\n", ACTIVE_LEADER_NUM);
     len += sprintf(buf + len, "FIXED_IDLE_NODE_NUM=%d\n", FIXED_IDLE_NODE_NUM);
     write_log(TORUS_NODE_LOG, buf);
@@ -3371,8 +3426,9 @@ int do_load_data(struct message msg) {
     strncpy(notify_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
     strncpy(notify_msg.stamp, "", STAMP_SIZE);
 
-    char note[128];
-    sprintf(note, "load data success.\n");
+    char note[100];
+    memset(note, 0, 100);
+    sprintf(note, "load data success.");
     memcpy(notify_msg.data, &note, strlen(note));
     send_safe(result_sockfd, (void *) &notify_msg, sizeof(struct message), 0);
 
@@ -3635,15 +3691,15 @@ int do_receive_query(struct message msg) {
 int do_receive_filter_log(struct message msg) {
     struct filter_log_struct fl_st;
     memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
-    int cur_time;
-    cur_time = (int)(clock() * 1000.0 / CLOCKS_PER_SEC);
+    timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
 
     char buf[1024];
     memset(buf, 0, 1024);
     int cpy_len = 0;
     //timestamp, query_id, region, index_elapsed, obtain_idle_elapsed, send_refinement_elapsed, 
     //requested_num, actual_got_num, size_after_index, size_after_filter
-    cpy_len = sprintf(buf, "%d,%s,%d,[", cur_time,msg.src_ip,fl_st.query_id);
+    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,fl_st.query_id);
     int i;
     for (i=0;i<MAX_DIM_NUM;i++){
         cpy_len += sprintf(buf + cpy_len, "%lf %lf ", fl_st.qry_region[i].low, fl_st.qry_region[i].high);
@@ -3660,14 +3716,14 @@ int do_receive_filter_log(struct message msg) {
 int do_receive_refinement_log(struct message msg) {
     struct refinement_log_struct rfmt_st;
     memcpy(&rfmt_st, msg.data, sizeof(refinement_log_struct));
-    int cur_time;
-    cur_time = (int)(clock() * 1000.0 / CLOCKS_PER_SEC);
+    timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
 
     char buf[1024];
     memset(buf, 0, 1024);
     int cpy_len = 0;
     //timestamp, query_id, region, rece_data_elapsed, calc_qp_elapsed, result_size, avg_qp 
-    cpy_len = sprintf(buf, "%d,%s,%d,[", cur_time,msg.src_ip,rfmt_st.query_id);
+    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,rfmt_st.query_id);
     int i;
     for (i=0;i<MAX_DIM_NUM;i++){
         cpy_len += sprintf(buf + cpy_len, "%lf %lf ", rfmt_st.qry_region[i].low, rfmt_st.qry_region[i].high);
@@ -4323,7 +4379,7 @@ void send_heartbeat() {
         //the_node_stat.fvalue = 0;
         pthread_mutex_unlock(&global_variable_mutex);
 
-        if(the_torus->is_leader == 1) {
+        if(is_active_leader() == TRUE) {
             stat.fvalue = INT_MAX;
         }
         send_node_status(the_torus_leaders[i].ip, stat);
@@ -4346,7 +4402,7 @@ int main(int argc, char **argv) {
     struct global_properties_struct props;
     int ret = read_properties(&props);
     if(ret == FALSE) {
-        return 0;
+        exit(0);
     }
     update_properties(props);
 	write_log(TORUS_NODE_LOG, "read global properties.\n");
