@@ -55,7 +55,6 @@
 #define RESULT_LOG "../logs/query_result.log"
 #define RTREE_LOG "../logs/rtree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
-//#define REFINEMENT_LOG "../logs/refinement.log"
 #define ERROR_LOG "../logs/error.log"
 #define NOTIFY_LOG "../logs/notify.log"
 
@@ -98,8 +97,10 @@ extern int SAMPLE_TIME_POINTS;
 extern int SAMPLE_SPATIAL_POINTS;
 extern double SAMPLE_TIME_RATE;
 extern int MAX_RESPONSE_TIME;
+extern int TOLERABLE_RESPONSE_TIME;
 extern double EXCHANGE_RATE_RANGE_QUERY;
 extern double EXCHANGE_RATE_NN_QUERY;
+extern double EXCHANGE_RATE_PACKAGE_DATA;
 extern int ACTIVE_LEADER_NUM;
 extern int FIXED_IDLE_NODE_NUM;
 
@@ -362,8 +363,10 @@ typedef struct global_properties_struct {
     int sample_spatial_points;
     double sample_time_rate;
     int max_response_time;
+    int tolerable_response_time;
     double exchange_rate_range_query;
     double exchange_rate_nn_query;
+    double exchange_rate_package_data;
     int active_leader_num;
     int fixed_idle_node_num;
 }global_properties_struct;
