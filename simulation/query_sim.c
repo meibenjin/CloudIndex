@@ -148,7 +148,7 @@ int range_query(const char *entry_ip, char *file_name) {
                 printf("%d\n", count);
             }
             count++;
-            usleep(50000);
+            usleep(100000);
         }
         printf("finish nn query.\n");
         fclose(fp);
