@@ -58,7 +58,7 @@ int notify_load_data(int cluster_id) {
 }
 
 int main(int argc, char const* argv[]) {
-    if (argc < 1) {
+    if (argc < 2) {
         printf("usage: %s cluster_id\n", argv[0]);
         exit(1);
     }
