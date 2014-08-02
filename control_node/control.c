@@ -802,10 +802,14 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
 }
 
 int main(int argc, char **argv) {
-	/*if (argc < 4) {
-	 printf("usage: %s x y z\n", argv[0]);
-	 exit(1);
-	 }*/
+
+    // read global properties file
+    struct global_properties_struct props;
+    int ret = read_properties(&props);
+    if(ret == FALSE) {
+        exit(0);
+    }
+    update_properties(props);
 
     // read ip pool from file 
 	if (FALSE == read_torus_ip_list()) {
