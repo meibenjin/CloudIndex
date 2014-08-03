@@ -181,7 +181,7 @@ int read_data() {
 }
 
 int main(int argc, char const* argv[]) {
-    if (argc < 2) {
+    if (argc < 3) {
         printf("usage: %s cluster_id leader_ip\n", argv[0]);
         exit(1);
     }
