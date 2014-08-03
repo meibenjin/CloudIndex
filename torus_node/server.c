@@ -72,15 +72,25 @@ struct connection_st g_conn_table[CONN_MAXFD];
 // these epoll fds handle ready connections from client
 int worker_epfd[EPOLL_NUM];
 
-// socket for accept requests from client
+// socket for accept query requests from client
+// this socket accept those requests that will cost
+// some cpu resource
 int manual_worker_socket;
 
 // socket for accept compute or data transform task from client
+// this socket accept those requests that will
+// transform some data and process some time-cost task 
 int compute_worker_socket;
+
+// socket for accept fast requests from client
+// this socket used to accept those requests that 
+// need to be processed or replied immediately
+int fast_worker_socket;
 
 // multiple threads in torus node
 pthread_t manual_worker_monitor_thread;
 pthread_t compute_worker_monitor_thread;
+pthread_t fast_worker_monitor_thread;
 pthread_t worker_thread[WORKER_NUM];
 pthread_t heartbeat_thread;
 
@@ -392,8 +402,9 @@ int do_create_torus(struct message msg) {
         cpy_len += sizeof(node_info);
 
         //create long socket fd from current node to it's leaders
+        //these sockets accept fast-process task 
         get_node_ip(the_torus_leaders[j], leader_ip);
-        sockfd = new_client_socket(leader_ip, MANUAL_WORKER_PORT);
+        sockfd = new_client_socket(leader_ip, FAST_WORKER_PORT);
         if(FALSE == sockfd) {
             return FALSE;
         }
@@ -1825,7 +1836,6 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
 
         int socketfd;
         socketfd = find_leader_sock(dst_ip);
-        //socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
         if (FALSE == socketfd) {
             write_log(ERROR_LOG, "find_idle_torus_node: find leader sock failed.\n");
             return FALSE;
@@ -2194,6 +2204,16 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
     }
 
     return TRUE;
+    /*size_t i;
+    hash_map<int, Traj *>::iterator tit;
+    for (i = 0; i < pt_vector.size(); i++) {
+        tit = g_TrajList.find(pt_vector[i]->p_tid);
+        if (tit != g_TrajList.end()) {
+            Traj *t = tit->second;
+            trajs.insert(pair<int, Traj*>(t->t_id, t));
+        }
+    }
+    return TRUE;*/
 }
 
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
@@ -4222,6 +4242,53 @@ int handle_read_event(connection_t conn) {
     return TRUE;
 }
 
+void *fast_worker_monitor(void *args) {
+	// add fast_worker_listener 
+	int epfd;
+	struct epoll_event ev, events[MAX_EVENTS];
+	epfd = epoll_create(MAX_EVENTS);
+	ev.data.fd = fast_worker_socket;
+	ev.events = EPOLLIN;
+	epoll_ctl(epfd, EPOLL_CTL_ADD, fast_worker_socket, &ev);
+
+	int nfds;
+    int conn_socket;
+
+    // fast worker index from MANUAL_WORKER ~ (MANUAL_WORKER + FAST_WORKER - 1)
+    int index = MANUAL_WORKER;
+    int i;
+	while(should_run) {
+		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+		for(i = 0; i < nfds; i++) {
+            while((conn_socket = accept_connection(fast_worker_socket)) > 0) {
+                set_nonblocking(conn_socket);
+                ev.events = EPOLLIN;// | EPOLLONESHOT;
+                ev.data.fd = conn_socket;
+
+                /* register conn_socket to worker-pool's 
+                 * epoll, not the listen epoll*/
+                g_conn_table[conn_socket].used = 1;
+                
+                // record enter_time of coming connection
+                clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
+
+                g_conn_table[conn_socket].index = index; 
+                g_conn_table[conn_socket].socketfd = conn_socket; 
+                epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
+
+                index = (index + 1) % (MANUAL_WORKER + FAST_WORKER);
+                if(index == 0) {
+                    index = MANUAL_WORKER;
+                }
+            }
+		} 
+	}
+
+    close(epfd);
+    return NULL;
+
+}
+
 void *manual_worker_monitor(void *args) {
 	// add manual_worker_listener 
 	int epfd;
@@ -4305,7 +4372,7 @@ void *worker(void *args){
                 connection_t conn = &g_conn_table[conn_socket];
 
                 // handle manual task (connection closed here)
-                if(conn->index < MANUAL_WORKER) {
+                if(conn->index < (MANUAL_WORKER + FAST_WORKER)) {
                     if(FALSE == handle_read_event(conn)) {
                         close_connection(conn);
                         continue;
@@ -4353,8 +4420,8 @@ void *compute_worker_monitor(void *args) {
 	int nfds;
     int conn_socket;
 
-    // epoll index from MANUAL_WORKER ~ (WORKER_NUM - 1) used for compute worker
-    int index = MANUAL_WORKER;
+    // epoll index from (MANUAL_WORKER + FAST_WORKER) ~ (WORKER_NUM - 1) used for compute worker
+    int index = MANUAL_WORKER + FAST_WORKER;
     int i;
 
 	while(should_run) {
@@ -4375,9 +4442,10 @@ void *compute_worker_monitor(void *args) {
                     g_conn_table[conn_socket].socketfd = conn_socket; 
                     epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
 
-                    index = (index + 1) % COMPUTE_WORKER;
+                    // here WORKER_NUM = (MANUAL_WORKER + FAST_WORKER + COMPUTE_WORKER)
+                    index = (index + 1) % WORKER_NUM;
                     if(index == 0) {
-                        index = MANUAL_WORKER;
+                        index = MANUAL_WORKER + FAST_WORKER;
                     }
                 }
             }
@@ -4391,7 +4459,6 @@ void *compute_worker_monitor(void *args) {
 int send_node_status(const char *dst_ip, struct node_stat stat) {
     int socketfd;
     socketfd = find_leader_sock(dst_ip);
-	//socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
 	if (FALSE == socketfd) {
         write_log(ERROR_LOG, "send_node_status: find leader sock failed");
 		return FALSE;
@@ -4533,6 +4600,14 @@ int main(int argc, char **argv) {
 	printf("start manual-worker server.\n");
 	write_log(TORUS_NODE_LOG, "start manual-worker server.\n");
 
+    fast_worker_socket = new_server(FAST_WORKER_PORT);
+	if (fast_worker_socket == FALSE) {
+        write_log(TORUS_NODE_LOG, "start fast-worker server failed.\n");
+        exit(1);
+	}
+	printf("start fast-worker server.\n");
+	write_log(TORUS_NODE_LOG, "start fast-worker server.\n");
+
 	compute_worker_socket = new_server(COMPUTE_WORKER_PORT);
 	if (compute_worker_socket == FALSE) {
         write_log(TORUS_NODE_LOG, "start compute-worker server failed.\n");
@@ -4543,17 +4618,18 @@ int main(int argc, char **argv) {
 
 	// set server socket nonblocking
 	set_nonblocking(manual_worker_socket);
+	set_nonblocking(fast_worker_socket);
 	set_nonblocking(compute_worker_socket);
-
-
-    // step 3: create several threads and start service for client 
-    // create listen thread for epoll listerner
-    pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, NULL);
 
     //create EPOLL_NUM different epoll fd for workers
     for (i = 0; i < EPOLL_NUM; i++) {
         worker_epfd[i] = epoll_create(MAX_EVENTS);
     }
+
+    // step 3: create several threads and start service for client 
+    
+    // create listen thread for epoll listerner
+    pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, NULL);
 
     // create worker thread to handle ready socket fds
     for(i = 0; i < EPOLL_NUM; i++) {
@@ -4563,13 +4639,17 @@ int main(int argc, char **argv) {
         }
     }
 
-    // create data thread to handle data request
+    // create thread to handle data-transform and time-cost request
     pthread_create(&compute_worker_monitor_thread, NULL, compute_worker_monitor, NULL);
+
+    // create thread to handle fast-processed request
+    pthread_create(&fast_worker_monitor_thread, NULL, fast_worker_monitor, NULL);
 
     // create heartbeat thread to send status info
     pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
     pthread_join(heartbeat_thread, NULL);
+    pthread_join(fast_worker_monitor_thread, NULL);
     pthread_join(compute_worker_monitor_thread, NULL);
     for (i = 0; i < WORKER_NUM; i++) {
         pthread_join(worker_thread[i], NULL);
@@ -4581,6 +4661,8 @@ int main(int argc, char **argv) {
         close(worker_epfd[i]);
     }
 
+    close(compute_worker_socket);
+    close(fast_worker_socket);
     close(manual_worker_socket);
 
 	return 0;
