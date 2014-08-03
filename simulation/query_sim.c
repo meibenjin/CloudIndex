@@ -56,7 +56,7 @@ long get_elasped_time(struct timespec start, struct timespec end) {
 }
 
 
-int range_query(const char *entry_ip, char *file_name) {
+int range_query(const char *entry_ip, char *file_name, int time_gap) {
 	int count = 0, i;
     struct query_struct query;
     FILE *fp;
@@ -116,11 +116,11 @@ int range_query(const char *entry_ip, char *file_name) {
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
             send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
-            if(count % 100 == 0) {
+            if(count % 1 == 0) {
                 printf("%d\n", count);
             }
             count++;
-            usleep(100000);
+            usleep(time_gap * 1000);
         }
         printf("finish range query.\n");
         fclose(fp);
@@ -144,11 +144,11 @@ int range_query(const char *entry_ip, char *file_name) {
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
             send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
-            if(count % 100 == 0) {
+            if(count % 1 == 0) {
                 printf("%d\n", count);
             }
             count++;
-            usleep(100000);
+            usleep(time_gap * 1000);
         }
         printf("finish nn query.\n");
         fclose(fp);
@@ -159,7 +159,11 @@ int range_query(const char *entry_ip, char *file_name) {
 }
 
 int main(int argc, char **argv){
-    range_query(argv[1], argv[2]);
+    if (argc < 4) {
+        printf("usage: %s leader_ip query_file time_gap\n", argv[0]);
+        exit(1);
+    }
+    range_query(argv[1], argv[2], atoi(argv[3]));
     return 0;
 }
 
