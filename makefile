@@ -18,8 +18,8 @@ TESTDIR=./test
 BIN=./bin
 CC=gcc
 CXX=g++
-#CFLAGS= -g -lrt -Wall -Wno-deprecated
-CFLAGS= -lrt -Wall -Wno-deprecated
+CFLAGS= -g -lrt -Wall -Wno-deprecated
+#CFLAGS= -lrt -Wall -Wno-deprecated
 
 all: control start-node data_generator data_split query_split query_sim test data_partition load_data reload_properties del_obj_file 
 
