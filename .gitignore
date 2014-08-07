@@ -19,7 +19,6 @@
 # ignore files
 *.log
 bin/*
-test/rtree/*
 logs/*.log
 .settings/*
 !bin/README
