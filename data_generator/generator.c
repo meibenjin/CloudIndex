@@ -106,17 +106,16 @@ int insert_data(char entry_ip[], int cluster_id) {
     int i, j, k;
     int query_idx = 0;
     point_id = 0;
+    int id = 0;
     while(query_idx<query_num) {
-        new_query = query[query_idx];
-        query_idx++;
 
         // for each data, generate several data that match the partitions
         int traj_idx = 0;
-        int id = 0;
         for(i = 0; i < tp.p_x; i++) {
             for(j = 0; j < tp.p_y; j++) {
                 for(k = 0; k < tp.p_z; k++) {
-                    new_query.data_id += id;
+                    new_query = query[query_idx];
+                    new_query.data_id = id;
                     new_query.trajectory_id += traj_idx * 1000000;
 
                     node_id.x = i; node_id.y = j; node_id.z = k;
@@ -140,6 +139,7 @@ int insert_data(char entry_ip[], int cluster_id) {
                 }
             }
         }
+        query_idx++;
     }
     close(socketfd);
     return TRUE;
