@@ -84,7 +84,7 @@ int set_interval(node_info *node_ptr, torus_partitions tp, const interval data_r
     time_region.high += range[2] * c_id;
 
     double dim_intval;
-    // assine current torus node's data region
+    // assign current torus node's data region
     dim_intval = range[0] / tp.p_x;
     node_ptr->region[0].low = data_region[0].low + dim_intval * pc.x;
     node_ptr->region[0].high = node_ptr->region[0].low + dim_intval;
