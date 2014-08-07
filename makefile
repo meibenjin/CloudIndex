@@ -21,10 +21,10 @@ CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 #CFLAGS= -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split query_sim test data_partition load_data reload_properties del_obj_file 
+all: control start-node data_generator data_split query_split query_sim test data_partition msra_data_partition load_data reload_properties del_obj_file 
 
 control: utils.o control.o torus-node.o socket.o skip-list.o log.o config.o 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
 
 start-node: utils.o config.o torus-node.o server.o socket.o skip-list.o log.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
 	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
@@ -53,6 +53,11 @@ data_partition: utils.o data_partition.o config.o torus-node.o log.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/data_partition.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o 
 data_partition.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/data_partition.c -I$(VPATH)
+
+msra_data_partition: utils.o msra_data_partition.o config.o torus-node.o skip-list.o log.o 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/msra_data_partition.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/skip-list.o $(BIN)/log.o 
+msra_data_partition.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/msra_data_partition.c -I$(VPATH)
 
 query_split: utils.o query_split.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/query_split.o
