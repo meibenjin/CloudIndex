@@ -116,7 +116,7 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
             send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
-            if(count % 1 == 0) {
+            if(count % time_gap == 0) {
                 printf("%d\n", count);
             }
             count++;
@@ -144,7 +144,7 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
             send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
-            if(count % 1 == 0) {
+            if(count % time_gap == 0) {
                 printf("%d\n", count);
             }
             count++;
