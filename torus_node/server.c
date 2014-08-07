@@ -120,7 +120,7 @@ int partition_query(struct query_struct query, struct query_struct sub_queries[]
 int parse_refinement_head(struct message msg, struct refinement_stat *r_stat, struct query_struct *query, uint32_t *data_size);
 int receive_refinement_data(connection_t conn, uint32_t data_size, struct traj_segments traj_segs[], uint32_t traj_num);
 int get_center_points(struct point qpt, struct traj_segments traj_segs[], uint32_t traj_num, vector<traj_point *> &center_points);
-int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat);
+int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat, char *reason);
 
 // given ip , return the index of the_torus_leader 
 int leader_nodes_index(const char ip[]);
@@ -2369,7 +2369,7 @@ int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct
 
     OctPoint *p_cur, *p_next;
     struct point start, end;
-    double traj_start_time, traj_end_time;
+    double traj_start_time = INT_MAX, traj_end_time = -1;
 
     hash_map<IDTYPE, Traj *>::iterator tit;
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
@@ -2377,7 +2377,7 @@ int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct
         IDTYPE pid = traj->t_head;
 
         p_cur =  g_PtList.find(pid)->second;
-        traj_start_time = p_cur->p_xyz[2];
+        //traj_start_time = p_cur->p_xyz[2];
         pair_num = 0;
 
         while(p_cur->next != -1) {
@@ -2389,7 +2389,7 @@ int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct
                 pid = p_next->p_id; 
                 p_next = g_PtList.find(pid)->second; 
             }
-            traj_end_time = p_next->p_xyz[2];
+            //traj_end_time = p_next->p_xyz[2];
             
             //construct a line segment  
             int i;
@@ -2399,6 +2399,19 @@ int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct
             }
 
             if(1 == line_intersect(query.intval, start, end)){
+                if(start.axis[2] < traj_start_time) {
+                    traj_start_time = start.axis[2];
+                }
+                if(end.axis[2] < traj_start_time) {
+                    traj_start_time = end.axis[2];
+                }
+                if(start.axis[2] > traj_end_time) {
+                    traj_end_time = start.axis[2];
+                }
+                if(end.axis[2] > traj_end_time) {
+                    traj_end_time = end.axis[2];
+                }
+
                 if(query.op == RANGE_QUERY && 1 == line_contain(query.intval, start, end)) {
                     pair_num = 0;
                     break;
@@ -2493,18 +2506,18 @@ int localize_query(struct query_struct *query) {
     return TRUE;
 }
 
-int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat) {
+int send_throw_out_query_msg(struct query_struct query, struct refinement_stat overall_stat, char *reason) {
     struct message notify_msg;
     notify_msg.op = NOTIFY_MESSAGE;
     strncpy(notify_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
     strncpy(notify_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
     strncpy(notify_msg.stamp, "", STAMP_SIZE);
 
-    char note[200];
-    memset(note, 0, 200);
-    sprintf(note, "the query %d is very big and be thrown out. %u %u", \
-            query.data_id, overall_stat.traj_num, overall_stat.segs_num);
-    memcpy(notify_msg.data, &note, strlen(note));
+    char note[800];
+    memset(note, 0, 800);
+    sprintf(note, "the query %d is very big and be thrown out. %u %u.%s", \
+            query.data_id, overall_stat.traj_num, overall_stat.segs_num, reason);
+    memcpy(notify_msg.data, &note, strlen(note) + 1);
     send_safe(result_sockfd, (void *) &notify_msg, sizeof(struct message), 0);
     return TRUE;
 }
@@ -2541,11 +2554,13 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     fl_st.size_after_index = trajs.size();
     
     //step 2: compute statistics and estimate the num of idle nodes
-    int expect_response = 0, requested_num = 0, actual_got_num = 0;
-    struct refinement_stat overall_stat;
+    char reason[100];
+    clock_gettime(CLOCK_REALTIME, &begin);
+    int requested_num = 0, actual_got_num = 0;
+    uint32_t expect_response = 0;
+    struct refinement_stat overall_stat = {0, 0, 0, 0};
     compute_range_query_stat(trajs, query, &overall_stat);
 
-    clock_gettime(CLOCK_REALTIME, &begin);
     // if the num of fixed idle node is 0, 
     // this means to estimate response and requested node num
     if(FIXED_IDLE_NODE_NUM != 0) {
@@ -2553,6 +2568,10 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     } else {
         expect_response = estimate_response_time(overall_stat, query);
         requested_num = (expect_response / MAX_RESPONSE_TIME) + 1;
+        int nodes_num = the_partition.p_x * the_partition.p_y * the_partition.p_z;
+        if(requested_num > nodes_num) {
+            requested_num = nodes_num;
+        }
     }
 
     //step 3:try to find requested_num idle torus nodes to do refinement
@@ -2564,9 +2583,14 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     find_idle_torus_node(idle_ip,requested_num,&actual_got_num);
     if (actual_got_num == 0) {
         // this means the whole torus is busy now
-        send_throw_out_query_msg(query, overall_stat);
-        //strncpy(idle_ip[0], the_torus->info.ip, IP_ADDR_LENGTH);
-        //actual_got_num = 1;
+        if (RUNNING_MODE == 0){
+            memset(reason, 0, 100);
+            strcpy(reason, "actual_got_num == 0");
+            send_throw_out_query_msg(query, overall_stat, reason);
+        }
+        else{
+            // TODO write throw out statistics to result ip
+        }
         return TRUE;
     }
     fl_st.requested_num = requested_num;
@@ -2586,10 +2610,15 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     expect_process_time += expect_response / actual_got_num; 
     if (expect_process_time >= TOLERABLE_RESPONSE_TIME){
         //send notify msg and return
-        send_throw_out_query_msg(query, overall_stat);
+        if (RUNNING_MODE == 0){
+            memset(reason, 0, 100);
+            strcpy(reason, "expect_process_time >= TOLERABLE_RESPONSE_TIME");
+            send_throw_out_query_msg(query, overall_stat, reason);
+        }else{
+            // TODO write throw out statistics to result ip
+        }
         return TRUE;
     }
-
 
     //step 4: partition query into sub_queries
     clock_gettime(CLOCK_REALTIME, &begin);
@@ -2616,37 +2645,91 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     trajs.clear();
 
     //send statistic to result node
-    struct message msg;
-    msg.op = RECEIVE_FILTER_LOG; 
-    strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-    strncpy(msg.stamp, "", STAMP_SIZE);
-    
-    memcpy(msg.data, &fl_st, sizeof(struct filter_log_struct));
+    //struct throughput_stat_filter  th_filter_stat={0,0,0,0,0,0,0,0};
+    if (RUNNING_MODE == 0){
+        struct message msg;
+        msg.op = RECEIVE_FILTER_LOG; 
+        strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+        strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+        strncpy(msg.stamp, "", STAMP_SIZE);
+        
+        memcpy(msg.data, &fl_st, sizeof(struct filter_log_struct));
 
-    send_safe(result_sockfd, (void *) &msg, sizeof(struct message), 0);
+        send_safe(result_sockfd, (void *) &msg, sizeof(struct message), 0);
+    } else {
+        // TODO write filter phrase statistics to result node
+    }
 
     return TRUE;
 }
 
-int estimate_response_time(struct refinement_stat r_stat, struct query_struct query) {
-    int res_time = 0;
+uint32_t estimate_response_time(struct refinement_stat r_stat, struct query_struct query) {
+    uint32_t res_time = 0;
     int num = SAMPLE_SPATIAL_POINTS * SAMPLE_TIME_POINTS; 
     num *= r_stat.segs_num;
     if (query.op == RANGE_QUERY){
-        res_time = (int) (EXCHANGE_RATE_RANGE_QUERY * num);
+        res_time = (uint32_t) (EXCHANGE_RATE_RANGE_QUERY * num);
 
     } else if (query.op == RANGE_NN_QUERY){
-        double d_max = (query.intval[0].low + query.intval[0].high) / 2.0;
-        double qry_width = query.intval[2].high - query.intval[2].low;
+        //double x_len = the_torus->info.region[0].high - the_torus->info.region[0].low;
+        //double z_len = the_torus->info.region[2].high - the_torus->info.region[2].low;
+        
+        //NOTE!!! simple strategy now
+        if (1) {
+            return r_stat.traj_num; 
+        }
+
+        double d_max = (query.intval[0].high -  query.intval[0].low) / 2;
+        if(d_max < PRECISION) {
+            return 0;
+        }
+        double qry_width = (query.intval[2].high - query.intval[2].low);
         double density = r_stat.traj_num * r_stat.avg_time_span / qry_width;
+        // in case the num of candidate trajs is very small
+        if(density < PRECISION) {
+            return 0;
+        }
+        double rho = density;
+        double loge = ESTIMATE_NN_QUERY_COEFFICIENT;
+
+        double tmp = 2.0 * d_max * sqrt(loge / (PI * rho));
+        double num_snapshot_qrys = qry_width / SAMPLE_TIME_RATE;
+        double obj_number_per_time= density * PI * pow(tmp + 3 * SIGMA, 2.0) / (4.0 * d_max * d_max);
+        double sample_points_per_time = obj_number_per_time * SAMPLE_SPATIAL_POINTS;
+
+        res_time = (uint32_t)(EXCHANGE_RATE_NN_QUERY * num_snapshot_qrys * pow(sample_points_per_time, 2.0));
+
+        char reason[500];
+        memset(reason, 0, 500);
+        sprintf(reason, "old:density=%lf, traj_num=%d, avg_time_span=%lf, dmax=%lf,tmp=%lf, qry_width=%lf,s_p_p_time=%lf,res_time=%u", \
+                density, r_stat.traj_num, r_stat.avg_time_span, d_max, tmp, qry_width, sample_points_per_time,res_time);
+        send_throw_out_query_msg(query, r_stat, reason);
+
+        /*double d_max = (query.intval[0].high -  query.intval[0].low);
+        if(d_max < PRECISION) {
+            return 0;
+        }
+        double qry_width = (query.intval[2].high - query.intval[2].low);
+        double density = r_stat.traj_num * r_stat.avg_time_span / qry_width;
+        if(density < PRECISION) {
+            return 0;
+        }
+        double sqrt3 = sqrt(3.0);
+        double d0 = 2.0 * d_max * sqrt(2/(sqrt3 * density));
         double rho = density / (4.0 * d_max * d_max);
-        double tmp = sqrt(-((log10(1 - 0.7) / log10(2.718281))/ (PI * rho)));
+        double r = 3 * SIGMA;
 
         double num_snapshot_qrys = qry_width / SAMPLE_TIME_RATE;
-        double sample_points_per_time = rho * PI * pow(tmp + 3 * SIGMA, 2.0);
+        double obj_number_per_time = rho * PI * ((sqrt3 * d0 *(24 * r + 5 * sqrt3 * d0 + 18 * r * log2(sqrt3)) / 108) + r * r);
+        double sample_points_per_time = obj_number_per_time * SAMPLE_SPATIAL_POINTS;
 
-        res_time = (int)(EXCHANGE_RATE_NN_QUERY * num_snapshot_qrys * pow(sample_points_per_time, 2.0));
+        res_time = (uint32_t)(EXCHANGE_RATE_NN_QUERY * num_snapshot_qrys * pow(sample_points_per_time, 2.0));
+        char reason[500];
+        memset(reason, 0, 500);
+        sprintf(reason, "old:density=%lf, traj_num=%d, avg_time_span=%lf, dmax=%lf,qry_width=%lf,s_p_p_time=%lf,res_time=%u", 
+                density, r_stat.traj_num, r_stat.avg_time_span, d_max, qry_width, sample_points_per_time,res_time);
+        send_throw_out_query_msg(query, r_stat, reason);*/
+
     }
     return res_time;
 }
@@ -2816,11 +2899,8 @@ int operate_oct_tree(struct query_struct query, int hops) {
             static long hops_sum = 0;
             count++;
             if(count % 100000 == 0) {
-                /*char b[20];
-                sprintf(b, "insert:%d\n", count);
-                write_log(TORUS_NODE_LOG, b);*/
                 struct message msg;
-                msg.op = THROUGHPUT_TEST;
+                msg.op = THROUGHPUT_INSERT;
                 strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
                 strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
                 strncpy(msg.stamp, "", STAMP_SIZE);
@@ -2987,15 +3067,19 @@ int do_nn_query_refinement(connection_t conn, struct message msg) {
 
     update_max_fvalue(r_stat, query, -1);
 
-    // send range query refinement result to result ip
-    struct message res_msg;
-    res_msg.op = RECEIVE_REFINEMENT_LOG;
-    strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-    strncpy(res_msg.stamp, "", STAMP_SIZE);
-    memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
+    if (RUNNING_MODE == 0){
+        // send nn query refinement result to result ip
+        struct message res_msg;
+        res_msg.op = RECEIVE_REFINEMENT_LOG;
+        strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+        strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+        strncpy(res_msg.stamp, "", STAMP_SIZE);
+        memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
-    send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
+        send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
+    } else {
+        // TODO write refinement phrase statistics to result node
+    }
 
     return TRUE;
 }
@@ -3140,14 +3224,18 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     update_max_fvalue(r_stat, query, -1);
 
     // send range query refinement result to result ip
-    struct message res_msg;
-    res_msg.op = RECEIVE_REFINEMENT_LOG;
-    strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-    strncpy(res_msg.stamp, "", STAMP_SIZE);
-    memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
+    if (RUNNING_MODE == 0){
+        struct message res_msg;
+        res_msg.op = RECEIVE_REFINEMENT_LOG;
+        strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+        strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+        strncpy(res_msg.stamp, "", STAMP_SIZE);
+        memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
-    send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
+        send_safe(result_sockfd, (void *) &res_msg, sizeof(struct message), 0);
+    } else {
+        // TODO write refinement phrase statistics to result node
+    }
 
     return TRUE;
 }
@@ -3418,6 +3506,8 @@ int write_global_properties() {
     char buf[1024];
     memset(buf, 0, 1024);
     int len = 0;
+    len += sprintf(buf + len, "RUNNING_MODE=%u\n", RUNNING_MODE);
+    len += sprintf(buf + len, "CPU_CORE=%u\n", CPU_CORE);
     len += sprintf(buf + len, "DEFAULT_CAPACITY=%u\n", DEFAULT_CAPACITY);
     len += sprintf(buf + len, "HEARTBEAT_INTERVAL=%d\n", HEARTBEAT_INTERVAL);
     len += sprintf(buf + len, "MAX_ROUTE_STEP=%d\n", MAX_ROUTE_STEP);
@@ -3430,6 +3520,7 @@ int write_global_properties() {
     len += sprintf(buf + len, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", EXCHANGE_RATE_RANGE_QUERY);
     len += sprintf(buf + len, "EXCHANGE_RATE_NN_QUERY=%lf\n", EXCHANGE_RATE_NN_QUERY);
     len += sprintf(buf + len, "EXCHANGE_RATE_PACKAGE_DATA=%lf\n", EXCHANGE_RATE_PACKAGE_DATA);
+    len += sprintf(buf + len, "ESTIMATE_NN_QUERY_COEFFICIENT=%lf\n", ESTIMATE_NN_QUERY_COEFFICIENT);
     len += sprintf(buf + len, "ACTIVE_LEADER_NUM=%d\n", ACTIVE_LEADER_NUM);
     len += sprintf(buf + len, "FIXED_IDLE_NODE_NUM=%d\n", FIXED_IDLE_NODE_NUM);
     write_log(TORUS_NODE_LOG, buf);
@@ -3501,7 +3592,7 @@ int do_load_data(struct message msg) {
     char note[100];
     memset(note, 0, 100);
     sprintf(note, "load data success.");
-    memcpy(notify_msg.data, &note, strlen(note));
+    memcpy(notify_msg.data, &note, strlen(note) + 1);
     send_safe(result_sockfd, (void *) &notify_msg, sizeof(struct message), 0);
 
     return TRUE;
@@ -3808,7 +3899,7 @@ int do_receive_refinement_log(struct message msg) {
     return TRUE;
 }
 
-int do_throughput_test(struct message msg) {
+int do_throughput_insert(struct message msg) {
     static int count = 0;
 
     char buffer[100];
@@ -3830,7 +3921,7 @@ int do_throughput_test(struct message msg) {
     memcpy(&cor, msg.data + cpy_len, sizeof(coordinate));
     count += cur_count;
 
-    sprintf(buffer, "[%d%d%d] %d %lf %lf %d\n", cor.x, cor.y, cor.z, (int)time(NULL), cur_el, cur_hops, count);
+    sprintf(buffer, "%d [%d%d%d] %lf %lf %d\n", (int)time(NULL), cor.x, cor.y, cor.z, cur_el, cur_hops, count);
     write_log(result_log, buffer);
     return TRUE;
 }
@@ -4085,12 +4176,12 @@ int process_message(connection_t conn, struct message msg) {
 		do_traverse_skip_list(msg);
 		break;
 
-    case THROUGHPUT_TEST:
+    case THROUGHPUT_INSERT:
         #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request throughput test.\n");
+            write_log(TORUS_NODE_LOG, "receive request throughput insert test.\n");
         #endif
 
-        do_throughput_test(msg);
+        do_throughput_insert(msg);
         break;
 
     case RECEIVE_FILTER_LOG:
@@ -4261,8 +4352,13 @@ void *fast_worker_monitor(void *args) {
 		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
 		for(i = 0; i < nfds; i++) {
             while((conn_socket = accept_connection(fast_worker_socket)) > 0) {
+                if(conn_socket > CONN_MAXFD) {
+                    // TODO handle conn_socket fd exceed CONN_MAXFD
+                    write_log(ERROR_LOG, "faster_worker_monitor: conn_socket exceed CONN_MAXFD.\n");
+                    close(conn_socket);
+                }
                 set_nonblocking(conn_socket);
-                ev.events = EPOLLIN;// | EPOLLONESHOT;
+                ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
 
                 /* register conn_socket to worker-pool's 
@@ -4310,8 +4406,13 @@ void *manual_worker_monitor(void *args) {
 		for(i = 0; i < nfds; i++) {
         //if(nfds > 0) {
             while((conn_socket = accept_connection(manual_worker_socket)) > 0) {
+                if(conn_socket > CONN_MAXFD) {
+                    // TODO handle conn_socket fd overhead CONN_MAXFD
+                    write_log(ERROR_LOG, "manual_worker_monitor: conn_socket exceed CONN_MAXFD.\n");
+                    close(conn_socket);
+                }
                 set_nonblocking(conn_socket);
-                ev.events = EPOLLIN;// | EPOLLONESHOT;
+                ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
 
                 /* register conn_socket to worker-pool's 
@@ -4345,7 +4446,7 @@ void close_connection(connection_t conn) {
 
 void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op) {
     // estimate response time based on the r_stat and query type
-    int res_time = estimate_response_time(r_stat, query);
+    uint32_t res_time = estimate_response_time(r_stat, query);
     int val = res_time * op;
 
     pthread_mutex_lock(&global_variable_mutex);
@@ -4379,7 +4480,7 @@ void *worker(void *args){
                     }
 
                     if(conn->used != 0) {
-                        ev.events = EPOLLIN;// | EPOLLONESHOT;
+                        ev.events = EPOLLIN | EPOLLONESHOT;
                         ev.data.fd = conn_socket;
                         epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
                     }
@@ -4430,8 +4531,13 @@ void *compute_worker_monitor(void *args) {
         //if(nfds > 0) {
             if(events[i].data.fd == compute_worker_socket) {
                 while((conn_socket = accept_connection(compute_worker_socket)) > 0) {
+                    if(conn_socket > CONN_MAXFD) {
+                        // TODO handle conn_socket fd exceed CONN_MAXFD
+                        write_log(ERROR_LOG, "compute_worker_monitor: conn_socket exceed CONN_MAXFD\n");
+                        close(conn_socket);
+                    }
                     set_nonblocking(conn_socket);
-                    ev.events = EPOLLIN | EPOLLET;// | EPOLLONESHOT;
+                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     ev.data.fd = conn_socket;
 
                     g_conn_table[conn_socket].used = 1;

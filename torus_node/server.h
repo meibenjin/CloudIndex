@@ -98,7 +98,7 @@ void *heartbeat_worker(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 
-int estimate_response_time(struct refinement_stat r_stat, struct query_struct query);
+uint32_t estimate_response_time(struct refinement_stat r_stat, struct query_struct query);
 
 int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int* actual_got_num);
 
