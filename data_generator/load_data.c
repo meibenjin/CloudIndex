@@ -26,6 +26,8 @@ int notify_load_data(int cluster_id) {
     char dst_ip[IP_ADDR_LENGTH];
     for(i = 0; i < torus_num; i++) {
         strncpy(dst_ip, torus_ip_list[i], IP_ADDR_LENGTH);
+        // test oct_tree split
+        //strncpy(dst_ip, "172.16.0.188", IP_ADDR_LENGTH);
         socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
         if (FALSE == socketfd) {
             printf("create new socket failed!\n");
