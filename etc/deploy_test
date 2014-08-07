@@ -23,19 +23,40 @@ host_prefix="root@"
 
 leader_num=`head -n 1 $leader_ip_list | awk '{for(i=2;i<=NF;i++) {print $i}}' | wc -l`
 
-for((i=1;i<=$leader_num;i++)); do
-
-    cd ${etc_dir}
-    bash ${etc_dir}/stop-torus-nodes
-    echo "sleep 100s"
-    sleep 100
-    bash ${etc_dir}/start-torus-nodes
-    bash ${etc_dir}/start-torus-nodes
+#for((i=1;i<=$leader_num;i++)); do
+for i in 3 5 6 ; do 
     cd ${bin_dir}
-    echo "begin split data and query"
-    ./control
-    sleep 2
-    echo "finish split data and query"
+    echo "begin split data "
+    ./data_split 0 $i
+    echo "finish split data "
+
+    echo "begin send split data to torus"
+    cd ${etc_dir}
+    bash ${etc_dir}/forward-to-generator
+    echo "finish send split data to torus"
+
+    bash ${etc_dir}/stop-torus-nodes
+    echo "sleep 70s"
+    sleep 70
+    bash ${etc_dir}/start-torus-nodes
+
+    echo "begin test if torus alive"
+    sleep 5 
+    bash ${etc_dir}/start-torus-nodes
+    echo "finish test if torus alive"
+    sleep 5
+
+
+    cd ${bin_dir}
+    echo "begin send control info to torus node"
+    ./control > /dev/null
+    sleep 10 
+    echo "finish send control info to torus node"
+
+
+    echo "begin test if torus alive again"
+    bash ${etc_dir}/start-torus-nodes
+    echo "finish test if torus alive again"
 
     echo "begin $i leaders insert data"
     for((j=0;j<$i;j++)); do
@@ -49,21 +70,13 @@ for((i=1;i<=$leader_num;i++)); do
         ssh ${remote_host} "${remote_shell}"
     done
     echo "wait for insert data finish"
-    sleep 600 
+    sleep 100 
     echo "finish $i leaders insert data"
 
-    echo "begin $i leaders range query"
-    for((j=0;j<$i;j++)); do
-        echo "start query generator ${gene_ip_array[$j]}"
-        remote_host="${host_prefix}${gene_ip_array[$j]}"
-        if [ $j -ne $(($i-1)) ]; then
-            remote_shell="cd ${bin_dir}; nohup ./query_sim ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1 &"
-        else
-            remote_shell="cd ${bin_dir}; ./query_sim ${leader_ip_array[$j]} range_query >> ./${i}_leader 2>&1"
-        fi
-        ssh ${remote_host} "${remote_shell}"
-    done
-    echo "wait for range query finish"
-    sleep 200
-    echo "finish $i leaders range query"
+    echo "begin download $i leaders log"
+    scp root@172.16.0.83:/root/mbj/CloudIndex/logs/result_*.log /root/jc/logs/${i}_leader.log
+    sleep 10
+    ssh root@172.16.0.83 "rm /root/mbj/CloudIndex/logs/result_*.log"
+    echo "finish download $i leaders log"
 done
+
