@@ -5,7 +5,7 @@ local_dir="${HOME}/mbj/CloudIndex"
 etc_dir="${local_dir}/etc"
 # be careful! when change upload dir
 upload_dir="/root/mbj"
-remote_shell="test -d ${upload_dir} || mkdir ${upload_dir} && rm ${upload_dir}/CloudIndex -rf"
+remote_shell="test -d ${upload_dir} || mkdir -p ${upload_dir} && rm ${upload_dir}/CloudIndex -rf"
 host_prefix="root@"
 torus_ip_list="${etc_dir}/torus_ip_list"
 tar_name="cloudindex.tar.gz"
@@ -23,7 +23,7 @@ function clean_remote_dir()
 function copy_it()
 {
     cd ${upload_dir}
-    tar -zmcf ${tar_name} CloudIndex --exclude=CloudIndex/.git
+    tar -zmcf ${tar_name} CloudIndex --exclude=CloudIndex/.git --exclude=CloudIndex/deps/*
     for i in $(cat ${torus_ip_list} )
     do 
         remote_host="${host_prefix}$i"
