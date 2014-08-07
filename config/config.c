@@ -85,6 +85,8 @@ int read_cluster_partitions() {
 
 int update_properties(struct global_properties_struct global_props){
 
+    RUNNING_MODE=global_props.running_mode;
+    CPU_CORE=global_props.cpu_core;
     DEFAULT_CAPACITY=global_props.default_capacity;
     HEARTBEAT_INTERVAL=global_props.heartbeat_interval;
     MAX_ROUTE_STEP=global_props.max_route_step;
@@ -97,6 +99,7 @@ int update_properties(struct global_properties_struct global_props){
     EXCHANGE_RATE_RANGE_QUERY=global_props.exchange_rate_range_query;
     EXCHANGE_RATE_NN_QUERY=global_props.exchange_rate_nn_query;
     EXCHANGE_RATE_PACKAGE_DATA=global_props.exchange_rate_package_data;
+    ESTIMATE_NN_QUERY_COEFFICIENT=global_props.estimate_nn_query_coefficient;
     ACTIVE_LEADER_NUM=global_props.active_leader_num;
     FIXED_IDLE_NODE_NUM=global_props.fixed_idle_node_num;
 
@@ -112,6 +115,8 @@ int read_properties(struct global_properties_struct *props) {
         return FALSE;
     }
 
+    fscanf(fp, "RUNNING_MODE=%d\n", &props->running_mode);
+    fscanf(fp, "CPU_CORE=%u\n", &props->cpu_core);
     fscanf(fp, "DEFAULT_CAPACITY=%u\n", &props->default_capacity);
     fscanf(fp, "HEARTBEAT_INTERVAL=%d\n", &props->heartbeat_interval);
     fscanf(fp, "MAX_ROUTE_STEP=%d\n", &props->max_route_step);
@@ -124,6 +129,7 @@ int read_properties(struct global_properties_struct *props) {
     fscanf(fp, "EXCHANGE_RATE_RANGE_QUERY=%lf\n", &props->exchange_rate_range_query);
     fscanf(fp, "EXCHANGE_RATE_NN_QUERY=%lf\n", &props->exchange_rate_nn_query);
     fscanf(fp, "EXCHANGE_RATE_PACKAGE_DATA=%lf\n", &props->exchange_rate_package_data);
+    fscanf(fp, "ESTIMATE_NN_QUERY_COEFFICIENT=%lf\n", &props->estimate_nn_query_coefficient);
     fscanf(fp, "ACTIVE_LEADER_NUM=%d\n", &props->active_leader_num);
     fscanf(fp, "FIXED_IDLE_NODE_NUM=%d\n", &props->fixed_idle_node_num);
     fclose(fp);
