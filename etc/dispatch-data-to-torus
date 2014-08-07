@@ -5,7 +5,7 @@ local_dir="${HOME}/mbj/data"
 etc_dir="${HOME}/mbj/CloudIndex/etc"
 # be careful! when change upload dir
 upload_dir="/root/mbj/data"
-remote_shell="test -d ${upload_dir} || mkdir ${upload_dir}"
+remote_shell="test -d ${upload_dir} || mkdir -p ${upload_dir}"
 host_prefix="root@"
 torus_ip_list="${etc_dir}/torus_ip_list"
 
