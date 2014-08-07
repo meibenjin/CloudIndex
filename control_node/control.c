@@ -858,7 +858,6 @@ int main(int argc, char **argv) {
         if (TRUE == dispatch_torus(torus_ptr)) {
             if (TRUE == dispatch_skip_list(slist, torus_ptr->leaders)) {
                 print_skip_list(slist);
-                printf("traverse skip list success!\n");
             }
         }
         printf("\n\n");
