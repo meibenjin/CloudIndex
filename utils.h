@@ -1,5 +1,4 @@
 /*
-
  *
  *  Created on: Sep 16, 2013
  *      Author: meibenjin
@@ -30,7 +29,7 @@
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024
-#define DATA_SIZE 1400
+#define DATA_SIZE 1360
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
@@ -45,7 +44,7 @@
 #define MAX_CLUSTERS_NUM 1000 
 
 // limits for skip list
-#define LEADER_NUM 8
+#define LEADER_NUM 6
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -68,9 +67,13 @@
 #define TORUS_LEADERS "./torus_leaders"
 #define PROPERTIES_FILE "./properties"
 
+//limits for log
+#define THROUGHPUT_FREQUENCY 20
+
 //limits for epoll
 #define MAX_EVENTS 10000 
-#define COMPUTE_WORKER 1
+// this can be mulitple threads
+#define COMPUTE_WORKER 6
 #define MANUAL_WORKER 1
 #define FAST_WORKER 1
 #define EPOLL_NUM (MANUAL_WORKER + FAST_WORKER + COMPUTE_WORKER)
@@ -78,8 +81,8 @@
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 
-#define CONN_MAXFD 1024 
-#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
+#define CONN_MAXFD 500 
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 1600) 
 
 //#define INT_DATA
 //typedef int data_type;
@@ -92,20 +95,23 @@ typedef double data_type;
 #define RANGE_QUERY 3
 
 //global properties 
-extern uint32_t DEFAULT_CAPACITY;
-extern int HEARTBEAT_INTERVAL;
-extern int MAX_ROUTE_STEP;
-extern double SIGMA; 
-extern int SAMPLE_TIME_POINTS;
-extern int SAMPLE_SPATIAL_POINTS;
-extern double SAMPLE_TIME_RATE;
-extern int MAX_RESPONSE_TIME;
-extern int TOLERABLE_RESPONSE_TIME;
-extern double EXCHANGE_RATE_RANGE_QUERY;
-extern double EXCHANGE_RATE_NN_QUERY;
-extern double EXCHANGE_RATE_PACKAGE_DATA;
-extern int ACTIVE_LEADER_NUM;
-extern int FIXED_IDLE_NODE_NUM;
+extern int              RUNNING_MODE;
+extern uint32_t         CPU_CORE;
+extern uint32_t         DEFAULT_CAPACITY;
+extern int              HEARTBEAT_INTERVAL;
+extern int              MAX_ROUTE_STEP;
+extern double           SIGMA; 
+extern int              SAMPLE_TIME_POINTS;
+extern int              SAMPLE_SPATIAL_POINTS;
+extern double           SAMPLE_TIME_RATE;
+extern int              MAX_RESPONSE_TIME;
+extern int              TOLERABLE_RESPONSE_TIME;
+extern double           EXCHANGE_RATE_RANGE_QUERY;
+extern double           EXCHANGE_RATE_NN_QUERY;
+extern double           EXCHANGE_RATE_PACKAGE_DATA;
+extern double           ESTIMATE_NN_QUERY_COEFFICIENT;
+extern int              ACTIVE_LEADER_NUM;
+extern int              FIXED_IDLE_NODE_NUM;
 
 
 // 3-dimension coordinate
@@ -153,7 +159,7 @@ typedef enum OP {
 	TRAVERSE_SKIP_LIST,
     SEEK_IDLE_NODE,
     HEARTBEAT,
-    THROUGHPUT_TEST,
+    THROUGHPUT_INSERT,
     RECEIVE_FILTER_LOG,
     RECEIVE_REFINEMENT_LOG,
     RELOAD_RTREE,
@@ -334,7 +340,6 @@ typedef struct refinement_stat {
     uint32_t data_volume;
 }refinement_stat;
 
-
 // structs for logs
 typedef struct filter_log_struct {
     int query_id;
@@ -357,7 +362,10 @@ typedef struct refinement_log_struct {
     double avg_qp;
 }refinement_log_struct;
 
+// struct for global properties
 typedef struct global_properties_struct {
+    int running_mode;
+    uint32_t cpu_core;
     uint32_t default_capacity;
     int heartbeat_interval;
     int max_route_step;
@@ -370,10 +378,10 @@ typedef struct global_properties_struct {
     double exchange_rate_range_query;
     double exchange_rate_nn_query;
     double exchange_rate_package_data;
+    double estimate_nn_query_coefficient;
     int active_leader_num;
     int fixed_idle_node_num;
 }global_properties_struct;
-
 
 
 #endif /* UTILS_H_ */
