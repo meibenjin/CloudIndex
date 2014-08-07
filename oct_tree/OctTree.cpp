@@ -427,7 +427,7 @@ void OctTree::copy(OctTNode *n_pt,double *treeNewLow,double *treeNewHigh) {
                 {
                     traj_list.find(tmp->p_tid)->second->t_tail = point_new->p_id;
 				}
-                traj_list.find(tmp->p_tid)->second->printIt();
+                //traj_list.find(tmp->p_tid)->second->printIt();
 			}
 
             //printNodes();
