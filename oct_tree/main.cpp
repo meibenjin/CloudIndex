@@ -2,7 +2,6 @@
 #include<iostream>
 #include<string>
 #include <fstream>
-#include<windows.h>
 
 vector<OctPoint*> g_PT;
 
@@ -10,33 +9,6 @@ int printarray[1000];
 int printarray2[1000];
 int count1 = 0;
 int count2 = 0;
-
-class Timer {
-private:
-	LARGE_INTEGER m_t1, m_t2, m_tc;
-	bool m_fstart, m_fstop;
-public:
-	Timer() {
-		m_fstart = 0;
-		m_fstop = 0;
-		QueryPerformanceFrequency(&m_tc);
-	}
-	void start() {
-		m_fstart = 1;
-		QueryPerformanceCounter(&m_t1);
-	}
-	void stop() {
-		m_fstop = 1;
-		QueryPerformanceCounter(&m_t2);
-	}
-	double interval() {
-		if (!m_fstart || !m_fstop) {
-			cerr << "not enough info to measure" << endl;
-			return 0;
-		}
-		return double(m_t2.QuadPart - m_t1.QuadPart) / double(m_tc.QuadPart);
-	}
-};
 
 void print_tree(int nid) {
 	OctTNode *current = g_NodeList.find(nid)->second;
@@ -91,9 +63,6 @@ int loadPT(string inf_str) {
 
 	IDTYPE id;
 	double xyz[3];
-	double time;
-	IDTYPE pre;
-	IDTYPE next;
 	IDTYPE tid;
 	while (!inf.eof()) {
 		int tmp;
@@ -112,7 +81,6 @@ int loadPT(string inf_str) {
 }
 
 int main() {
-	Timer tm = Timer();
 	string file = "D://data.txt";
 	string objFile = string(file);
 	cout << "start loading points!" << endl;
@@ -124,7 +92,6 @@ int main() {
 
 	OctTree tree(low, high);
 
-	tm.start();
 	unsigned int i = 0;
 	for (i = 0; i < g_PT.size(); i++) {
 
@@ -135,14 +102,10 @@ int main() {
 			tree.treeInsert(g_PT.at(i));
 		}
 	}
-	tm.stop();
 
 	tree.treeSplit(true);
 
 	tree.countNode();
-
-	cout << "the time for inserting " << g_PT.size() << " objects is "
-			<< tm.interval() << " seconds" << endl;
 
 	cout << "Node count:" << g_NodeList.size() << endl;
 	cout << "Node count2:" << node_list.size() << endl;
@@ -169,18 +132,6 @@ int main() {
 	}
 	cout << countLeaf << " " << countIdx << endl;
 
-	//freopen("D:\\result.txt","w",stdout);
-
-	//print_tree(1);
-	//cout<<"------------"<<endl;
-	//print_treeNew(1);
-
-	//cout<<"P:"<<sizeof(OctPoint)<<" TN:"<<sizeof(OctTNode)<<" Leaf:"<<sizeof(OctLeafNode)<<" Idx:"<<sizeof(OctIdxNode)<<endl;
-
-//
-// 	int i;
-// 	cin>>i;
-	getchar();
 	return 0;
 }
 
