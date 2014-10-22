@@ -29,7 +29,7 @@
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024
-#define DATA_SIZE 1360
+#define DATA_SIZE 8192
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
@@ -44,7 +44,7 @@
 #define MAX_CLUSTERS_NUM 1000 
 
 // limits for skip list
-#define LEADER_NUM 6
+#define LEADER_NUM 27
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
