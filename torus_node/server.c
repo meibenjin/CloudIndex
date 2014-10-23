@@ -4318,11 +4318,11 @@ int handle_read_event(connection_t conn) {
             //process message
             process_message(conn, msg);
         }
-        int left = conn->roff - beg;
-        if( beg != 0 && left > 0) {
-            memmove(conn->rbuf, conn->rbuf + beg, left);
+        int remained = conn->roff - beg;
+        if( beg != 0) {
+            memmove(conn->rbuf, conn->rbuf + beg, remained);
         }
-        conn->roff = left;
+        conn->roff = remained;
     } else if(ret == 0){
         return FALSE;
     } else {

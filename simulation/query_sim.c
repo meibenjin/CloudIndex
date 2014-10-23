@@ -42,6 +42,8 @@ int query_oct_tree(struct query_struct query, const char *entry_ip) {
     memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
     cpy_len += sizeof(struct query_struct);
 
+    msg.msg_size = calc_msg_header_size() + cpy_len;
+
     if(FALSE == forward_message(msg, 0)) {
         return FALSE;
     }
@@ -115,7 +117,9 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             cpy_len += sizeof(int);
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
-            send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+
+            msg.msg_size = calc_msg_header_size() + cpy_len;
+            send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
             if(count % time_gap == 0) {
                 printf("%d\n", count);
             }
@@ -143,7 +147,9 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             cpy_len += sizeof(int);
             memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
             cpy_len += sizeof(struct query_struct);
-            send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+
+            msg.msg_size = calc_msg_header_size() + cpy_len;
+            send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
             if(count % time_gap == 0) {
                 printf("%d\n", count);
             }

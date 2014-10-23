@@ -172,12 +172,16 @@ int receive_reply(int socketfd, struct reply_message *reply_msg) {
 	return TRUE;
 }
 
-void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, struct message *msg){
+void fill_message(size_t msg_size, OP op, const char *src_ip, \
+                  const char *dst_ip, const char *stamp, const char *data, \
+                  size_t data_len, struct message *msg)
+{
+    msg->msg_size = msg_size;
 	msg->op = op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
 	strncpy(msg->stamp, stamp, STAMP_SIZE);
-	memcpy(msg->data, data, DATA_SIZE);
+	memcpy(msg->data, data, data_len);
 }
 
 int forward_message(struct message msg, int need_reply) {
@@ -218,7 +222,7 @@ int forward_message(struct message msg, int need_reply) {
 
 int send_message(int socketfd, struct message msg) {
 	if (SOCKET_ERROR
-			== send(socketfd, (void *) &msg, sizeof(struct message), 0)) {
+			== send(socketfd, (void *) &msg, msg.msg_size, 0)) {
 		// TODO do something if send failed
 		printf("send_message: %s send message failed.\n", msg.src_ip);
 		return FALSE;
@@ -232,8 +236,17 @@ int receive_message(int socketfd, struct message *msg) {
 		return FALSE;
 	}
 
+    // get message k
+    size_t msg_size;
 	ssize_t recv_len = -1;
-	recv_len = recv_safe(socketfd, (void *) msg, sizeof(struct message), 0);
+    recv_len = recv_safe(socketfd, (void *) &msg_size, sizeof(msg_size), 0);
+    if(recv_len <= 0) {
+		return FALSE;
+    }
+    msg->msg_size = msg_size;
+
+    recv_len = -1;
+	recv_len = recv_safe(socketfd, ((void *) msg) + sizeof(msg_size), msg_size - sizeof(msg_size), 0);
 	if (recv_len <= 0) {
 		//fprintf(stderr, "%s: recv()\n", strerror(errno));
 		return FALSE;
@@ -315,6 +328,11 @@ int send_safe(int socketfd, void *data, size_t len, int flags) {
     return nsend;
 }
 
+size_t calc_msg_header_size() {
+    size_t size = sizeof(size_t) + sizeof(enum OP) + 2 * IP_ADDR_LENGTH + STAMP_SIZE; 
+    return size; 
+}
+
 int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	int socketfd;
 
@@ -331,27 +349,12 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	}
 
 	struct message msg;
-	msg.op = op;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-	memcpy(msg.data, (void *) data, length);
+    size_t msg_size = calc_msg_header_size() + length;
+    fill_message(msg_size, op, local_ip, dst_ip, "", data, length, &msg); 
 
 	int ret;
 	//struct reply_message reply_msg;
 	if (TRUE == send_message(socketfd, msg)) {
-		/*if (TRUE == receive_reply(socketfd, &reply_msg)) {
-			if (SUCCESS == reply_msg.reply_code) {
-				printf("%s: send torus info ...... finish.\n", dst_ip);
-				ret = TRUE;
-			} else {
-				printf("%s: send torus info ...... error occurred.\n", dst_ip);
-				ret = FALSE;
-			}
-		} else {
-			printf("%s: receive reply ...... failed.\n", dst_ip);
-			ret = FALSE;
-		}*/
         printf("%s:\tsend data...... finish.\n", dst_ip);
         ret = TRUE;
 	} else {
@@ -363,7 +366,7 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
 	return ret;
 }
 
-int performance_test(char *entry_ip) {
+/*int performance_test(char *entry_ip) {
     int i, ret = FALSE;
     int socketfd;
 
@@ -398,7 +401,7 @@ int performance_test(char *entry_ip) {
     }
     printf("finish send data to server\n");
     return ret;
-}
+}*/
 
 void print_message(struct message msg) {
 	printf("op:%d\n", msg.op);

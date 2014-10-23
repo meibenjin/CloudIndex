@@ -21,14 +21,17 @@
 #include"utils.h"
 
 /* message for transport among torus nodes
+ * msg_size: the size of whole message
  * op:  operation code
  * src_ip: source ip address
  * dst_ip: destination ip address
  * stamp: unique request stamp for global system
  * data: transport data stream from src_ip to dst_ip
  */
+
 typedef struct message
 {
+    size_t msg_size; 
 	OP op;
 	char src_ip[IP_ADDR_LENGTH];
 	char dst_ip[IP_ADDR_LENGTH];
@@ -79,7 +82,9 @@ int receive_reply(int socketfd, struct reply_message *reply_msg);
 
 int send_message(int socketfd, struct message msg);
 
-void fill_message(OP op, const char *src_ip, const char *dst_ip, const char *stamp, const char *data, message *msg);
+void fill_message(size_t msg_size,  OP op, const char *src_ip, \
+                  const char *dst_ip, const char *stamp, const char *data, \
+                  size_t data_len, message *msg);
 
 // forward message to  msg.dst_ip
 int forward_message(struct message msg, int need_reply);
@@ -91,13 +96,15 @@ int get_local_ip(char *ip);
 
 void print_message(struct message msg);
 
+size_t calc_msg_header_size();
+
 int recv_safe(int socketfd, void *data, size_t len, int flags);
 int send_safe(int socketfd, void *data, size_t len, int flags);
 
 // send info to dst_ip
 int send_data(OP op, const char *dst_ip, const char *data, size_t length);
 
-int performance_test(char *entry_ip);
+//int performance_test(char *entry_ip);
 
 
 #endif /* SOCKET_SERVER_H_ */

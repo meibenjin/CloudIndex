@@ -583,14 +583,11 @@ int traverse_torus(const char *entry_ip) {
 	}
 
 	struct message msg;
-	msg.op = TRAVERSE_TORUS;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	memset(msg.stamp, 0, STAMP_SIZE);
-	memset(msg.data, 0, DATA_SIZE);
-
+    msg.msg_size = calc_msg_header_size();
+    fill_message(msg.msg_size, TRAVERSE_TORUS, local_ip, entry_ip, "", "", 0, &msg);
 	send_message(socketfd, msg);
 	close(socketfd);
+
 	return TRUE;
 }
 
@@ -620,12 +617,8 @@ int traverse_skip_list(const char *entry_ip) {
 	}
 
 	struct message msg;
-	msg.op = TRAVERSE_SKIP_LIST;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	memset(msg.stamp, 0, STAMP_SIZE);
-	memset(msg.data, 0, DATA_SIZE);
-
+    msg.msg_size = calc_msg_header_size();
+    fill_message(msg.msg_size, TRAVERSE_SKIP_LIST, local_ip, entry_ip, "", "", 0, &msg);
 	send_message(socketfd, msg);
 	close(socketfd);
 	return TRUE;
@@ -661,6 +654,9 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
         memcpy(msg.data, &new_level, sizeof(int));
         cpy_len += sizeof(int);
         memcpy(msg.data + cpy_len, leaders, sizeof(node_info) * LEADER_NUM);
+        cpy_len += sizeof(node_info) * LEADER_NUM;
+
+        msg.msg_size = calc_msg_header_size() + cpy_len;
 
         if (TRUE == forward_message(msg, 0)) {
             printf("%s:\tcreate new skip list node ... success\n", leaders[i].ip);
@@ -726,6 +722,8 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
                     cpy_len += sizeof(node_info) * LEADER_NUM;
                 }
 
+                msg.msg_size = calc_msg_header_size() + cpy_len;
+
                 if (TRUE == forward_message(msg, 0)) {
                     printf("%s:\tupdate new skip list node's forward and backward ... success\n", dst_ip);
                 } else {
@@ -756,7 +754,9 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
                     memcpy(msg.data + cpy_len, &update_backword, sizeof(int));
                     cpy_len += sizeof(int);
                     memcpy(msg.data + cpy_len, leaders,sizeof(node_info) * LEADER_NUM);
+                    cpy_len += sizeof(node_info) * LEADER_NUM;
 
+                    msg.msg_size = calc_msg_header_size() + cpy_len;
                     if (TRUE == forward_message(msg, 0)) {
                         printf("%s:\tupdate skip list node's backward ... success\n", dst_ip);
                     } else {
@@ -786,7 +786,9 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
                     memcpy(msg.data + cpy_len, &update_backword, sizeof(int));
                     cpy_len += sizeof(int);
                     memcpy(msg.data + cpy_len, leaders, sizeof(node_info) * LEADER_NUM);
+                    cpy_len += sizeof(node_info) * LEADER_NUM;
 
+                    msg.msg_size = calc_msg_header_size() + cpy_len;
                     if (TRUE == forward_message(msg, 0)) {
                         printf("%s:\tupdate skip list node's forward ... success\n", dst_ip);
                     } else {

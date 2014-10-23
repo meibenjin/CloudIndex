@@ -45,12 +45,9 @@ int notify_load_data(int cluster_id) {
 
         // basic packet to be sent
         struct message msg;
-        msg.op = LOAD_DATA;
-        strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-        strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-        strncpy(msg.stamp, "", STAMP_SIZE);
-        strncpy(msg.data, "", DATA_SIZE);
-        send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+        msg.msg_size = calc_msg_header_size();
+        fill_message(msg.msg_size, LOAD_DATA, local_ip, dst_ip, "", "", 0, &msg);
+        send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
 
         printf("notify torus node %s to load data.\n", dst_ip);
 

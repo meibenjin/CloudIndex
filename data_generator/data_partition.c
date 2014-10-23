@@ -21,6 +21,9 @@ int cluster_id;
 struct query_struct query[6000000];
 int query_num = 0;
 
+//TODO this function is exactly the same as the gen_query function in generator.c
+// we may move this function into load_data.c
+// the name is better changed to transform_query
 int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query) {
     int i;
 
@@ -145,6 +148,8 @@ int data_partition(int cluster_id) {
     return TRUE;
 }
 
+//TODO this function is exactly the same as the read_data function in generator.c
+// we may move this function into load_data.c
 int read_data() {
     // read data file
     char data_file[MAX_FILE_NAME];
