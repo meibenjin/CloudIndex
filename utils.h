@@ -29,7 +29,7 @@
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024
-#define DATA_SIZE 2048
+#define DATA_SIZE 8192
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
@@ -49,7 +49,7 @@
 #define SKIPLIST_P 0.5
 
 // LOG file path
-//#define WRITE_LOG
+#define WRITE_LOG
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
@@ -299,7 +299,7 @@ typedef struct connection_st {
     // time when this socket to be used; 
     struct timespec enter_time;
     //read offset
-    int roff;
+    size_t roff;
     char rbuf[CONN_BUF_SIZE];
 }*connection_t;
 

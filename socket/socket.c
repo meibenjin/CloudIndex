@@ -392,7 +392,7 @@ int send_data(OP op, const char *dst_ip, const char *data, size_t length) {
         if (FALSE == socketfd) {
             ret = FALSE;
         }
-        send_safe(socketfd, (void *) &msg, sizeof(struct message), 0);
+        send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
         count++;
         if(count % 1000 == 0) {
             printf("%d\n", count);

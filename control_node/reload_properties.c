@@ -43,7 +43,7 @@ int send_properties(struct global_properties_struct props, int cluster_id) {
         struct message msg;
         size_t data_len = sizeof(struct global_properties_struct);
         msg.msg_size = calc_msg_header_size() + data_len;
-        fill_message(msg.msg_size, RELOAD_PROPERTIES, local_ip, dst_ip, "", &props, data_len, &msg);
+        fill_message(msg.msg_size, RELOAD_PROPERTIES, local_ip, dst_ip, "", (char *)&props, data_len, &msg);
         send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
         printf("send reload properties message to torus node %s.\n", dst_ip);
         close(socketfd);

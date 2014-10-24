@@ -52,6 +52,20 @@ int operate_oct_tree(struct query_struct query, int hops);
 // query torus nodes
 int do_query_torus_node(struct message msg);
 
+// decide whether need to hand on this query to current node's forward direction
+int to_forward_direction(struct query_struct query, int index);
+
+// decide whether need to hand on this query to current node's backward direction
+int to_backward_direction(struct query_struct query, int index);
+
+// hand on message to current node's neighbor
+// direction = 1 if hand on to current node's forward direction
+// direction = -1 if hand on to current node's backward direction
+void hand_on_query_to_neighbour(struct message msg, int direction, const char *dst_ip, int index);
+
+//try to hand on this query to current node's neighbors
+void hand_on_query(struct message msg, struct query_struct query, int index);
+
 // query torus cluster 
 int do_query_torus_cluster(struct message msg);
 
@@ -81,6 +95,13 @@ int new_server(int port);
 // close a connection
 void close_connection(connection_t conn);
 
+/*
+ * read message size from ptr_buf + beg
+ * return message size if roff - beg >= sizeof(size_t) 
+ * return 0 means if roff - beg < sizeof(size_t) 
+ */
+size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff);
+
 // handle epoll read event
 int handle_read_event(connection_t conn);
 
@@ -94,6 +115,7 @@ void *compute_worker_monitor(void *args);
 void *worker(void *args);
 
 void send_heartbeat();
+
 void *heartbeat_worker(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);

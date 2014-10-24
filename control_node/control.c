@@ -583,8 +583,8 @@ int traverse_torus(const char *entry_ip) {
 	}
 
 	struct message msg;
-    msg.msg_size = calc_msg_header_size();
-    fill_message(msg.msg_size, TRAVERSE_TORUS, local_ip, entry_ip, "", "", 0, &msg);
+    msg.msg_size = calc_msg_header_size() + 1;
+    fill_message(msg.msg_size, TRAVERSE_TORUS, local_ip, entry_ip, "", "", 1, &msg);
 	send_message(socketfd, msg);
 	close(socketfd);
 
@@ -617,8 +617,8 @@ int traverse_skip_list(const char *entry_ip) {
 	}
 
 	struct message msg;
-    msg.msg_size = calc_msg_header_size();
-    fill_message(msg.msg_size, TRAVERSE_SKIP_LIST, local_ip, entry_ip, "", "", 0, &msg);
+    msg.msg_size = calc_msg_header_size() + 1;
+    fill_message(msg.msg_size, TRAVERSE_SKIP_LIST, local_ip, entry_ip, "", "", 1, &msg);
 	send_message(socketfd, msg);
 	close(socketfd);
 	return TRUE;
@@ -647,6 +647,7 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
     msg.op = NEW_SKIP_LIST;
     strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
     strncpy(msg.stamp, "", STAMP_SIZE);
+
     for(i = 0; i < LEADER_NUM; ++i) {
         cpy_len = 0;
         strncpy(msg.dst_ip, leaders[i].ip, IP_ADDR_LENGTH);
@@ -860,7 +861,13 @@ int main(int argc, char **argv) {
         if (TRUE == dispatch_torus(torus_ptr)) {
             if (TRUE == dispatch_skip_list(slist, torus_ptr->leaders)) {
                 print_skip_list(slist);
+            } else {
+                printf("disptch skip_list failed.\n");
+                exit(1);
             }
+        } else {
+            printf("disptch torus failed.\n");
+            exit(1);
         }
         printf("\n\n");
         print_torus_cluster(cluster_list);

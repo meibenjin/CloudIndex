@@ -168,6 +168,7 @@ int insert_data(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_i
 
                     package_query_msg(&msg, local_ip, destination_ip, hops, new_query);
                
+                    //printf("send %d to %s\n", msg.msg_size, destination_ip);
                     send_safe(socketfds[chosen_idx], (void *) &msg, msg.msg_size, 0);
                     
                     traj_idx++;
