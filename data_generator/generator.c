@@ -162,7 +162,7 @@ int insert_data(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_i
                     node_id.x = i; node_id.y = j; node_id.z = k;
                     gen_query(cluster_id, node_id, tp, &new_query); 
                     
-                    int chosen_idx = ((int)new_query.trajectory_id) % entries_num;
+                    int chosen_idx = ((int)new_query.data_id) % entries_num;
                     memset(destination_ip, 0, IP_ADDR_LENGTH);
                     strncpy(destination_ip, entry_ips[chosen_idx], IP_ADDR_LENGTH);
 
@@ -248,7 +248,7 @@ int main(int argc, char const* argv[]) {
     }
 
     if(FALSE == read_torus_ip_list()) {
-	exit(1);
+        exit(1);
     }
 
     char entry_ips[LEADER_NUM][IP_ADDR_LENGTH];

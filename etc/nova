@@ -31,13 +31,13 @@ if [ "$COMMAND" = "boot" ]; then
     for((i=0;i<$num;++i))
     do
         cur_date=`date +%Y%m%d%H%M%S`
-        nova boot --flavor=2 --image=37d33b64-fa8d-45ff-989f-475f7e117171 $cur_date
+        nova boot --flavor=11 --image=37d33b64-fa8d-45ff-989f-475f7e117171 $cur_date
     done
 elif [ "$COMMAND" = "boot-control-node" ]; then
     # bind floating ip for control node
     float_ip=`nova list | grep -o "$IP_REG, $IP_REG"`
     if [ "$float_ip" = "" ]; then
-        nova boot --flavor=2 --image=37d33b64-fa8d-45ff-989f-475f7e117171 $control_node
+        nova boot --flavor=1 --image=37d33b64-fa8d-45ff-989f-475f7e117171 $control_node
         sleep 3s
         floating_ip=`nova floating-ip-list | grep -o "$IP_REG" `
         nova add-floating-ip $control_node $floating_ip 

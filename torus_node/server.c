@@ -2848,15 +2848,15 @@ int operate_oct_tree(struct query_struct query, int hops) {
             static int count = 0;
             static long hops_sum = 0;
             count++;
-            if(count % 100000 == 0) {
+            if(count % 40000 == 0) {
                 struct message msg;
                 msg.op = THROUGHPUT_INSERT;
                 strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
                 strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
                 strncpy(msg.stamp, "", STAMP_SIZE);
-                int c = 100000;
-                double hop = hops_sum / (100000 * 1.0);
-                double el = elasped / (100000 * 1.0);
+                int c = 40000;
+                double hop = hops_sum / (40000 * 1.0);
+                double el = elasped / (40000 * 1.0);
                 hops_sum = 0;
                 elasped = 0;
 
@@ -3704,11 +3704,11 @@ int do_query_torus_cluster(struct message msg) {
         fill_message(msg.msg_size, (OP)QUERY_TORUS_NODE, src_ip, msg.dst_ip, \
                      stamp, msg.data, data_len, &new_msg);
 
-		//do_query_torus_node(new_msg);
+		do_query_torus_node(new_msg);
 
         if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
             //decide whether forward message to it's forward and backward
-            //hand_on_query(msg, query, index);
+            hand_on_query(msg, query, index);
         }
 
 	} else if (-1 == interval_overlap(sln_ptr->leader[index].region[2], query.intval[2])) { 
@@ -3720,7 +3720,7 @@ int do_query_torus_cluster(struct message msg) {
             {
 				get_node_ip(sln_ptr->level[i].forward->leader[index], dst_ip);
 
-                //hand_on_query_to_neighbour(msg, 1, dst_ip, index);
+                hand_on_query_to_neighbour(msg, 1, dst_ip, index);
 				visit_forward = 1;
 				break;
 			}
@@ -3740,7 +3740,7 @@ int do_query_torus_cluster(struct message msg) {
             {
 
 				get_node_ip(sln_ptr->level[i].backward->leader[index], dst_ip);
-                //hand_on_query_to_neighbour(msg, -1, dst_ip, index);
+                hand_on_query_to_neighbour(msg, -1, dst_ip, index);
 				visit_backward = 1;
 				break;
 			}
