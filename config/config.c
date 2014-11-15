@@ -86,6 +86,7 @@ int read_cluster_partitions() {
 int update_properties(struct global_properties_struct global_props){
 
     RUNNING_MODE=global_props.running_mode;
+    NUM_REPLICAS=global_props.num_replicas;
     CPU_CORE=global_props.cpu_core;
     DEFAULT_CAPACITY=global_props.default_capacity;
     HEARTBEAT_INTERVAL=global_props.heartbeat_interval;
@@ -116,6 +117,7 @@ int read_properties(struct global_properties_struct *props) {
     }
 
     fscanf(fp, "RUNNING_MODE=%d\n", &props->running_mode);
+    fscanf(fp, "NUM_REPLICAS=%d\n", &props->num_replicas);
     fscanf(fp, "CPU_CORE=%u\n", &props->cpu_core);
     fscanf(fp, "DEFAULT_CAPACITY=%u\n", &props->default_capacity);
     fscanf(fp, "HEARTBEAT_INTERVAL=%d\n", &props->heartbeat_interval);

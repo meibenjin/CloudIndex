@@ -8,6 +8,7 @@
 #include "utils.h"
 
 int             RUNNING_MODE;
+int             NUM_REPLICAS;
 uint32_t        CPU_CORE;
 uint32_t        DEFAULT_CAPACITY;
 int             HEARTBEAT_INTERVAL;

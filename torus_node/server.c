@@ -53,6 +53,11 @@ node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
 ISpatialIndex* the_torus_rtree;
 
+//replica data buffer
+
+struct query_struct replica_buffers[2][FLUSH_SIZE];
+int replica_buf_offset[2];
+
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
 int sln_forward_sockfd[MAXLEVEL][LEADER_NUM];
@@ -92,11 +97,15 @@ pthread_t manual_worker_monitor_thread;
 pthread_t compute_worker_monitor_thread;
 pthread_t fast_worker_monitor_thread;
 pthread_t worker_thread[WORKER_NUM];
+pthread_t replicator_thread[2];
 pthread_t heartbeat_thread;
 
 // mutex variables
 pthread_mutex_t mutex;
 pthread_mutex_t global_variable_mutex;
+pthread_mutex_t replica_mutex[2];
+pthread_cond_t full_cond[2]; 
+pthread_cond_t empty_cond[2]; 
 //pthread_cond_t condition;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
@@ -1241,7 +1250,7 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
     fill_message(msg.msg_size, LOAD_OCT_TREE_TRAJECTORYS, local_ip, dst_ip, \
                  "", "", 1, &msg);
     send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
-// begin to send oct tree points to dst_ip
+    // begin to send oct tree points to dst_ip
     
     char buf[SOCKET_BUF_SIZE];
     memset(buf, 0, SOCKET_BUF_SIZE);
@@ -3354,6 +3363,58 @@ int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
     return TRUE;
 }
 
+int find_replica_locations(struct message msg, char ips[][IP_ADDR_LENGTH]) {
+    //TODO we may implement plan I which will exclude the x-dimension neighbor who sent this message
+
+    // find x-dimension neighbor
+	struct coordinate lower_id = get_node_id(the_torus->info);
+	struct coordinate upper_id = get_node_id(the_torus->info);
+    lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
+    upper_id.x = (upper_id.x + the_partition.p_x + 1) % the_partition.p_x;
+	node_info *lower_neighbor = get_neighbor_by_id(the_torus, lower_id);
+	node_info *upper_neighbor = get_neighbor_by_id(the_torus, upper_id);
+
+    int count = 0;
+    //if torus partition is 2*2*2, the current node will be the same as either lower or upper neighbor
+    if(lower_neighbor != NULL && strcmp(lower_neighbor->ip, the_torus->info.ip) != 0) {
+        strncpy(ips[count], lower_neighbor->ip, IP_ADDR_LENGTH);
+        count++;
+    }
+
+    if(upper_neighbor != NULL  && strcmp(upper_neighbor->ip, the_torus->info.ip) != 0) {
+        strncpy(ips[count], upper_neighbor->ip, IP_ADDR_LENGTH);
+        count++;
+    }
+    return count;
+}
+
+int replicate_data(struct message msg) {
+    int socketfd;
+    char src_ip[IP_ADDR_LENGTH];
+    get_node_ip(the_torus->info, src_ip);
+
+    char dst_ips[2][IP_ADDR_LENGTH];
+
+    //find replica locations and return 
+    //the num of locations to store replicas
+    int num = find_replica_locations(msg, dst_ips);
+
+    int i;
+    for (i = 0; i < num; i++){
+		struct message new_msg;
+        size_t data_len = msg.msg_size - calc_msg_header_size();
+		fill_message(msg.msg_size, REPLICA_DATA, src_ip, dst_ips[i], msg.stamp, \
+                     msg.data, data_len, &new_msg);
+
+        socketfd = find_neighbor_sock(dst_ips[i]);
+        if(FALSE != socketfd) {
+            send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+        }
+    }
+        
+    return TRUE;
+}
+
 int do_query_torus_node(struct message msg) {
 	int i;
     //char src_ip[IP_ADDR_LENGTH], dst_ip[IP_ADDR_LENGTH];
@@ -3438,6 +3499,10 @@ int do_query_torus_node(struct message msg) {
             //write_log(TORUS_NODE_LOG, "operate oct tree\n");
             operate_oct_tree(query, hops);
 
+            if(NUM_REPLICAS > 0) {
+                replicate_data(msg);
+            }
+
 		} else {
             //if(query.op == RANGE_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
@@ -3448,6 +3513,7 @@ int do_query_torus_node(struct message msg) {
                 }
             //}
 		}
+
 	}
 	/*else {
 	 req_ptr->receive_num--;
@@ -3456,6 +3522,7 @@ int do_query_torus_node(struct message msg) {
 	}*/
 	return TRUE;
 }
+
 
 int write_global_properties() {
     char buf[1024];
@@ -3551,6 +3618,77 @@ int do_load_data(struct message msg) {
 
     notify_msg.msg_size = calc_msg_header_size() + strlen(note) + 1;
     send_safe(result_sockfd, (void *) &notify_msg, notify_msg.msg_size, 0);
+
+    return TRUE;
+}
+
+int write_to_disk(char *buf, int index) {
+	FILE *fp;
+    char file_name[MAX_FILE_NAME];
+    sprintf(file_name, "%s/%d", REPLICAS_DIR, index); 
+	fp = fopen(file_name, "ab+");
+    if(fp == NULL) {
+        //TODO write error log
+        return FALSE;
+    }
+	fwrite(buf, FLUSH_SIZE, 1, fp);
+	fclose(fp);
+    return TRUE;
+}
+
+void *replicator_worker(void *args) {
+    int index = *(int *)args;
+	while(should_run) {
+        char buf[FLUSH_SIZE];
+        pthread_mutex_lock(&replica_mutex[index]);
+        pthread_cond_wait(&full_cond[index], &replica_mutex[index]);
+        memcpy(buf, replica_buffers[index], FLUSH_SIZE);
+        replica_buf_offset[index] = 0;
+        pthread_mutex_unlock(&replica_mutex[index]);
+        pthread_cond_signal(&empty_cond[index]);
+        write_to_disk(buf, index);
+    }
+    return NULL;
+}
+
+int do_replica_data(struct message msg) {
+    //TODO write to local disk or buffer
+
+    int index;
+    query_struct item;
+
+	struct coordinate lower_id = get_node_id(the_torus->info);
+    lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
+	node_info *lower_neighbor = get_neighbor_by_id(the_torus, lower_id);
+
+    //if torus partition is 2*2*2, the current node will be the same as either lower or upper neighbor
+    if(lower_neighbor != NULL && strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
+        index = 0;
+    } else {
+        index = 1;
+    }
+
+    size_t cpy_len = 0;
+    int hops;
+	memcpy((void *)&hops, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+
+	memcpy((void *) &item, msg.data + cpy_len, sizeof(struct query_struct));
+    cpy_len += sizeof(struct query_struct);
+
+    pthread_mutex_lock(&replica_mutex[index]);
+    int offset = replica_buf_offset[index];
+    if(offset < FLUSH_SIZE) {
+        replica_buffers[index][offset] = item;
+        offset++;
+        replica_buf_offset[index] = offset;
+    }
+
+    if(offset >= FLUSH_SIZE){
+        pthread_cond_signal(&full_cond[index]);
+        pthread_cond_wait(&empty_cond[index], &replica_mutex[index]);
+    }
+    pthread_mutex_unlock(&replica_mutex[index]);
 
     return TRUE;
 }
@@ -4162,6 +4300,13 @@ int process_message(connection_t conn, struct message msg) {
 		do_load_data(msg);
         break;
 
+    case REPLICA_DATA:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "\nreceive request replica data.\n");
+        #endif
+        do_replica_data(msg);
+        break;
+
 	case NEW_SKIP_LIST:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request new skip list.\n");
@@ -4471,6 +4616,7 @@ void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query,
     pthread_mutex_unlock(&global_variable_mutex);
 }
 
+
 void *worker(void *args){
     int epfd = *(int *)args;
 
@@ -4715,6 +4861,15 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
 
+    // init replica buffer, mutex and condtion var
+    for(i = 0; i < NUM_REPLICAS; i++) {
+        memset(replica_buffers[i], 0, sizeof(query_struct) * FLUSH_SIZE);
+        pthread_mutex_init(&replica_mutex[i], NULL);
+        pthread_cond_init(&full_cond[i], NULL);
+        pthread_cond_init(&empty_cond[i], NULL);
+        replica_buf_offset[i] = 0;
+    }
+
     // create two server socket to process different kind of requests
 	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
 	if (manual_worker_socket == FALSE) {
@@ -4769,6 +4924,10 @@ int main(int argc, char **argv) {
     // create thread to handle fast-processed request
     pthread_create(&fast_worker_monitor_thread, NULL, fast_worker_monitor, NULL);
 
+    for(i = 0; i < NUM_REPLICAS; i++) {
+        pthread_create(&replicator_thread[i], NULL, replicator_worker, &i);
+    }
+
     // create heartbeat thread to send status info
     pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
@@ -4779,10 +4938,17 @@ int main(int argc, char **argv) {
         pthread_join(worker_thread[i], NULL);
     }
     pthread_join(manual_worker_monitor_thread, NULL);
+    for (i = 0; i < NUM_REPLICAS; i++) {
+        pthread_join(replicator_thread[i], NULL);
+    }
 
     // close worker epoll fds
     for (i = 0; i < EPOLL_NUM; i++) {
         close(worker_epfd[i]);
+    }
+
+    for (i = 0; i < NUM_REPLICAS; i++) {
+        close(replicator_thread[i]);
     }
 
     close(compute_worker_socket);

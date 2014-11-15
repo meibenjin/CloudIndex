@@ -5,6 +5,7 @@ RTREE_LIB=./deps/spatialindex/lib
 RTREE_INCLUDE=./deps/spatialindex/include
 GSL_LIB=./deps/gsl/lib
 GSL_INCLUDE=./deps/gsl/include
+CQUEUEDIR=./deps/cqueue/
 SOCKETDIR=./socket
 TORUSDIR=./torus_node
 OCTTREEDIR=./oct_tree
@@ -72,6 +73,9 @@ torus-node.o:
 	
 socket.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/socket.c -I$(VPATH)
+
+cqueue.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CQUEUEDIR)/cqueue.c -I$(VPATH)
 
 utils.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(VPATH)/utils.c -I$(VPATH)

@@ -69,6 +69,15 @@ void hand_on_query(struct message msg, struct query_struct query, int index);
 // query torus cluster 
 int do_query_torus_cluster(struct message msg);
 
+// handle request of replicating data from neighbor
+int do_replica_data(struct message msg);
+
+// find neighbors to store replicas
+int find_replica_locations(struct message msg, char ips[][IP_ADDR_LENGTH]);
+
+// find neighbors and send replicas to them
+int replicate_data(struct message msg);
+
 // handle create torus request from client
 int do_create_torus(struct message msg);
 
@@ -111,12 +120,15 @@ void *manual_worker_monitor(void *args);
 // compute worker monitor thread handler
 void *compute_worker_monitor(void *args);
 
+void *replicator_worker(void *args);
+
+void *heartbeat_worker(void *args);
+
 // worker thread threads handler
 void *worker(void *args);
 
 void send_heartbeat();
 
-void *heartbeat_worker(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 

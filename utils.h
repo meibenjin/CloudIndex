@@ -42,6 +42,7 @@
 #define MAX_NEIGHBORS 12
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
+#define FLUSH_SIZE 800
 
 // limits for skip list
 #define LEADER_NUM 18
@@ -66,6 +67,7 @@
 #define CLUSTER_PARTITONS "./cluster_partitions"
 #define TORUS_LEADERS "./torus_leaders"
 #define PROPERTIES_FILE "./properties"
+#define REPLICAS_DIR "../replicas"
 
 //limits for log
 #define THROUGHPUT_FREQUENCY 20
@@ -96,6 +98,7 @@ typedef double data_type;
 
 //global properties 
 extern int              RUNNING_MODE;
+extern int              NUM_REPLICAS;
 extern uint32_t         CPU_CORE;
 extern uint32_t         DEFAULT_CAPACITY;
 extern int              HEARTBEAT_INTERVAL;
@@ -153,6 +156,7 @@ typedef enum OP {
     QUERY_TORUS_NODE, 
 	QUERY_TORUS_CLUSTER,
     LOAD_DATA,
+    REPLICA_DATA,
 	NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
@@ -365,6 +369,7 @@ typedef struct refinement_log_struct {
 // struct for global properties
 typedef struct global_properties_struct {
     int running_mode;
+    int num_replicas;
     uint32_t cpu_core;
     uint32_t default_capacity;
     int heartbeat_interval;
