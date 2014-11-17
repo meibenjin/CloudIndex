@@ -17,8 +17,10 @@
 *.app
 
 # ignore files
+bin/*
 *.log
 logs/*.log
 .settings/*
 !bin/README
-
+!bin/properties
+!bin/cluster_partitions
