@@ -55,7 +55,7 @@ ISpatialIndex* the_torus_rtree;
 
 //replica data buffer
 
-struct query_struct replica_buffers[2][FLUSH_SIZE];
+struct query_struct replica_buffers[2][FLUSH_SIZE * sizeof(query_struct)];
 int replica_buf_offset[2];
 
 // if current torus node is a leader node(this means it is a skip list node)
@@ -3622,16 +3622,16 @@ int do_load_data(struct message msg) {
     return TRUE;
 }
 
-int write_to_disk(char *buf, int index) {
+int write_to_disk(char *buf, size_t data_len, int index) {
 	FILE *fp;
     char file_name[MAX_FILE_NAME];
-    sprintf(file_name, "%s/%d", REPLICAS_DIR, index); 
+    sprintf(file_name, "%s/replica_%d", REPLICAS_DIR, index); 
 	fp = fopen(file_name, "ab+");
     if(fp == NULL) {
         //TODO write error log
         return FALSE;
     }
-	fwrite(buf, FLUSH_SIZE, 1, fp);
+	fwrite(buf, data_len, 1, fp);
 	fclose(fp);
     return TRUE;
 }
@@ -3639,14 +3639,15 @@ int write_to_disk(char *buf, int index) {
 void *replicator_worker(void *args) {
     int index = *(int *)args;
 	while(should_run) {
-        char buf[FLUSH_SIZE];
+        size_t data_len = FLUSH_SIZE * sizeof(query_struct);
+        char buf[data_len];
         pthread_mutex_lock(&replica_mutex[index]);
         pthread_cond_wait(&full_cond[index], &replica_mutex[index]);
-        memcpy(buf, replica_buffers[index], FLUSH_SIZE);
+        memcpy(buf, replica_buffers[index], data_len);
         replica_buf_offset[index] = 0;
-        pthread_mutex_unlock(&replica_mutex[index]);
         pthread_cond_signal(&empty_cond[index]);
-        write_to_disk(buf, index);
+        pthread_mutex_unlock(&replica_mutex[index]);
+        write_to_disk(buf, data_len, index);
     }
     return NULL;
 }
@@ -3654,6 +3655,7 @@ void *replicator_worker(void *args) {
 int do_replica_data(struct message msg) {
     //TODO write to local disk or buffer
 
+    return TRUE;
     int index;
     query_struct item;
 
@@ -3676,19 +3678,21 @@ int do_replica_data(struct message msg) {
 	memcpy((void *) &item, msg.data + cpy_len, sizeof(struct query_struct));
     cpy_len += sizeof(struct query_struct);
 
-    pthread_mutex_lock(&replica_mutex[index]);
+    /*pthread_mutex_lock(&replica_mutex[index]);
     int offset = replica_buf_offset[index];
+    if(offset >= FLUSH_SIZE){
+        pthread_cond_signal(&full_cond[index]);
+        pthread_cond_wait(&empty_cond[index], &replica_mutex[index]);
+        offset = replica_buf_offset[index];
+    }
+
     if(offset < FLUSH_SIZE) {
         replica_buffers[index][offset] = item;
         offset++;
         replica_buf_offset[index] = offset;
     }
 
-    if(offset >= FLUSH_SIZE){
-        pthread_cond_signal(&full_cond[index]);
-        pthread_cond_wait(&empty_cond[index], &replica_mutex[index]);
-    }
-    pthread_mutex_unlock(&replica_mutex[index]);
+    pthread_mutex_unlock(&replica_mutex[index]);*/
 
     return TRUE;
 }

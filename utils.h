@@ -45,7 +45,7 @@
 #define FLUSH_SIZE 800
 
 // limits for skip list
-#define LEADER_NUM 18
+#define LEADER_NUM 27
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -75,7 +75,7 @@
 //limits for epoll
 #define MAX_EVENTS 10000 
 // this can be mulitple threads
-#define COMPUTE_WORKER 6
+#define COMPUTE_WORKER 4
 #define MANUAL_WORKER 1
 #define FAST_WORKER 1
 #define EPOLL_NUM (MANUAL_WORKER + FAST_WORKER + COMPUTE_WORKER)
