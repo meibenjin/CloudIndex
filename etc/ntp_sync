@@ -7,7 +7,7 @@ user_name="root"
 root_dir=${HOME}/mbj/CloudIndex
 ip_list_file=${root_dir}/etc/torus_ip_list
 
-shell_script='ntpdate 172.16.0.233'
+shell_script='ntpdate 172.16.0.166'
 
 
 for i in $(cat ${ip_list_file})
