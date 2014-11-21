@@ -120,8 +120,6 @@ void *manual_worker_monitor(void *args);
 // compute worker monitor thread handler
 void *compute_worker_monitor(void *args);
 
-void *replicator_worker(void *args);
-
 void *heartbeat_worker(void *args);
 
 // worker thread threads handler

@@ -55,8 +55,8 @@ ISpatialIndex* the_torus_rtree;
 
 //replica data buffer
 
-struct query_struct replica_buffers[2][FLUSH_SIZE * sizeof(query_struct)];
-int replica_buf_offset[2];
+struct query_struct replica_buf[FLUSH_SIZE];
+int replica_buf_offset;
 
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
@@ -97,16 +97,12 @@ pthread_t manual_worker_monitor_thread;
 pthread_t compute_worker_monitor_thread;
 pthread_t fast_worker_monitor_thread;
 pthread_t worker_thread[WORKER_NUM];
-pthread_t replicator_thread[2];
 pthread_t heartbeat_thread;
 
 // mutex variables
 pthread_mutex_t mutex;
 pthread_mutex_t global_variable_mutex;
-pthread_mutex_t replica_mutex[2];
-pthread_cond_t full_cond[2]; 
-pthread_cond_t empty_cond[2]; 
-//pthread_cond_t condition;
+pthread_mutex_t replica_mutex;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 int result_sockfd;
@@ -3389,28 +3385,46 @@ int find_replica_locations(struct message msg, char ips[][IP_ADDR_LENGTH]) {
 }
 
 int replicate_data(struct message msg) {
-    int socketfd;
-    char src_ip[IP_ADDR_LENGTH];
-    get_node_ip(the_torus->info, src_ip);
+    pthread_mutex_lock(&replica_mutex);
+    //flush to neighbors
+    if(replica_buf_offset >= FLUSH_SIZE) {
+        int socketfd;
+        char src_ip[IP_ADDR_LENGTH];
+        get_node_ip(the_torus->info, src_ip);
+        char dst_ips[2][IP_ADDR_LENGTH];
+        //find replica locations and return 
+        //the num of locations to store replicas
+        int i;
+        int num = find_replica_locations(msg, dst_ips);
+        for (i = 0; i < num; i++){
+            struct message new_msg;
+            new_msg.op = REPLICA_DATA;
+            strncpy(new_msg.src_ip, src_ip, IP_ADDR_LENGTH);
+            strncpy(new_msg.dst_ip, dst_ips[i], IP_ADDR_LENGTH);
+            strncpy(new_msg.stamp, msg.stamp, STAMP_SIZE);
 
-    char dst_ips[2][IP_ADDR_LENGTH];
+            memcpy(msg.data, replica_buf, sizeof(query_struct) * FLUSH_SIZE);
+            new_msg.msg_size = calc_msg_header_size() + sizeof(query_struct) * FLUSH_SIZE;
 
-    //find replica locations and return 
-    //the num of locations to store replicas
-    int num = find_replica_locations(msg, dst_ips);
-
-    int i;
-    for (i = 0; i < num; i++){
-		struct message new_msg;
-        size_t data_len = msg.msg_size - calc_msg_header_size();
-		fill_message(msg.msg_size, REPLICA_DATA, src_ip, dst_ips[i], msg.stamp, \
-                     msg.data, data_len, &new_msg);
-
-        socketfd = find_neighbor_sock(dst_ips[i]);
-        if(FALSE != socketfd) {
-            send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+            socketfd = find_neighbor_sock(dst_ips[i]);
+            if(FALSE != socketfd) {
+                send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+            }
         }
+        replica_buf_offset = 0;
     }
+
+    size_t cpy_len = 0;
+    int hops;
+    if(replica_buf_offset < FLUSH_SIZE) {
+        memcpy(&hops, msg.data, sizeof(int));
+        cpy_len += sizeof(int);
+        struct query_struct item;
+        memcpy(&item, msg.data + cpy_len, sizeof(struct query_struct));
+        replica_buf[replica_buf_offset++] = item;
+    }
+
+    pthread_mutex_unlock(&replica_mutex);
         
     return TRUE;
 }
@@ -3622,10 +3636,10 @@ int do_load_data(struct message msg) {
     return TRUE;
 }
 
-int write_to_disk(char *buf, size_t data_len, int index) {
+int write_to_disk(char *buf, size_t data_len, char *replica_ip) {
 	FILE *fp;
     char file_name[MAX_FILE_NAME];
-    sprintf(file_name, "%s/replica_%d", REPLICAS_DIR, index); 
+    sprintf(file_name, "%s/replica_%s", REPLICAS_DIR, replica_ip); 
 	fp = fopen(file_name, "ab+");
     if(fp == NULL) {
         //TODO write error log
@@ -3636,64 +3650,8 @@ int write_to_disk(char *buf, size_t data_len, int index) {
     return TRUE;
 }
 
-void *replicator_worker(void *args) {
-    int index = *(int *)args;
-	while(should_run) {
-        size_t data_len = FLUSH_SIZE * sizeof(query_struct);
-        char buf[data_len];
-        pthread_mutex_lock(&replica_mutex[index]);
-        pthread_cond_wait(&full_cond[index], &replica_mutex[index]);
-        memcpy(buf, replica_buffers[index], data_len);
-        replica_buf_offset[index] = 0;
-        pthread_cond_signal(&empty_cond[index]);
-        pthread_mutex_unlock(&replica_mutex[index]);
-        write_to_disk(buf, data_len, index);
-    }
-    return NULL;
-}
-
 int do_replica_data(struct message msg) {
-    //TODO write to local disk or buffer
-
-    return TRUE;
-    int index;
-    query_struct item;
-
-	struct coordinate lower_id = get_node_id(the_torus->info);
-    lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
-	node_info *lower_neighbor = get_neighbor_by_id(the_torus, lower_id);
-
-    //if torus partition is 2*2*2, the current node will be the same as either lower or upper neighbor
-    if(lower_neighbor != NULL && strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
-        index = 0;
-    } else {
-        index = 1;
-    }
-
-    size_t cpy_len = 0;
-    int hops;
-	memcpy((void *)&hops, msg.data, sizeof(int));
-    cpy_len += sizeof(int);
-
-	memcpy((void *) &item, msg.data + cpy_len, sizeof(struct query_struct));
-    cpy_len += sizeof(struct query_struct);
-
-    /*pthread_mutex_lock(&replica_mutex[index]);
-    int offset = replica_buf_offset[index];
-    if(offset >= FLUSH_SIZE){
-        pthread_cond_signal(&full_cond[index]);
-        pthread_cond_wait(&empty_cond[index], &replica_mutex[index]);
-        offset = replica_buf_offset[index];
-    }
-
-    if(offset < FLUSH_SIZE) {
-        replica_buffers[index][offset] = item;
-        offset++;
-        replica_buf_offset[index] = offset;
-    }
-
-    pthread_mutex_unlock(&replica_mutex[index]);*/
-
+    write_to_disk(msg.data, sizeof(query_struct) * FLUSH_SIZE, msg.src_ip);
     return TRUE;
 }
 
@@ -4461,7 +4419,7 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
 
 int handle_read_event(connection_t conn) {
     if(conn->roff == CONN_BUF_SIZE) {
-        return FALSE;
+        return TRUE;
     }
     int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
 
@@ -4493,6 +4451,7 @@ int handle_read_event(connection_t conn) {
         return FALSE;
     } else {
         if(errno != EINTR && errno != EAGAIN) {
+            write_log(ERROR_LOG, "handle_read_event: socket error.\n");
             return FALSE;
         }
     }
@@ -4865,14 +4824,8 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
 
-    // init replica buffer, mutex and condtion var
-    for(i = 0; i < NUM_REPLICAS; i++) {
-        memset(replica_buffers[i], 0, sizeof(query_struct) * FLUSH_SIZE);
-        pthread_mutex_init(&replica_mutex[i], NULL);
-        pthread_cond_init(&full_cond[i], NULL);
-        pthread_cond_init(&empty_cond[i], NULL);
-        replica_buf_offset[i] = 0;
-    }
+    pthread_mutex_init(&replica_mutex, NULL);
+    replica_buf_offset = 0;
 
     // create two server socket to process different kind of requests
 	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
@@ -4928,10 +4881,6 @@ int main(int argc, char **argv) {
     // create thread to handle fast-processed request
     pthread_create(&fast_worker_monitor_thread, NULL, fast_worker_monitor, NULL);
 
-    for(i = 0; i < NUM_REPLICAS; i++) {
-        pthread_create(&replicator_thread[i], NULL, replicator_worker, &i);
-    }
-
     // create heartbeat thread to send status info
     pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
@@ -4942,17 +4891,10 @@ int main(int argc, char **argv) {
         pthread_join(worker_thread[i], NULL);
     }
     pthread_join(manual_worker_monitor_thread, NULL);
-    for (i = 0; i < NUM_REPLICAS; i++) {
-        pthread_join(replicator_thread[i], NULL);
-    }
 
     // close worker epoll fds
     for (i = 0; i < EPOLL_NUM; i++) {
         close(worker_epfd[i]);
-    }
-
-    for (i = 0; i < NUM_REPLICAS; i++) {
-        close(replicator_thread[i]);
     }
 
     close(compute_worker_socket);

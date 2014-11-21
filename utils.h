@@ -42,7 +42,8 @@
 #define MAX_NEIGHBORS 12
 #define MAX_NODES_NUM 1000 
 #define MAX_CLUSTERS_NUM 1000 
-#define FLUSH_SIZE 800
+// DATA_SIZE /sizeof(query_struct)
+#define FLUSH_SIZE 120
 
 // limits for skip list
 #define LEADER_NUM 27
@@ -83,7 +84,7 @@
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 
-#define CONN_MAXFD 500 
+#define CONN_MAXFD 250
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 1600) 
 
 //#define INT_DATA
