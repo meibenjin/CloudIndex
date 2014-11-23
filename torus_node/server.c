@@ -3406,10 +3406,10 @@ int replicate_data(struct message msg) {
             memcpy(msg.data, replica_buf, sizeof(query_struct) * FLUSH_SIZE);
             new_msg.msg_size = calc_msg_header_size() + sizeof(query_struct) * FLUSH_SIZE;
 
-            socketfd = find_neighbor_sock(dst_ips[i]);
-            if(FALSE != socketfd) {
+            //socketfd = find_neighbor_sock(dst_ips[i]);
+            /*if(FALSE != socketfd) {
                 send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
-            }
+            }*/
         }
         replica_buf_offset = 0;
     }
@@ -3518,14 +3518,12 @@ int do_query_torus_node(struct message msg) {
             }
 
 		} else {
-            //if(query.op == RANGE_QUERY) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     if (interval_overlap(query.intval[i], the_torus->info.region[i]) != 0) {
                         forward_search(query.op, query.intval, msg, i);
                         break;
                     }
                 }
-            //}
 		}
 
 	}
@@ -4419,6 +4417,7 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
 
 int handle_read_event(connection_t conn) {
     if(conn->roff == CONN_BUF_SIZE) {
+        write_log(ERROR_LOG, "handle_read_event: conn buffer if full.\n");
         return TRUE;
     }
     int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
@@ -4454,6 +4453,7 @@ int handle_read_event(connection_t conn) {
             write_log(ERROR_LOG, "handle_read_event: socket error.\n");
             return FALSE;
         }
+        write_log(ERROR_LOG, "handle_read_event: error occerred");
     }
     return TRUE;
 }
