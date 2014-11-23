@@ -84,8 +84,8 @@
 #define WORKER_PER_GROUP 1
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 
-#define CONN_MAXFD 250
-#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 1600) 
+#define CONN_MAXFD 500 
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
 
 //#define INT_DATA
 //typedef int data_type;
@@ -306,6 +306,8 @@ typedef struct connection_st {
     //read offset
     size_t roff;
     char rbuf[CONN_BUF_SIZE];
+    size_t woff;
+    char wbuf[CONN_BUF_SIZE];
 }*connection_t;
 
 // status of current torus node

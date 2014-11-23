@@ -118,6 +118,7 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
 double points_distance(struct point p1, struct point p2);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
+int async_send_data(connection_t conn, const char *data, uint32_t data_len);
 int find_leader_sock(const char ip[]);
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, char **buf_ptr, uint32_t *data_size, struct refinement_stat *r_stat);
 int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, struct refinement_stat *r_stat);
@@ -129,6 +130,7 @@ int send_throw_out_query_msg(struct query_struct query, struct refinement_stat o
 
 // given ip , return the index of the_torus_leader 
 int leader_nodes_index(const char ip[]);
+
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -458,6 +460,7 @@ int do_create_torus(struct message msg) {
         memcpy(&num, (void *)(msg.data + cpy_len), sizeof(int));
         cpy_len += sizeof(int); 
 
+        int index = 0;
         for(i = 0; i < num; i++) {
             // allocate space for the_torus's neighbor at direction d
             torus_node *new_node = new_torus_node();
@@ -479,6 +482,17 @@ int do_create_torus(struct message msg) {
             neighbor_sock[neighbor_sock_num].sockfd = sockfd;
             neighbor_sock_num++;
 
+            // add this neighbor to server epoll
+            struct epoll_event ev;
+            set_nonblocking(sockfd);
+            ev.events = EPOLLIN | EPOLLONESHOT;
+            ev.data.fd = sockfd;
+            g_conn_table[sockfd].used = 1;
+            g_conn_table[sockfd].index = index; 
+            g_conn_table[sockfd].socketfd = sockfd; 
+            epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, sockfd, &ev);
+
+            index = (index + 1) % MANUAL_WORKER;
         }
         neighbors_num += num;
     }
@@ -825,7 +839,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
 		//forward_message(new_msg, 0);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
-            send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+            async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
         }
 	}
 	if (upper_neighbor != NULL) {
@@ -842,7 +856,8 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
 		//forward_message(new_msg, 0);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
-            send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+            async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+            //send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
         }
         
 	}
@@ -1666,7 +1681,8 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
                     strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
 
                     msg.msg_size = calc_msg_header_size() + cpy_len;
-                    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+                    //send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+                    async_send_data(&g_conn_table[socketfd], (char *) &msg, msg.msg_size);
 
                     // get return points vector
                     if(recv_safe(socketfd, buf, SOCKET_BUF_SIZE, 0) == SOCKET_BUF_SIZE) {
@@ -3406,10 +3422,10 @@ int replicate_data(struct message msg) {
             memcpy(msg.data, replica_buf, sizeof(query_struct) * FLUSH_SIZE);
             new_msg.msg_size = calc_msg_header_size() + sizeof(query_struct) * FLUSH_SIZE;
 
-            //socketfd = find_neighbor_sock(dst_ips[i]);
-            /*if(FALSE != socketfd) {
-                send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
-            }*/
+            socketfd = find_neighbor_sock(dst_ips[i]);
+            if(FALSE != socketfd) {
+                async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+            }
         }
         replica_buf_offset = 0;
     }
@@ -3542,6 +3558,7 @@ int write_global_properties() {
     int len = 0;
     len += sprintf(buf + len, "RUNNING_MODE=%u\n", RUNNING_MODE);
     len += sprintf(buf + len, "CPU_CORE=%u\n", CPU_CORE);
+    len += sprintf(buf + len, "NUM_REPLICAS=%u\n", NUM_REPLICAS);
     len += sprintf(buf + len, "DEFAULT_CAPACITY=%u\n", DEFAULT_CAPACITY);
     len += sprintf(buf + len, "HEARTBEAT_INTERVAL=%d\n", HEARTBEAT_INTERVAL);
     len += sprintf(buf + len, "MAX_ROUTE_STEP=%d\n", MAX_ROUTE_STEP);
@@ -3641,6 +3658,7 @@ int write_to_disk(char *buf, size_t data_len, char *replica_ip) {
 	fp = fopen(file_name, "ab+");
     if(fp == NULL) {
         //TODO write error log
+        write_log(ERROR_LOG, "write_to_disk:open file failed.\n");
         return FALSE;
     }
 	fwrite(buf, data_len, 1, fp);
@@ -4417,7 +4435,7 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
 
 int handle_read_event(connection_t conn) {
     if(conn->roff == CONN_BUF_SIZE) {
-        write_log(ERROR_LOG, "handle_read_event: conn buffer if full.\n");
+        write_log(ERROR_LOG, "handle_read_event: conn read buffer is full.\n");
         return TRUE;
     }
     int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
@@ -4458,6 +4476,69 @@ int handle_read_event(connection_t conn) {
     return TRUE;
 }
 
+int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
+    //if (conn->woff > 0 ){
+    if (conn->woff + data_len > CONN_BUF_SIZE) {
+        handle_write_event(conn);
+        //write_log(ERROR_LOG, "async_send_data: conn write buff is full 1.\n");
+        //return FALSE;
+        return TRUE;
+    }
+    memcpy(conn->wbuf + conn->woff, data, data_len);
+    conn->woff += data_len;
+    //} 
+    handle_write_event(conn);
+    /*int ret = send(conn->socketfd, data, data_len, 0);
+    if (ret > 0){
+        if (ret == (int)data_len) {
+            return TRUE;
+        }
+        int remained = data_len - ret;
+        if (remained > CONN_BUF_SIZE) {
+            write_log(ERROR_LOG, "async_send_data:conn write buff is full 2.\n");
+            return FALSE;
+        }
+        memcpy(conn->wbuf, (void *)(data + ret), data_len);
+        conn->woff = remained;
+    } else {
+        if (errno != EINTR && errno != EAGAIN) {
+            write_log(ERROR_LOG, "async_send_data:socket error.\n");
+            return FALSE;
+        }
+        if (data_len > CONN_BUF_SIZE) {
+            write_log(ERROR_LOG, "async_send_data:conn write buff is full 3.\n");
+            return FALSE;
+        }
+        memcpy(conn->wbuf, data, data_len);
+        conn->woff = data_len;
+    }*/
+    return TRUE;
+}
+
+int handle_write_event(connection_t conn) {
+    if (conn->woff == 0) {
+        return TRUE;
+    }
+
+    int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
+    if (ret == -1) {
+        if (errno != EINTR && errno != EAGAIN) {
+            write_log(ERROR_LOG, "handle_write_event: socket error.\n");
+            return FALSE;
+        }
+    } else {
+        int remained = conn->woff - ret;
+
+        if (remained > 0) {
+            memmove(conn->wbuf, conn->wbuf + ret, remained);
+        }
+
+        conn->woff = remained;
+    }
+
+    return TRUE;
+}
+
 void *fast_worker_monitor(void *args) {
 	// add fast_worker_listener 
 	int epfd;
@@ -4491,7 +4572,7 @@ void *fast_worker_monitor(void *args) {
                 g_conn_table[conn_socket].used = 1;
                 
                 // record enter_time of coming connection
-                clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
+                //clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
                 g_conn_table[conn_socket].index = index; 
                 g_conn_table[conn_socket].socketfd = conn_socket; 
@@ -4507,8 +4588,8 @@ void *fast_worker_monitor(void *args) {
 
     close(epfd);
     return NULL;
-
 }
+
 
 void *manual_worker_monitor(void *args) {
 	// add manual_worker_listener 
@@ -4540,13 +4621,12 @@ void *manual_worker_monitor(void *args) {
                 ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
 
+                // record enter_time of coming connection
+                //clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
+
                 /* register conn_socket to worker-pool's 
                  * epoll, not the listen epoll*/
                 g_conn_table[conn_socket].used = 1;
-                
-                // record enter_time of coming connection
-                clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
-
                 g_conn_table[conn_socket].index = index; 
                 g_conn_table[conn_socket].socketfd = conn_socket; 
                 epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
@@ -4588,6 +4668,7 @@ void *worker(void *args){
     int i, nfds;
     struct message msg;
     int conn_socket;
+    connection_t conn;
 
 	while(should_run) {
 		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
@@ -4596,7 +4677,7 @@ void *worker(void *args){
             if (events[i].events && EPOLLIN) {
 				conn_socket = events[i].data.fd;
 
-                connection_t conn = &g_conn_table[conn_socket];
+                conn = &g_conn_table[conn_socket];
 
                 // handle manual task (connection closed here)
                 if(conn->index < (MANUAL_WORKER + FAST_WORKER)) {
@@ -4604,7 +4685,6 @@ void *worker(void *args){
                         close_connection(conn);
                         continue;
                     }
-
                     if(conn->used != 0) {
                         ev.events = EPOLLIN | EPOLLONESHOT;
                         ev.data.fd = conn_socket;
@@ -4621,13 +4701,33 @@ void *worker(void *args){
                         write_log(ERROR_LOG, "receive compute task request failed.\n");
                         close_connection(conn);
                     }
-
                 }
-			} else if(events[i].events && EPOLLRDHUP) {
+			} else if(events[i].events && EPOLLOUT) {
+				conn_socket = events[i].data.fd;
+                conn = &g_conn_table[conn_socket];
+                // handle manual task (connection closed here)
+                if(conn->index < (MANUAL_WORKER + FAST_WORKER)) {
+                    if(FALSE == handle_write_event(conn)) {
+                        close_connection(conn);
+                        continue;
+                    }
+
+                    if(conn->used != 0) {
+                        ev.events = EPOLLIN | EPOLLONESHOT;
+                        ev.data.fd = conn_socket;
+                        epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
+                    }
+                } else {
+                    //it won't happen for now
+                    //TODO handle EPOLLOUT event which epoll is compute_worker 
+                    write_log(ERROR_LOG, "unexpect EPOLLOUT event.\n");
+                }
+
+            } else if(events[i].events && EPOLLRDHUP) {
 				conn_socket = events[i].data.fd;
                 connection_t conn = &g_conn_table[conn_socket];
                 close_connection(conn);
-            }
+            } 
 
 		}
 	}
@@ -4747,6 +4847,19 @@ void *heartbeat_worker(void *args){
     return NULL;
 }
 
+void init_conn_table() {
+    int i;
+    for(i = 0; i < CONN_MAXFD; i++) {
+        g_conn_table[i].socketfd = 0;
+        g_conn_table[i].index = 0;
+        g_conn_table[i].used = 0;
+        g_conn_table[i].roff = 0;
+        memset(g_conn_table[i].rbuf, 0, CONN_BUF_SIZE);
+        g_conn_table[i].woff = 0;
+        memset(g_conn_table[i].wbuf, 0, CONN_BUF_SIZE);
+    }
+}
+
 int main(int argc, char **argv) {
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
 
@@ -4856,6 +4969,9 @@ int main(int argc, char **argv) {
 	set_nonblocking(manual_worker_socket);
 	set_nonblocking(fast_worker_socket);
 	set_nonblocking(compute_worker_socket);
+
+    // init connection table
+    init_conn_table();
 
     //create EPOLL_NUM different epoll fd for workers
     for (i = 0; i < EPOLL_NUM; i++) {

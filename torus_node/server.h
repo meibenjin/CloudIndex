@@ -114,6 +114,9 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff);
 // handle epoll read event
 int handle_read_event(connection_t conn);
 
+// handle epoll write event
+int handle_write_event(connection_t conn);
+
 // manual worker monitor thread handler
 void *manual_worker_monitor(void *args);
 
@@ -127,6 +130,7 @@ void *worker(void *args);
 
 void send_heartbeat();
 
+void init_conn_table();
 
 double calc_refinement(struct interval region[], point start, point end);
 
