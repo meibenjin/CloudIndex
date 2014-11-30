@@ -45,7 +45,7 @@
 #define FLUSH_SIZE 800
 
 // limits for skip list
-#define LEADER_NUM 27
+#define LEADER_NUM 6
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 

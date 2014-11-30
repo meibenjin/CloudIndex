@@ -120,9 +120,7 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
 
             msg.msg_size = calc_msg_header_size() + cpy_len;
             send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
-            if(count % time_gap == 0) {
-                printf("%d\n", count);
-            }
+            printf("%d\n", count);
             count++;
             usleep(time_gap * 1000);
         }
