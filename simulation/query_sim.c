@@ -105,10 +105,6 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
                 fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
             }
             fscanf(fp, "\n");
-            /*printf("%d %d %lf %lf %lf %lf %lf %lf\n", query.op, query.data_id, \
-                    query.intval[0].low, query.intval[0].high, \
-                    query.intval[1].low, query.intval[1].high,\
-                    query.intval[2].low, query.intval[2].high);*/
 
             // package query into message struct
             cpy_len = 0;
@@ -120,9 +116,9 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
 
             msg.msg_size = calc_msg_header_size() + cpy_len;
             send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
-            if(count % time_gap == 0) {
+            //if(count % time_gap == 0) {
                 printf("%d\n", count);
-            }
+            //}
             count++;
             usleep(time_gap * 1000);
         }

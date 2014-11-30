@@ -46,7 +46,7 @@
 #define FLUSH_SIZE 120
 
 // limits for skip list
-#define LEADER_NUM 27
+#define LEADER_NUM 3
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -59,6 +59,8 @@
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
 #define ERROR_LOG "../logs/error.log"
 #define NOTIFY_LOG "../logs/notify.log"
+#define QUERY_START_LOG "../logs/query_start.log"
+#define QUERY_END_LOG "../logs/query_end.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -175,7 +177,9 @@ typedef enum OP {
     RANGE_QUERY_REFINEMENT,
     NN_QUERY_REFINEMENT,
     NOTIFY_MESSAGE,
-    RELOAD_PROPERTIES
+    RELOAD_PROPERTIES,
+    QUERY_START,
+    QUERY_END
 } OP;
 
 // interval of each dimension

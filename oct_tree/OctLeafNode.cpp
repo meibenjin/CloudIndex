@@ -2,7 +2,7 @@
 #include "utils.h"
 
 OctLeafNode::OctLeafNode(int nid, NodeType type, double* low, double* high,
-		int father) {
+        int father) {
 	n_id = nid;
 	n_type = type;
 	n_ptCount = 0;
@@ -212,13 +212,15 @@ void OctLeafNode::splitPointIntoChild(OctPoint *pt, int child_id) {
 		int father = n_id;
 
 		OctLeafNode *tmp = new OctLeafNode(nid, type, low, high, father);
+        if(tmp != NULL) {
+            //g_NodeList.insert(make_pair(nid,tmp));//add to global data structure
+            g_NodeList.insert(pair<int, OctTNode*>(nid, tmp));
+            n_children[child_id] = nid;
 
-		//g_NodeList.insert(make_pair(nid,tmp));//add to global data structure
-		g_NodeList.insert(pair<int, OctTNode*>(nid, tmp));
-		n_children[child_id] = nid;
+            g_leafCount++;
+            g_nodeCount++;
+        }
 
-		g_leafCount++;
-		g_nodeCount++;
 	}
 	OctTNode *tmp = g_NodeList.find(n_children[child_id])->second;  //pull out
 	tmp->nodeInsert(pt);

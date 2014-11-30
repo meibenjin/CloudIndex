@@ -5,18 +5,51 @@
 #include "gsl_rng.h"
 #include "gsl_randist.h"
 
+#include "config/config.h"
+
+torus_partitions cluster_partitions[MAX_CLUSTERS_NUM];
+int cluster_num;
+
+int read_cluster_partitions() {
+    FILE *fp;
+    int count;
+    fp = fopen(CLUSTER_PARTITONS, "rb");
+    if(fp == NULL) {
+        printf("read_cluster_partitons: open file %s failed.\n", CLUSTER_PARTITONS);
+        return FALSE;
+    }
+
+    count = 0;
+    torus_partitions tp;
+	while (!feof(fp)) {
+        fscanf(fp, "%d %d %d\n", &tp.p_x, &tp.p_y, &tp.p_z);
+        cluster_partitions[count] = tp;
+        count++;
+    }
+    cluster_num = count;
+    fclose(fp);
+    return TRUE;
+}
+
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         printf("usage: %s cluster_id group_num.\n", argv[0]);
         exit(1);
     }
+
+    // read cluster partitions from file 
+    if(FALSE == read_cluster_partitions()) {
+        exit(1);
+    }
+
     double r_low[3], r_high[3];
     FILE *fout = fopen("./nn_query", "w");
     int i, j;
     
     //56977411.000000	58790663.000000	51682794.000000	53082728.000000	0.000000	5000.000000
-    //double low[3] = {56977411.000000, 51682794.000000, 0.000000};
-    //double high[3] = {58790663.000000, 53082728.000000, 5000.000000};
+    double low[3] = {56977411.000000, 51682794.000000, 0.000000};
+    double high[3] = {58790663.000000, 53082728.000000, 5000.000000};
     
     //56980131.000000 58788063.000000 51682794.000000 53082437.000000 0.000000    5.000000
     //double low[3] = {56980131.000000, 51682794.000000, 0.000000};
@@ -26,15 +59,17 @@ int main(int argc, char **argv) {
     //double low[3] = {39.749977, 115.750317, 39599.078218};
     //double high[3] = {40.4995, 116.500038, 40013.718322};
     //39.749977, 40.124963] [116.125178, 116.500038] [39806.398270, 40013.718322
-    double low[3] = {39.749977, 116.125, 39806.398218};
-    double high[3] = {40.125, 116.500038, 40013.718322};
+    //double low[3] = {39.749977, 116.125, 39806.398218};
+    //double high[3] = {40.125, 116.500038, 40013.718322};
 
     int cluster_id = atoi(argv[1]);
     int group_num = atoi(argv[2]);
     double range[3];
-    for(i = 0; i < 3; i++) {
-        range[i] = high[i] - low[i];
-    }
+
+    //get torus partition
+    range[0] = (high[0] - low[0]);
+    range[1] = (high[1] - low[1]);
+    range[2] = (high[2] - low[2]);
 
     low[2] += range[2] * cluster_id;
     high[2] += range[2] * cluster_id;

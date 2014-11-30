@@ -24,7 +24,7 @@ using namespace __gnu_cxx;
 const double eps = 1e-8;
 
 #define IDTYPE int
-#define nodeLimit 100 
+#define nodeLimit 512
 #define miniDistance 1e-8
 #define threshold 0.97
 #define NONE -1
@@ -114,9 +114,7 @@ public:
 	hash_set<IDTYPE> data; //point data in the leaf node
 
 public:
-	OctTNode() {
-	}
-	;
+	OctTNode() {};
 	OctTNode(int nid, NodeType type, double* low, double* high, int father);
 	virtual ~OctTNode() {
 	}

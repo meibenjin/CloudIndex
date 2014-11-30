@@ -1,26 +1,26 @@
 # this is makefile of torus
 
-VPATH=.
 SRC_HOME=/home/meibenjin/Programming/C/CloudIndex
+VPATH=$(SRC_HOME)/
 GSL_LIB=$(SRC_HOME)/deps/gsl/lib
 GSL_INCLUDE=$(SRC_HOME)/deps/gsl/include
-BIN=.
+BIN=$(SRC_HOME)/bin
 CC=gcc
 CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 
-all: gen_query
+all: gen_nn_query
 
-gen_query: gen_query.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/gen_query.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
+gen_nn_query: gen_nn_query.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/gen_nn_query.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
 
-gen_query.o:
-	$(CC) $(CFLAGS) -o $(BIN)/$@ -c ./gen_query.c -I$(GSL_INCLUDE)
+gen_nn_query.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SRC_HOME)/test/nn_query/gen_query.c -I$(GSL_INCLUDE) -I$(VPATH)
 	
 .PHONY: clean
 clean:
 	-rm $(BIN)/*.o
-	-rm $(BIN)/gen_query
+	-rm $(BIN)/gen_nn_query
 
 
 

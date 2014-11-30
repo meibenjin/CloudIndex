@@ -58,6 +58,9 @@ ISpatialIndex* the_torus_rtree;
 struct query_struct replica_buf[FLUSH_SIZE];
 int replica_buf_offset;
 
+char write_file_buffer[2][sizeof(query_struct) * FLUSH_SIZE * 1024];
+int buff_size[2] = {0, 0};
+
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
 int sln_forward_sockfd[MAXLEVEL][LEADER_NUM];
@@ -2561,11 +2564,9 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
 
     //step 1: query trajs which overlap with region(low, high)
     vector<OctPoint*> pt_vector;
-
     // local range query
     the_torus_oct_tree->rangeQuery(low, high, pt_vector);
 
-    // recreate all trajs with pt_vector(range query result)
     hash_map<IDTYPE, Traj*> trajs;
     recreate_trajs(pt_vector, trajs);
 
@@ -2868,6 +2869,11 @@ int operate_oct_tree(struct query_struct query, int hops) {
 
             static int count = 0;
             static long hops_sum = 0;
+            static double max_hop = -1;
+            hops_sum += hops;
+            if(hops > max_hop) {
+                max_hop = hops;
+            }
             count++;
             if(count % 40000 == 0) {
                 struct message msg;
@@ -2886,6 +2892,8 @@ int operate_oct_tree(struct query_struct query, int hops) {
                 cpy_len += sizeof(int);
                 memcpy(msg.data + cpy_len, &hop, sizeof(double));
                 cpy_len += sizeof(double);
+                memcpy(msg.data + cpy_len, &max_hop, sizeof(double));
+                cpy_len += sizeof(double);
                 memcpy(msg.data + cpy_len, &el, sizeof(double));
                 cpy_len += sizeof(double);
                 memcpy(msg.data + cpy_len, &the_torus->info.node_id, sizeof(coordinate));
@@ -2893,8 +2901,9 @@ int operate_oct_tree(struct query_struct query, int hops) {
 
                 msg.msg_size = calc_msg_header_size() + cpy_len;
                 send_safe(result_sockfd, (void *) &msg, msg.msg_size, 0);
+
+                max_hop = -1;
             }
-            hops_sum += hops;
 		}
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RANGE_NN_QUERY) {
@@ -3426,6 +3435,10 @@ int replicate_data(struct message msg) {
             if(FALSE != socketfd) {
                 async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
             }
+            if(num == 1) {
+                async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+            }
+
         }
         replica_buf_offset = 0;
     }
@@ -3527,19 +3540,19 @@ int do_query_torus_node(struct message msg) {
             
 			// do oct tree operation 
             //write_log(TORUS_NODE_LOG, "operate oct tree\n");
-            operate_oct_tree(query, hops);
+            operate_oct_tree(query, hops - 1);
 
             if(NUM_REPLICAS > 0) {
                 replicate_data(msg);
             }
 
 		} else {
-                for (i = 0; i < MAX_DIM_NUM; i++) {
-                    if (interval_overlap(query.intval[i], the_torus->info.region[i]) != 0) {
-                        forward_search(query.op, query.intval, msg, i);
-                        break;
-                    }
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                if (interval_overlap(query.intval[i], the_torus->info.region[i]) != 0) {
+                    forward_search(query.op, query.intval, msg, i);
+                    break;
                 }
+            }
 		}
 
 	}
@@ -3667,7 +3680,26 @@ int write_to_disk(char *buf, size_t data_len, char *replica_ip) {
 }
 
 int do_replica_data(struct message msg) {
-    write_to_disk(msg.data, sizeof(query_struct) * FLUSH_SIZE, msg.src_ip);
+    int index;
+    struct coordinate lower_id = get_node_id(the_torus->info);
+    lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
+    node_info *lower_neighbor = get_neighbor_by_id(the_torus, lower_id);
+
+    //if torus partition is 2*2*2, the current node will be the same as either lower or upper neighbor
+    if(lower_neighbor != NULL && strcmp(lower_neighbor->ip, msg.src_ip) == 0) {
+        index = 0;
+    } else {
+        index = 1;
+    }
+
+    if(buff_size[index] < 1024) {
+        int cur_len = sizeof(query_struct) * FLUSH_SIZE * buff_size[index];
+        memcpy(write_file_buffer[index] + cur_len, msg.data, sizeof(query_struct) * FLUSH_SIZE);
+        buff_size[index]++;
+    } else {
+        write_to_disk(write_file_buffer[index], sizeof(query_struct) * FLUSH_SIZE * buff_size[index], msg.src_ip);
+        buff_size[index] = 0;
+    }
     return TRUE;
 }
 
@@ -3789,8 +3821,7 @@ int do_query_torus_cluster(struct message msg) {
 
     // all leaders has the same region
     // random choose a leader 
-    int index = rand() % ACTIVE_LEADER_NUM;
-
+    int index = rand() % ACTIVE_LEADER_NUM; 
 	if (0 == interval_overlap(sln_ptr->leader[index].region[2], query.intval[2])) { // node searched
 		if (FALSE == gen_request_stamp(stamp)) {
 			return FALSE;
@@ -3966,6 +3997,66 @@ int do_receive_query(struct message msg) {
 	return TRUE;
 }
 
+int do_query_start(struct message msg) {
+    int data_id;
+    memcpy(&data_id, msg.data, sizeof(int));
+    timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+    char buf[1024];
+    memset(buf, 0, 1024);
+    sprintf(buf, "%d,%ld,%ld\n", data_id, cur_time.tv_sec, cur_time.tv_nsec);
+    write_log(QUERY_START_LOG, buf);
+    return TRUE;
+}
+
+int do_query_end(connection_t conn, struct message msg) {
+    int data_id, cpy_len, res_num;
+    double rq_time, rt_time;
+    cpy_len = 0;
+    memcpy(&data_id, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+    memcpy(&rq_time, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+    memcpy(&rt_time, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+
+    memcpy(&res_num, msg.data + cpy_len, sizeof(int));
+    cpy_len += sizeof(int);
+
+    uint32_t package_num;
+    int length = 0, loop = 1;
+    char buf[SOCKET_BUF_SIZE], *ptr;
+    memset(buf, 0, SOCKET_BUF_SIZE);
+    while(loop) {
+        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        if(length == 0) {
+            // client nomally closed
+            close_connection(conn);
+            loop = 0;
+        } else {
+            length = 0;
+            ptr = buf; 
+            memcpy(&package_num, ptr, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            while(package_num--){
+                OctPoint *point = new OctPoint();
+                point->loadFromByteArray(ptr);
+                ptr += point->getByteArraySize();
+            }
+            memset(buf, 0, SOCKET_BUF_SIZE);
+        }
+    }
+
+
+    timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+    char buffer[1024];
+    memset(buffer, 0, 1024);
+    sprintf(buffer, "%d,%ld,%ld,%lf,%lf,%d\n", data_id, cur_time.tv_sec, cur_time.tv_nsec, rq_time, rt_time, res_num);
+    write_log(QUERY_END_LOG, buffer);
+    return TRUE;
+}
+
 int do_receive_filter_log(struct message msg) {
     struct filter_log_struct fl_st;
     memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
@@ -4020,7 +4111,7 @@ int do_throughput_insert(struct message msg) {
     char buffer[100];
     memset(buffer, 0, 100);
     int cur_count;
-    double cur_hops;
+    double cur_hops, max_hop;
     double cur_el;
     coordinate cor;
     int cpy_len = 0;
@@ -4030,13 +4121,16 @@ int do_throughput_insert(struct message msg) {
     memcpy(&cur_hops, msg.data + cpy_len, sizeof(double));
     cpy_len += sizeof(double);
 
+    memcpy(&max_hop, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+
     memcpy(&cur_el, msg.data + cpy_len, sizeof(double));
     cpy_len += sizeof(double);
 
     memcpy(&cor, msg.data + cpy_len, sizeof(coordinate));
     count += cur_count;
 
-    sprintf(buffer, "%d [%d%d%d] %lf %lf %d\n", (int)time(NULL), cor.x, cor.y, cor.z, cur_el, cur_hops, count);
+    sprintf(buffer, "%d [%d%d%d] %lf %lf %lf %d\n", (int)time(NULL), cor.x, cor.y, cor.z, cur_el, max_hop, cur_hops, count);
     write_log(result_log, buffer);
     return TRUE;
 }
@@ -4404,6 +4498,14 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request reload properties message .\n");
         #endif
         do_reload_properties(msg);
+        break;
+
+    case QUERY_START:
+        do_query_start(msg);
+        break;
+
+    case QUERY_END:
+        do_query_end(conn, msg);
         break;
 
 	default:
