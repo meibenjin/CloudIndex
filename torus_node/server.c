@@ -53,9 +53,6 @@ node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
 ISpatialIndex* the_torus_rtree;
 
-
-
-
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
 int sln_forward_sockfd[MAXLEVEL][LEADER_NUM];
