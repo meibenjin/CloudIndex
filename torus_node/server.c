@@ -751,16 +751,28 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
 	struct coordinate upper_id = get_node_id(the_torus->info);
 
     //TODO get the neighbors of current torus node
+    //TODO change the strategy of get neighbor
+    //NOTE:if the partition of any dimension is 1
+    //means that the torus node has no neighbor on this dimension
 	switch (d) {
 	case 0:
+        if(the_partition.p_x == 1) {
+            return TRUE;
+        }
 		lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
 		upper_id.x = (upper_id.x + the_partition.p_x + 1) % the_partition.p_x;
 		break;
 	case 1:
+        if(the_partition.p_y == 1) {
+            return TRUE;
+        }
 		lower_id.y = (lower_id.y + the_partition.p_y - 1) % the_partition.p_y;
 		upper_id.y = (upper_id.y + the_partition.p_y + 1) % the_partition.p_y;
 		break;
 	case 2:
+        if(the_partition.p_z == 1) {
+            return TRUE;
+        }
 		lower_id.z = (lower_id.z + the_partition.p_z - 1) % the_partition.p_z;
 		upper_id.z = (upper_id.z + the_partition.p_z + 1) % the_partition.p_z;
 		break;

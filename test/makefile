@@ -9,18 +9,18 @@ CC=gcc
 CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 
-all: gen_nn_query
+all: gen_query
 
-gen_nn_query: gen_nn_query.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/gen_nn_query.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
+gen_query: gen_query.o
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/gen_query.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
 
-gen_nn_query.o:
-	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SRC_HOME)/test/nn_query/gen_query.c -I$(GSL_INCLUDE) -I$(VPATH)
+gen_query.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SRC_HOME)/test/gen_query.c -I$(GSL_INCLUDE) -I$(VPATH)
 	
 .PHONY: clean
 clean:
 	-rm $(BIN)/*.o
-	-rm $(BIN)/gen_nn_query
+	-rm $(BIN)/gen_query
 
 
 
