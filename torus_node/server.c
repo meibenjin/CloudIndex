@@ -53,13 +53,8 @@ node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
 ISpatialIndex* the_torus_rtree;
 
-//replica data buffer
 
-struct query_struct replica_buf[FLUSH_SIZE];
-int replica_buf_offset;
 
-char write_file_buffer[2][sizeof(query_struct) * FLUSH_SIZE * 1024];
-int buff_size[2] = {0, 0};
 
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
@@ -3422,6 +3417,10 @@ int find_replica_locations(struct message msg, char ips[][IP_ADDR_LENGTH]) {
 }
 
 int replicate_data(struct message msg) {
+    //replica data buffer
+    static struct query_struct replica_buf[FLUSH_SIZE];
+    static int replica_buf_offset = 0;
+
     pthread_mutex_lock(&replica_mutex);
     //flush to neighbors
     if(replica_buf_offset >= FLUSH_SIZE) {
@@ -3445,9 +3444,6 @@ int replicate_data(struct message msg) {
 
             socketfd = find_neighbor_sock(dst_ips[i]);
             if(FALSE != socketfd) {
-                async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
-            }
-            if(num == 1) {
                 async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
             }
 
@@ -3692,6 +3688,10 @@ int write_to_disk(char *buf, size_t data_len, char *replica_ip) {
 }
 
 int do_replica_data(struct message msg) {
+    // wait for a batch of data to write 
+    static char write_file_buffer[2][sizeof(query_struct) * FLUSH_SIZE * 1024];
+    static int buff_size[2] = {0, 0};
+
     int index;
     struct coordinate lower_id = get_node_id(the_torus->info);
     lower_id.x = (lower_id.x + the_partition.p_x - 1) % the_partition.p_x;
@@ -5052,7 +5052,6 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&global_variable_mutex, NULL);
 
     pthread_mutex_init(&replica_mutex, NULL);
-    replica_buf_offset = 0;
 
     // create two server socket to process different kind of requests
 	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
