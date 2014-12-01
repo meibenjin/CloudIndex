@@ -22,7 +22,7 @@ CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 #CFLAGS= -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split query_sim test data_partition msra_data_partition load_data reload_properties del_obj_file 
+all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data reload_properties del_obj_file 
 
 control:log.o utils.o control.o torus-node.o socket.o skip-list.o config.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
@@ -118,16 +118,10 @@ query_sim: utils.o socket.o query_sim.o
 query_sim.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SIMDIR)/query_sim.c -I$(VPATH)
 
-test: utils.o socket.o test.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/socket.o $(BIN)/test.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
-
-test.o: 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ -c test.c -I$(VPATH) -I$(GSL_INCLUDE) 
-
 del_obj_file:
 	-rm $(BIN)/*.o
 	
 .PHONY: clean
 clean:
 	-rm $(BIN)/*.o
-	-rm $(BIN)/control $(BIN)/start-node $(BIN)/test
+	-rm $(BIN)/control $(BIN)/start-node
