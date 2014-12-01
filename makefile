@@ -118,7 +118,6 @@ query_sim: utils.o socket.o query_sim.o
 query_sim.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SIMDIR)/query_sim.c -I$(VPATH)
 
-
 del_obj_file:
 	-rm $(BIN)/*.o
 	
