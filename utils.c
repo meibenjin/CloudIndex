@@ -25,4 +25,3 @@ double          EXCHANGE_RATE_PACKAGE_DATA;
 double          ESTIMATE_NN_QUERY_COEFFICIENT;
 int             ACTIVE_LEADER_NUM;
 int             FIXED_IDLE_NODE_NUM;
-
