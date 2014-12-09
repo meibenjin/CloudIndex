@@ -15,7 +15,7 @@ gen_query: gen_query.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/gen_query.o -L$(GSL_LIB) -lgsl -lgslcblas -lm
 
 gen_query.o:
-	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SRC_HOME)/test/gen_query.c -I$(GSL_INCLUDE) -I$(VPATH)
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SRC_HOME)/simulation/gen_query.c -I$(GSL_INCLUDE) -I$(VPATH)
 	
 .PHONY: clean
 clean:
