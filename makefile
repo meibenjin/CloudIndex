@@ -22,7 +22,7 @@ CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 #CFLAGS= -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data reload_properties del_obj_file 
+all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data check_system_status reload_properties del_obj_file 
 
 control:log.o utils.o control.o torus-node.o socket.o skip-list.o config.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
@@ -44,6 +44,11 @@ load_data:log.o utils.o load_data.o socket.o config.o torus-node.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/load_data.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
 load_data.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/load_data.c -I$(VPATH)
+
+check_system_status:log.o utils.o check_system_status.o socket.o config.o torus-node.o  
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/check_system_status.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
+check_system_status.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_system_status.c -I$(VPATH)
 
 reload_properties:utils.o reload_properties.o config.o socket.o torus-node.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/reload_properties.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o 

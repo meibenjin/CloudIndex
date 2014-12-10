@@ -114,6 +114,7 @@ double points_distance(struct point p1, struct point p2);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
 int async_send_data(connection_t conn, const char *data, uint32_t data_len);
+int unpack_message_from_buffer(connection_t conn);
 int find_leader_sock(const char ip[]);
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, char **buf_ptr, uint32_t *data_size, struct refinement_stat *r_stat);
 int compute_range_query_stat(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, struct refinement_stat *r_stat);
@@ -1589,7 +1590,7 @@ int operate_rtree(struct query_struct query) {
 
     if(the_torus_rtree == NULL) {
         #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "torus rtree didn't create.\n");
+            write_log(ERROR_LOG, "torus rtree didn't create.\n");
         #endif
         return FALSE;
     }
@@ -2477,7 +2478,7 @@ int send_refinement_request(hash_map<IDTYPE, Traj*> &trajs, struct query_struct 
 	int socketfd;
 	socketfd = new_client_socket(dst_ip, COMPUTE_WORKER_PORT);
 	if (FALSE == socketfd) {
-        write_log(TORUS_NODE_LOG, "send_refinement_request: create socket failed\n");
+        write_log(ERROR_LOG, "send_refinement_request: create socket failed\n");
 		return FALSE;
 	}
 
@@ -4006,6 +4007,39 @@ int do_receive_query(struct message msg) {
 	return TRUE;
 }
 
+int do_check_system_status(struct message msg) {
+    struct message status_msg;
+    size_t cpy_len = 0;
+
+    char buf[2048];
+    memset(buf, 0, 2048);
+    cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
+    node_info node = the_torus->info;
+    coordinate id = node.node_id;
+    cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d]:", the_torus->info.cluster_id, id.x, id.y, id.z);
+    int i;
+    for(i = 0; i < MAX_DIM_NUM; ++i){
+        cpy_len += sprintf(buf + cpy_len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
+    }
+
+    cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+            the_partition.p_y, the_partition.p_z);
+
+    status_msg.msg_size = calc_msg_header_size() + cpy_len;
+    fill_message(status_msg.msg_size, WRITE_SYSTEM_STATUS, the_torus->info.ip, \
+                            result_ip, "", buf, cpy_len, &status_msg); 
+    send_safe(result_sockfd, (void *) &status_msg, status_msg.msg_size, 0);
+    return TRUE;
+}
+
+int do_write_system_status(struct message msg) {
+    char buf[2048];
+    memset(buf, 0, 2048);
+    sprintf(buf, "%s\n", msg.data);
+    write_log(SYSTEM_STATUS_LOG, buf);
+    return TRUE;
+}
+
 int do_query_start(struct message msg) {
     int data_id;
     memcpy(&data_id, msg.data, sizeof(int));
@@ -4509,6 +4543,20 @@ int process_message(connection_t conn, struct message msg) {
         do_reload_properties(msg);
         break;
 
+    case CHECK_SYSTEM_STATUS:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request check system status.\n");
+        #endif
+        do_check_system_status(msg);
+        break;
+
+    case WRITE_SYSTEM_STATUS:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request write system status.\n");
+        #endif
+        do_write_system_status(msg);
+        break;
+
     case QUERY_START:
         do_query_start(msg);
         break;
@@ -4544,37 +4592,39 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
     return msg_size;
 }
 
-int handle_read_event(connection_t conn) {
-    if(conn->roff == CONN_BUF_SIZE) {
-        write_log(ERROR_LOG, "handle_read_event: conn read buffer is full.\n");
-        return TRUE;
-    }
-    int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
+int unpack_message_from_buffer(connection_t conn) {
+    size_t beg = 0;
 
-    if(ret > 0) {
-        conn->roff += ret;
-        size_t beg = 0;
-        size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-        // msg_size = 0 means can't get complete message
-        if(msg_size > 0) {
-            struct message msg;
-            while(beg + msg_size <= conn->roff) {
-                memcpy(&msg, conn->rbuf + beg, msg_size);
-                beg = beg + msg_size;
-
-                process_message(conn, msg);
-
-                msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-                if(msg_size == 0) {
-                    break;
-                }
+    // msg_size = 0 means can't get complete message
+    size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+    if(msg_size > 0) {
+        struct message msg;
+        while(beg + msg_size <= conn->roff) {
+            memcpy(&msg, conn->rbuf + beg, msg_size);
+            beg = beg + msg_size;
+            process_message(conn, msg);
+            msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+            if(msg_size == 0) {
+                break;
             }
         }
-        size_t remained = conn->roff - beg;
-        if( beg > 0) {
-            memmove(conn->rbuf, conn->rbuf + beg, remained);
-        }
-        conn->roff = remained;
+    }
+    size_t remained = conn->roff - beg;
+    if( beg > 0) {
+        memmove(conn->rbuf, conn->rbuf + beg, remained);
+    }
+    conn->roff = remained;
+    return TRUE;
+}
+
+int handle_read_event(connection_t conn) {
+    if(conn->roff == CONN_BUF_SIZE) {
+        unpack_message_from_buffer(conn);
+    }
+    int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
+    if(ret > 0) {
+        conn->roff += ret;
+        unpack_message_from_buffer(conn);
     } else if(ret == 0){
         return FALSE;
     } else {
@@ -4588,41 +4638,12 @@ int handle_read_event(connection_t conn) {
 }
 
 int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
-    //if (conn->woff > 0 ){
-    if (conn->woff + data_len > CONN_BUF_SIZE) {
+    while(conn->woff + data_len > CONN_BUF_SIZE) {
         handle_write_event(conn);
-        //write_log(ERROR_LOG, "async_send_data: conn write buff is full 1.\n");
-        //return FALSE;
-        return TRUE;
     }
     memcpy(conn->wbuf + conn->woff, data, data_len);
     conn->woff += data_len;
-    //} 
     handle_write_event(conn);
-    /*int ret = send(conn->socketfd, data, data_len, 0);
-    if (ret > 0){
-        if (ret == (int)data_len) {
-            return TRUE;
-        }
-        int remained = data_len - ret;
-        if (remained > CONN_BUF_SIZE) {
-            write_log(ERROR_LOG, "async_send_data:conn write buff is full 2.\n");
-            return FALSE;
-        }
-        memcpy(conn->wbuf, (void *)(data + ret), data_len);
-        conn->woff = remained;
-    } else {
-        if (errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "async_send_data:socket error.\n");
-            return FALSE;
-        }
-        if (data_len > CONN_BUF_SIZE) {
-            write_log(ERROR_LOG, "async_send_data:conn write buff is full 3.\n");
-            return FALSE;
-        }
-        memcpy(conn->wbuf, data, data_len);
-        conn->woff = data_len;
-    }*/
     return TRUE;
 }
 
@@ -4630,7 +4651,6 @@ int handle_write_event(connection_t conn) {
     if (conn->woff == 0) {
         return TRUE;
     }
-
     int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
     if (ret == -1) {
         if (errno != EINTR && errno != EAGAIN) {
@@ -4639,14 +4659,11 @@ int handle_write_event(connection_t conn) {
         }
     } else {
         int remained = conn->woff - ret;
-
         if (remained > 0) {
             memmove(conn->wbuf, conn->wbuf + ret, remained);
         }
-
         conn->woff = remained;
     }
-
     return TRUE;
 }
 

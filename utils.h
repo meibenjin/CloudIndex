@@ -61,6 +61,7 @@
 #define NOTIFY_LOG "../logs/notify.log"
 #define QUERY_START_LOG "../logs/query_start.log"
 #define QUERY_END_LOG "../logs/query_end.log"
+#define SYSTEM_STATUS_LOG "../logs/system_status.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -178,6 +179,8 @@ typedef enum OP {
     NN_QUERY_REFINEMENT,
     NOTIFY_MESSAGE,
     RELOAD_PROPERTIES,
+    CHECK_SYSTEM_STATUS,
+    WRITE_SYSTEM_STATUS, // for result node 83
     QUERY_START,
     QUERY_END
 } OP;
