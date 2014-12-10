@@ -2055,6 +2055,9 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         }
     }
 
+    char buffer[10240];
+    size_t cpy_len = 0;
+
     double total_qp = 0.0;
     for(it = qp_map.begin(); it != qp_map.end(); it++) {
         t_id = it->first;
@@ -2063,8 +2066,15 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         if(qp < 0) {
             qp = 0.0;
         }
+        cpy_len += sprintf(buffer + cpy_len, "%d:%.2lf\n", t_id, qp);
         total_qp += qp;
     }
+
+    struct message qry_msg;
+    qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
+    fill_message(qry_msg.msg_size, CHECK_NN_QUERY, the_torus->info.ip, result_ip, \
+                     "", buffer, cpy_len, &qry_msg);
+    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
 
     if(traj_num == 0) {
         *avg_qp = 0.0;
@@ -3176,6 +3186,9 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     uint32_t i, j = 0;
     double total_qp = 0.0;
 
+    char buffer[10240];
+    size_t cpy_len = 0;
+
     for(i = 0; i < traj_num; i++) {
         double traj_qp = 1.0;
         if(traj_segs[i].t_id != 0) {
@@ -3196,6 +3209,7 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
             }
         }
         traj_qp = 1.0 - traj_qp; 
+        cpy_len += sprintf(buffer + cpy_len, "%d:%.2lf\n", traj_segs[i].t_id, traj_qp);
         total_qp += traj_qp; 
     }
 
@@ -3208,6 +3222,13 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
     rfmt_st.calc_qp_elapsed = elapsed; 
+
+    struct message qry_msg;
+    qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
+    fill_message(qry_msg.msg_size, CHECK_RANGE_QUERY, the_torus->info.ip, result_ip, \
+                     "", buffer, cpy_len, &qry_msg);
+    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
+
 
     // decrease current fvalue
     update_max_fvalue(r_stat, query, -1);
@@ -4014,6 +4035,9 @@ int do_check_system_status(struct message msg) {
     char buf[2048];
     memset(buf, 0, 2048);
     cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
+    cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+            the_partition.p_y, the_partition.p_z);
+
     node_info node = the_torus->info;
     coordinate id = node.node_id;
     cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d]:", the_torus->info.cluster_id, id.x, id.y, id.z);
@@ -4021,9 +4045,6 @@ int do_check_system_status(struct message msg) {
     for(i = 0; i < MAX_DIM_NUM; ++i){
         cpy_len += sprintf(buf + cpy_len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
     }
-
-    cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-            the_partition.p_y, the_partition.p_z);
 
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_SYSTEM_STATUS, the_torus->info.ip, \
@@ -4037,6 +4058,48 @@ int do_write_system_status(struct message msg) {
     memset(buf, 0, 2048);
     sprintf(buf, "%s\n", msg.data);
     write_log(SYSTEM_STATUS_LOG, buf);
+    return TRUE;
+}
+
+int do_check_insert_data(struct message msg) {
+    struct message status_msg;
+    size_t cpy_len = 0;
+
+    char buf[1024];
+    memset(buf, 0, 1024);
+    cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
+    int data_num = g_NodeList.find(1)->second->n_ptCount;
+    cpy_len += sprintf(buf + cpy_len, "torus data num:%d\n", data_num);
+
+    status_msg.msg_size = calc_msg_header_size() + cpy_len;
+    fill_message(status_msg.msg_size, WRITE_INSERT_DATA, the_torus->info.ip, \
+                            result_ip, "", buf, cpy_len, &status_msg); 
+    send_safe(result_sockfd, (void *) &status_msg, status_msg.msg_size, 0);
+    return TRUE;
+
+}
+
+int do_write_insert_data(struct message msg) {
+    char buf[1024];
+    memset(buf, 0, 1024);
+    sprintf(buf, "%s\n", msg.data);
+    write_log(INSERT_DATA_LOG, buf);
+    return TRUE;
+}
+
+int do_check_range_query(struct message msg) {
+    char buf[10240];
+    memset(buf, 0, 10240);
+    sprintf(buf, "%s\n", msg.data);
+    write_log(RANGE_QUERY_LOG, buf);
+    return TRUE;
+}
+
+int do_check_nn_query(struct message msg) {
+    char buf[10240];
+    memset(buf, 0, 10240);
+    sprintf(buf, "%s\n", msg.data);
+    write_log(NN_QUERY_LOG, buf);
     return TRUE;
 }
 
@@ -4555,6 +4618,34 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request write system status.\n");
         #endif
         do_write_system_status(msg);
+        break;
+
+    case CHECK_INSERT_DATA:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request check insert data.\n");
+        #endif
+        do_check_insert_data(msg);
+        break;
+
+    case WRITE_INSERT_DATA:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request write insert data.\n");
+        #endif
+        do_write_insert_data(msg);
+        break;
+
+    case CHECK_RANGE_QUERY:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
+        #endif
+        do_check_range_query(msg);
+        break;
+
+    case CHECK_NN_QUERY:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
+        #endif
+        do_check_nn_query(msg);
         break;
 
     case QUERY_START:

@@ -61,7 +61,10 @@
 #define NOTIFY_LOG "../logs/notify.log"
 #define QUERY_START_LOG "../logs/query_start.log"
 #define QUERY_END_LOG "../logs/query_end.log"
-#define SYSTEM_STATUS_LOG "../logs/system_status.log"
+#define SYSTEM_STATUS_LOG "../logs/test_system_status.log"
+#define INSERT_DATA_LOG "../logs/test_insert_data.log"
+#define RANGE_QUERY_LOG "../logs/test_range_query.log"
+#define NN_QUERY_LOG "../logs/test_nn_query.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -181,6 +184,10 @@ typedef enum OP {
     RELOAD_PROPERTIES,
     CHECK_SYSTEM_STATUS,
     WRITE_SYSTEM_STATUS, // for result node 83
+    CHECK_INSERT_DATA,   // test insert data feature
+    WRITE_INSERT_DATA,   
+    CHECK_RANGE_QUERY,   // test range query feature
+    CHECK_NN_QUERY,     // test nn query feature
     QUERY_START,
     QUERY_END
 } OP;
