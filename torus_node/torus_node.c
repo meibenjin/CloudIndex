@@ -10,24 +10,10 @@
 #include<string.h>
 
 #include"torus_node.h"
+#include"logs/log.h"
 
 //__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 //
-void write_log1(const char *file_name, const char *buffer) {
-	FILE *fp;
-	fp = fopen(file_name, "ab+");
-	if (fp == NULL) {
-		printf("log: open file %s error.\n", file_name);
-		return;
-	}
-	/*char now[32];
-	memset(now, 0, sizeof(now));
-	get_local_time(now);
-	fwrite(now, strlen(now), 1, fp);*/
-	fwrite(buffer, strlen(buffer), 1, fp);
-	fclose(fp);
-	fp = NULL;
-}
 
 void init_node_info(node_info *info_ptr) {
 	if (!info_ptr) {
@@ -278,7 +264,7 @@ void print_neighbors(torus_node node) {
 
     printf("neighbors:\n");
     #ifdef WRITE_LOG
-        write_log1(TORUS_NODE_LOG, "neighbor:\n");
+        write_log(TORUS_NODE_LOG, "neighbor:\n");
     #endif
 
 	int d;
@@ -343,7 +329,7 @@ void print_node_info(node_info node) {
             #endif
         }
         sprintf(buf+len, "\n");
-        write_log1(TORUS_NODE_LOG, buf);
+        write_log(TORUS_NODE_LOG, buf);
     #endif
 }
 
@@ -401,7 +387,7 @@ void print_torus_leaders(node_info leaders[]) {
             len += sprintf(buf + len, "%s ", leaders[i].ip);
         }
         len += sprintf(buf + len, "]\n");
-        write_log1(TORUS_NODE_LOG, buf);
+        write_log(TORUS_NODE_LOG, buf);
     #endif
 }
 
