@@ -19,6 +19,7 @@
 #include <time.h>
 #include<stdint.h>
 
+
 using namespace std;
 using namespace __gnu_cxx;
 const double eps = 1e-8;
@@ -93,6 +94,7 @@ public:
 	;
 public:
     void printIt();
+    int printTraj();
 	uint32_t getByteArraySize();
 	void storeToByteArray(char **data, uint32_t &len);
 	void loadFromByteArray(const char *ptr);

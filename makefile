@@ -22,7 +22,7 @@ CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 #CFLAGS= -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data test_system_status test_insert_data test_range_nn_query reload_properties del_obj_file 
+all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data test_system_status test_insert_data test_range_nn_query test_conn_buffer reload_properties del_obj_file 
 
 control:log.o utils.o control.o torus-node.o socket.o skip-list.o config.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
@@ -59,6 +59,11 @@ test_range_nn_query: utils.o socket.o test_range_nn_query.o
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/socket.o $(BIN)/test_range_nn_query.o 
 test_range_nn_query.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_range_nn_query.c -I$(VPATH)
+
+test_conn_buffer:log.o utils.o test_conn_buffer.o socket.o config.o torus-node.o  
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/test_conn_buffer.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
+test_conn_buffer.o: 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_conn_buffer.c -I$(VPATH)
 
 reload_properties:utils.o reload_properties.o config.o socket.o torus-node.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/reload_properties.o $(BIN)/socket.o $(BIN)/config.o $(BIN)/torus-node.o 
@@ -100,11 +105,9 @@ skip-list.o:
 	
 torus_rtree.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/torus_rtree.c -I$(VPATH) -I$(RTREE_INCLUDE) 
-	#-L$(RTREE_LIB) -lspatialindex 
 
 server.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(TORUSDIR)/server.c -I$(VPATH) -I$(RTREE_INCLUDE) -I$(GSL_INCLUDE) 
-	#-L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 	
 log.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(LOGDIR)/log.c -I$(VPATH) 
@@ -113,7 +116,7 @@ config.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONFIGDIR)/config.c -I$(VPATH) 
 
 oct_tree.o:
-	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctTree.cpp -I$(VPATH)
+	$(CXX) $(CFLAGS) -o $(BIN)/$@  -c $(OCTTREEDIR)/OctTree.cpp -I$(VPATH)
 
 oct_tree_node.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctTNode.cpp -I$(VPATH)
@@ -124,7 +127,7 @@ oct_tree_idx_node.o:
 oct_tree_leaf_node.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctLeafNode.cpp -I$(VPATH)
 
-oct_point.o:
+oct_point.o: 
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/Point.cpp -I$(VPATH)
 
 query_sim: utils.o socket.o query_sim.o

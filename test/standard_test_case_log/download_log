@@ -1,0 +1,11 @@
+#!/bin/bash
+# this shell runs on control node
+# download test case log from result node 
+
+
+dst_dir="/root/mbj/CloudIndex/logs"
+dst_ip="172.16.0.83"
+
+scp $dst_ip:${dst_dir}/test_system_status.log .
+scp $dst_ip:${dst_dir}/test_insert_data.log .
+scp $dst_ip:${dst_dir}/test_range_nn_query.log .

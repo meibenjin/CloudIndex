@@ -27,11 +27,9 @@ extern "C" {
 }; 
 
 #include"server.h"
-#include"torus_rtree.h"
 #include"oct_tree/OctTree.h"
-
-
 #include"torus_rtree.h"
+
 #include "gsl_rng.h"
 #include "gsl_randist.h"
 
@@ -329,10 +327,7 @@ int do_traverse_torus(struct message msg) {
 
         #ifdef WRITE_LOG
             //write log
-            char buf[1024];
-            memset(buf, 0, 1024);
-            sprintf(buf, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
-            write_log(TORUS_NODE_LOG, buf);
+            write_log(TORUS_NODE_LOG, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
         #endif
 
 		if (req_ptr && (req_ptr->first_run == TRUE)) {
@@ -390,11 +385,8 @@ int do_create_torus(struct message msg) {
     memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
     cpy_len += sizeof(struct torus_partitions);
 
-    char buf[1024];
-    memset(buf, 0, 1024);
-    sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-            the_partition.p_y, the_partition.p_z);
-    write_log(TORUS_NODE_LOG, buf);
+    write_log(TORUS_NODE_LOG, "torus partitions:[%d %d %d]\n", \
+            the_partition.p_x, the_partition.p_y, the_partition.p_z);
 
     // get torus leaders info 
     memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
@@ -481,7 +473,7 @@ int do_create_torus(struct message msg) {
             // add this neighbor to server epoll
             struct epoll_event ev;
             set_nonblocking(sockfd);
-            ev.events = EPOLLIN | EPOLLONESHOT;
+            ev.events = EPOLLOUT | EPOLLONESHOT;
             ev.data.fd = sockfd;
             g_conn_table[sockfd].used = 1;
             g_conn_table[sockfd].index = index; 
@@ -504,9 +496,8 @@ int do_create_torus(struct message msg) {
 	set_neighbors_num(the_torus, neighbors_num);
 
     #ifdef WRITE_LOG 
-        memset(buf, 0, 1024);
-        sprintf(buf, "torus node capacity:%d %d\n", the_torus->info.capacity, neighbor_sock_num);
-        write_log(TORUS_NODE_LOG, buf);
+        write_log(TORUS_NODE_LOG, "torus node capacity:%d %d\n", \
+                the_torus->info.capacity, neighbor_sock_num);
     #endif
 
 	return TRUE;
@@ -517,10 +508,8 @@ int do_update_partition(struct message msg) {
 	memcpy(&the_partition, msg.data, sizeof(struct torus_partitions));
 
     #ifdef WRITE_LOG 
-        char buf[1024];
-        sprintf(buf, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-                the_partition.p_y, the_partition.p_z);
-        write_log(TORUS_NODE_LOG, buf);
+        write_log(TORUS_NODE_LOG, "torus partitions:[%d %d %d]\n", \
+                the_partition.p_x, the_partition.p_y, the_partition.p_z);
     #endif
 
 	return TRUE;
@@ -830,9 +819,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
         lower_neighbor = NULL;
     }
 
-    char buf[1024];
     int socketfd;
-    memset(buf, 0, 1024);
 	if (lower_neighbor != NULL) {
 		struct message new_msg;
 		get_node_ip(*lower_neighbor, dst_ip);
@@ -841,8 +828,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
                      msg.data, data_len, &new_msg);
 
         #ifdef WRITE_LOG
-            sprintf(buf, "forward to %s\n", dst_ip);
-            write_log(TORUS_NODE_LOG, buf);
+            write_log(TORUS_NODE_LOG, "forward to %s\n", dst_ip);
         #endif
 		//forward_message(new_msg, 0);
         socketfd = find_neighbor_sock(dst_ip);
@@ -858,8 +844,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
                      msg.data, data_len, &new_msg);
 
         #ifdef WRITE_LOG
-            sprintf(buf, "forward to %s\n", dst_ip);
-            write_log(TORUS_NODE_LOG, buf);
+            write_log(TORUS_NODE_LOG, "forward to %s\n", dst_ip);
         #endif
 		//forward_message(new_msg, 0);
         socketfd = find_neighbor_sock(dst_ip);
@@ -917,13 +902,12 @@ int get_split_dimension() {
         len += sprintf(buf + len, "%lu %lu ", pnum, nnum);
     }
     len += sprintf(buf + len, "%d\n", d);
-    write_log(RTREE_LOG, buf);
+    write_log(OCT_TREE_LOG, buf);
     return d;
 }
 
 int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
 
-    char buffer[1024];
     struct timespec start, end, s, e;
     double elasped = 0L, el;
     clock_gettime(CLOCK_REALTIME, &start);
@@ -935,9 +919,7 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "get split data spend %f ms\n", elasped / 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "get split data spend %f ms\n", elasped / 1000000.0);
     elasped = 0L;
 
 	int socketfd;
@@ -1015,17 +997,11 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
 	close(socketfd);
 
     total_len += cpy_len;
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "total send %f k\n", total_len/ 1000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "total send %f k\n", total_len/ 1000.0);
 
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "package split data spend %f ms\n", el/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "package split data spend %f ms\n", el/ 1000000.0);
 
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send split data spend %f ms\n", elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "send split data spend %f ms\n", elasped/ 1000000.0);
     return TRUE;
 }
 
@@ -1044,14 +1020,11 @@ int rtree_recreate(double plow[], double phigh[]){
 }
 
 int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
-
-    char buffer[1024];
     struct timespec start, end, s, e;
     double elasped = 0L, el;
 
-	int socketfd;
-
     // create a data socket to send rtree data
+	int socketfd;
 	socketfd = new_client_socket(dst_ip, COMPUTE_WORKER_PORT);
 	if (FALSE == socketfd) {
 		return FALSE;
@@ -1128,24 +1101,15 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
 	close(socketfd);
 
     total_len += cpy_len;
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "total send %f k\n", total_len/ 1000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "package split oct tree points spend %f ms\n", el/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send split oct tree points spend %f ms\n", elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "total send %f k\n", total_len/ 1000.0);
+    write_log(RESULT_LOG, "package split oct tree points spend %f ms\n", el/ 1000000.0);
+    write_log(RESULT_LOG, "send split oct tree points spend %f ms\n", elasped/ 1000000.0);
 
     return TRUE;
 }
 
 int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
 
-    char buffer[1024];
     struct timespec start, end, s, e;
     double elasped = 0L, el;
 
@@ -1228,24 +1192,15 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
 	close(socketfd);
 
     total_len += cpy_len;
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "total send %f k\n", total_len/ 1000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "package split oct tree nodes spend %f ms\n", el/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send split oct tree nodes spend %f ms\n", elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "total send %f k\n", total_len/ 1000.0);
+    write_log(RESULT_LOG, "package split oct tree nodes spend %f ms\n", el/ 1000000.0);
+    write_log(RESULT_LOG, "send split oct tree nodes spend %f ms\n", elasped/ 1000000.0);
 
     return TRUE;
 }
 
 int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
 
-    char buffer[1024];
     struct timespec start, end, s, e;
     double elasped = 0L, el;
 
@@ -1327,17 +1282,9 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
 	close(socketfd);
 
     total_len += cpy_len;
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "total send %f k\n", total_len/ 1000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "package split oct tree trajectorys spend %f ms\n", el/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
-
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send split oct tree trajectorys spend %f ms\n", elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "total send %f k\n", total_len/ 1000.0);
+    write_log(RESULT_LOG, "package split oct tree trajectorys spend %f ms\n", el/ 1000000.0);
+    write_log(RESULT_LOG, "send split oct tree trajectorys spend %f ms\n", elasped/ 1000000.0);
 
     return TRUE;
 }
@@ -1345,7 +1292,6 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
 int torus_split() {
     // Step 1: append a new torus node and reset regions
     // get the optimal split dimension
-    char buffer[1024];
 
     struct timespec start, end;
     double elasped = 0L;
@@ -1360,9 +1306,7 @@ int torus_split() {
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "get_split_dimension spend %d %f ms\n", d, elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "get_split_dimension spend %d %f ms\n", d, elasped/ 1000000.0);
 
     // append a new torus node
     // TODO get free ip from control node
@@ -1443,9 +1387,7 @@ int torus_split() {
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "update neighbor information spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "update neighbor information spend %f ms\n", (double) elasped/ 1000000.0);
 
     print_torus_node(*the_torus);
 
@@ -1522,9 +1464,7 @@ int torus_split() {
 
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "send split oct tree spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "send split oct tree spend %f ms\n", (double) elasped/ 1000000.0);
 
     return TRUE;
 }
@@ -1589,9 +1529,7 @@ int local_rtree_query(double low[], double high[]) {
 int operate_rtree(struct query_struct query) {
 
     if(the_torus_rtree == NULL) {
-        #ifdef WRITE_LOG
-            write_log(ERROR_LOG, "torus rtree didn't create.\n");
-        #endif
+        write_log(ERROR_LOG, "torus rtree didn't create.\n");
         return FALSE;
     }
 
@@ -2055,7 +1993,7 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         }
     }
 
-    char buffer[10240];
+    char buffer[DATA_SIZE];
     size_t cpy_len = 0;
 
     double total_qp = 0.0;
@@ -2066,15 +2004,23 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         if(qp < 0) {
             qp = 0.0;
         }
-        cpy_len += sprintf(buffer + cpy_len, "%d:%.2lf\n", t_id, qp);
+        if(cpy_len + 30 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, t_id, qp);
+        }
         total_qp += qp;
     }
+    if(cpy_len == 0 ) {
+        cpy_len += sprintf(buffer + cpy_len, "%d\n", query.data_id);
+    } 
+    cpy_len += sprintf(buffer + cpy_len, "\n");
 
+    // standard test case
     struct message qry_msg;
     qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
     fill_message(qry_msg.msg_size, CHECK_NN_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
-    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
+    //TODO uncomment it
+    //send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
 
     if(traj_num == 0) {
         *avg_qp = 0.0;
@@ -2184,6 +2130,8 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     return TRUE;
 }
 
+
+// TODO:important check this function
 int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs) {
     size_t i;
     hash_map<int, OctPoint *> traj_head; 
@@ -2213,8 +2161,8 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
             }
         }
     }
-    
-    hash_map<int, Traj *>::iterator tit;
+
+    hash_map<IDTYPE, Traj*>::iterator tit;
     for(it = traj_head.begin(); it != traj_head.end(); ++it) {
         head = it->second;
         if(head->pre != -1) {
@@ -2239,16 +2187,6 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
     }
 
     return TRUE;
-    /*size_t i;
-    hash_map<int, Traj *>::iterator tit;
-    for (i = 0; i < pt_vector.size(); i++) {
-        tit = g_TrajList.find(pt_vector[i]->p_tid);
-        if (tit != g_TrajList.end()) {
-            Traj *t = tit->second;
-            trajs.insert(pair<int, Traj*>(t->t_id, t));
-        }
-    }
-    return TRUE;*/
 }
 
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
@@ -2584,6 +2522,14 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
 
     hash_map<IDTYPE, Traj*> trajs;
     recreate_trajs(pt_vector, trajs);
+
+    hash_map<IDTYPE, Traj *>::iterator it;
+    Traj* cur_traj;
+    for(it = trajs.begin(); it != trajs.end(); ++it) {
+        cur_traj = it->second;
+        cur_traj->printTraj();
+    }
+    return TRUE;
 
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
@@ -2996,10 +2942,7 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
 
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "receive split data %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "receive split data %f ms\n", (double) elasped/ 1000000.0);
 
     //bulkload rtree
     the_torus_rtree = rtree_bulkload(v);
@@ -3010,15 +2953,11 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     } 
 
     size_t c = rtree_get_utilization(the_torus_rtree);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "%lu\n", c);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "%lu\n", c);
 
     time_t now;
     now = time(NULL);
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "%ld %d\n", now, count);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "%ld %d\n", now, count);
     return TRUE;
 }
 
@@ -3170,9 +3109,10 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     memcpy(rfmt_st.qry_region,query.intval, sizeof(struct interval) * MAX_DIM_NUM);  
 
     //step 2: receive refinement data from conn
-    uint32_t traj_num;
+    uint32_t traj_num, i, j = 0;
     traj_num = r_stat.traj_num;
     struct traj_segments traj_segs[traj_num];
+
     receive_refinement_data(conn, data_size, traj_segs, traj_num);
 
     rfmt_st.result_size = traj_num;
@@ -3183,23 +3123,31 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
 
     clock_gettime(CLOCK_REALTIME, &begin);
     //step 3: refinement
-    uint32_t i, j = 0;
     double total_qp = 0.0;
 
-    char buffer[10240];
+    char buffer[DATA_SIZE];
     size_t cpy_len = 0;
 
     for(i = 0; i < traj_num; i++) {
         double traj_qp = 1.0;
-        if(traj_segs[i].t_id != 0) {
-            if(traj_segs[i].pair_num == 0) {
-                continue;
-            } else { 
+        //if(traj_segs[i].t_id != 0) {
+            //if(traj_segs[i].pair_num == 0) {
+            //    continue;
+            //} else { 
                 for(j = 0; j < traj_segs[i].pair_num; j++) {
                    traj_qp *= (1.0 - calc_refinement(query.intval, traj_segs[i].start[j], traj_segs[i].end[j]));
+                   if(cpy_len + 100 < DATA_SIZE) {
+                       cpy_len += sprintf(buffer + cpy_len, "%d,%d,[%.4lf %.4lf %.4lf],[%.4lf %.4lf %.4lf]\n", \
+                               query.data_id, traj_segs[i].t_id,\
+                               traj_segs[i].start[j].axis[0],\
+                               traj_segs[i].start[j].axis[1],\
+                               traj_segs[i].start[j].axis[2],\
+                               traj_segs[i].end[j].axis[0],\
+                               traj_segs[i].end[j].axis[1],\
+                               traj_segs[i].end[j].axis[2]);
+                   }
                 }
-            }
-
+            //}
             // release the memory
             if(traj_segs[i].start != NULL) {
                 free(traj_segs[i].start);
@@ -3207,13 +3155,19 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
             if(traj_segs[i].end != NULL) {
                 free(traj_segs[i].end);
             }
-        }
+        //}
         traj_qp = 1.0 - traj_qp; 
-        cpy_len += sprintf(buffer + cpy_len, "%d:%.2lf\n", traj_segs[i].t_id, traj_qp);
+        /*if(cpy_len + 30 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, traj_segs[i].t_id, traj_qp);
+        } */
         total_qp += traj_qp; 
     }
+    /*if(cpy_len == 0) {
+        cpy_len += sprintf(buffer + cpy_len, "%d\n", query.data_id);
+    } 
+    cpy_len += sprintf(buffer + cpy_len, "\n");*/
 
-    if(traj_num == 0 ){
+    if(traj_num == 0){
         rfmt_st.avg_qp = 0;
     }else{
         rfmt_st.avg_qp = total_qp/ traj_num;
@@ -3223,6 +3177,7 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     elapsed = get_elasped_time(begin, end) / 1000000.0;
     rfmt_st.calc_qp_elapsed = elapsed; 
 
+    //standard test case
     struct message qry_msg;
     qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
     fill_message(qry_msg.msg_size, CHECK_RANGE_QUERY, the_torus->info.ip, result_ip, \
@@ -3292,10 +3247,8 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
 
     g_ptNewCount = -(min_p_id + 1);
 
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "receive split oct tree points spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "receive split oct tree points spend %f ms\n", \
+            (double) elasped/ 1000000.0);
 
     //printPoints();
 
@@ -3356,10 +3309,8 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
 
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "receive split oct tree nodes spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "receive split oct tree nodes spend %f ms\n", \
+            (double) elasped/ 1000000.0);
 
     //printNodes();
 
@@ -3400,10 +3351,8 @@ int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
     clock_gettime(CLOCK_REALTIME, &end);
     elasped = get_elasped_time(start, end);
 
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "receive split oct tree trajectorys spend %f ms\n", (double) elasped/ 1000000.0);
-    write_log(RESULT_LOG, buffer);
+    write_log(RESULT_LOG, "receive split oct tree trajectorys spend %f ms\n", \
+            (double) elasped/ 1000000.0);
 
     //printTrajs();
 
@@ -3630,10 +3579,7 @@ int do_reload_properties(struct message msg){
 }
 
 int do_notify_message(struct message msg) {
-    char buf[1024];
-    memset(buf, 0, 1024);
-    sprintf(buf, "%s %s\n", msg.src_ip, msg.data);
-    write_log(NOTIFY_LOG, buf);
+    write_log(NOTIFY_LOG, "%s %s\n", msg.src_ip, msg.data);
     return TRUE;
 }
 
@@ -3904,9 +3850,11 @@ int do_query_torus_cluster(struct message msg) {
 			}
 		}
 		if (visit_forward == 0) {
-            #ifdef WRITE_LOG
-                write_log(TORUS_NODE_LOG, "search failed!\n");
-            #endif
+            if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+                write_log(ERROR_LOG, "query id %d:search failed!\n", query.data_id);
+            } else {
+                write_log(ERROR_LOG, "search failed!\n");
+            }
 		}
 
 	} else {							
@@ -3924,9 +3872,11 @@ int do_query_torus_cluster(struct message msg) {
 			}
 		}
 		if (visit_backward == 0) {
-            #ifdef WRITE_LOG
-                write_log(TORUS_NODE_LOG, "search failed!\n");
-            #endif
+            if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+                write_log(ERROR_LOG, "query id %d:search failed!\n", query.data_id);
+            } else {
+                write_log(ERROR_LOG, "search failed!\n");
+            }
 		}
 	}
 	return TRUE;
@@ -4032,20 +3982,31 @@ int do_check_system_status(struct message msg) {
     struct message status_msg;
     size_t cpy_len = 0;
 
-    char buf[2048];
-    memset(buf, 0, 2048);
-    cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
-    cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-            the_partition.p_y, the_partition.p_z);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
 
-    node_info node = the_torus->info;
-    coordinate id = node.node_id;
-    cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d]:", the_torus->info.cluster_id, id.x, id.y, id.z);
-    int i;
-    for(i = 0; i < MAX_DIM_NUM; ++i){
-        cpy_len += sprintf(buf + cpy_len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
+    if(the_torus == NULL) {
+        char local_ip[IP_ADDR_LENGTH];
+        memset(local_ip, 0, IP_ADDR_LENGTH);
+        if (FALSE == get_local_ip(local_ip)) {
+            write_log(ERROR_LOG, "do_check_system_status: get local ip occurred error.\n");
+            return FALSE;
+        }
+        cpy_len += sprintf(buf + cpy_len, "%s:the torus node didn't create.\n", local_ip); 
+    } else {
+        cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
+        cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
+                the_partition.p_y, the_partition.p_z);
+
+        node_info node = the_torus->info;
+        coordinate id = node.node_id;
+        cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d]:", the_torus->info.cluster_id, id.x, id.y, id.z);
+        int i;
+        for(i = 0; i < MAX_DIM_NUM; ++i){
+            cpy_len += sprintf(buf + cpy_len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
+        }
+        cpy_len += sprintf(buf + cpy_len, "\n\n");
     }
-
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_SYSTEM_STATUS, the_torus->info.ip, \
                             result_ip, "", buf, cpy_len, &status_msg); 
@@ -4054,10 +4015,27 @@ int do_check_system_status(struct message msg) {
 }
 
 int do_write_system_status(struct message msg) {
-    char buf[2048];
-    memset(buf, 0, 2048);
-    sprintf(buf, "%s\n", msg.data);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    size_t data_len = msg.msg_size - calc_msg_header_size();
+    memcpy(buf, msg.data, data_len);
     write_log(SYSTEM_STATUS_LOG, buf);
+    return TRUE;
+}
+
+int do_check_conn_buffer(struct message msg) {
+    int i;
+    char buf[BUF_SIZE * 2];
+    memset(buf, 0, BUF_SIZE * 2);
+    size_t cpy_len = 0;
+    for(i = 0; i < CONN_MAXFD; i++) {
+        connection_t conn = &g_conn_table[i];
+        if(conn->used == 1) {
+            cpy_len += sprintf(buf + cpy_len, "%d,%lu,%lu\n", i, conn->roff, conn->woff);
+        }
+    }
+    cpy_len += sprintf(buf + cpy_len, "\n");
+    write_log(NOTIFY_LOG, buf);
     return TRUE;
 }
 
@@ -4065,11 +4043,11 @@ int do_check_insert_data(struct message msg) {
     struct message status_msg;
     size_t cpy_len = 0;
 
-    char buf[1024];
-    memset(buf, 0, 1024);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
     cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
     int data_num = g_NodeList.find(1)->second->n_ptCount;
-    cpy_len += sprintf(buf + cpy_len, "torus data num:%d\n", data_num);
+    cpy_len += sprintf(buf + cpy_len, "torus data num:%d\n\n", data_num);
 
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_INSERT_DATA, the_torus->info.ip, \
@@ -4080,26 +4058,33 @@ int do_check_insert_data(struct message msg) {
 }
 
 int do_write_insert_data(struct message msg) {
-    char buf[1024];
-    memset(buf, 0, 1024);
-    sprintf(buf, "%s\n", msg.data);
+    char buf[BUF_SIZE];
+    memset(buf, 0, BUF_SIZE);
+    size_t data_len = msg.msg_size - calc_msg_header_size();
+    memcpy(buf, msg.data, data_len);
     write_log(INSERT_DATA_LOG, buf);
     return TRUE;
 }
 
-int do_check_range_query(struct message msg) {
-    char buf[10240];
-    memset(buf, 0, 10240);
-    sprintf(buf, "%s\n", msg.data);
-    write_log(RANGE_QUERY_LOG, buf);
+int do_check_range_query(struct message *msg) {
+    char buf[DATA_SIZE];
+    memset(buf, 0, DATA_SIZE);
+    size_t data_len = msg->msg_size - calc_msg_header_size();
+    memcpy(buf, msg->data, data_len);
+    pthread_mutex_lock(&global_variable_mutex);
+    write_log(RANGE_NN_QUERY_LOG, buf);
+    pthread_mutex_unlock(&global_variable_mutex);
     return TRUE;
 }
 
-int do_check_nn_query(struct message msg) {
-    char buf[10240];
-    memset(buf, 0, 10240);
-    sprintf(buf, "%s\n", msg.data);
-    write_log(NN_QUERY_LOG, buf);
+int do_check_nn_query(struct message *msg) {
+    char buf[DATA_SIZE];
+    memset(buf, 0, DATA_SIZE);
+    size_t data_len = msg->msg_size - calc_msg_header_size();
+    memcpy(buf, msg->data, data_len);
+    pthread_mutex_lock(&global_variable_mutex);
+    write_log(RANGE_NN_QUERY_LOG, buf);
+    pthread_mutex_unlock(&global_variable_mutex);
     return TRUE;
 }
 
@@ -4108,10 +4093,8 @@ int do_query_start(struct message msg) {
     memcpy(&data_id, msg.data, sizeof(int));
     timespec cur_time;
     clock_gettime(CLOCK_REALTIME, &cur_time);
-    char buf[1024];
-    memset(buf, 0, 1024);
-    sprintf(buf, "%d,%ld,%ld\n", data_id, cur_time.tv_sec, cur_time.tv_nsec);
-    write_log(QUERY_START_LOG, buf);
+    write_log(QUERY_START_LOG, "%d,%ld,%ld\n", \
+            data_id, cur_time.tv_sec, cur_time.tv_nsec);
     return TRUE;
 }
 
@@ -4156,10 +4139,9 @@ int do_query_end(connection_t conn, struct message msg) {
 
     timespec cur_time;
     clock_gettime(CLOCK_REALTIME, &cur_time);
-    char buffer[1024];
-    memset(buffer, 0, 1024);
-    sprintf(buffer, "%d,%ld,%ld,%lf,%lf,%d\n", data_id, cur_time.tv_sec, cur_time.tv_nsec, rq_time, rt_time, res_num);
-    write_log(QUERY_END_LOG, buffer);
+    write_log(QUERY_END_LOG, "%d,%ld,%ld,%lf,%lf,%d\n", \
+            data_id, cur_time.tv_sec, cur_time.tv_nsec, \
+            rq_time, rt_time, res_num);
     return TRUE;
 }
 
@@ -4214,8 +4196,6 @@ int do_receive_refinement_log(struct message msg) {
 int do_throughput_insert(struct message msg) {
     static int count = 0;
 
-    char buffer[100];
-    memset(buffer, 0, 100);
     int cur_count;
     double cur_hops, max_hop;
     double cur_el;
@@ -4236,8 +4216,9 @@ int do_throughput_insert(struct message msg) {
     memcpy(&cor, msg.data + cpy_len, sizeof(coordinate));
     count += cur_count;
 
-    sprintf(buffer, "%d [%d%d%d] %lf %lf %lf %d\n", (int)time(NULL), cor.x, cor.y, cor.z, cur_el, max_hop, cur_hops, count);
-    write_log(result_log, buffer);
+    write_log(result_log, "%d [%d%d%d] %lf %lf %lf %d\n", \
+            (int)time(NULL), cor.x, cor.y, cor.z, cur_el, \
+            max_hop, cur_hops, count);
     return TRUE;
 }
 
@@ -4310,10 +4291,7 @@ int do_heartbeat(struct message msg) {
         ptr->node.fvalue = stat.fvalue;
     }
 
-    char buf[200];
-    memset(buf, 0, 200);
-    sprintf(buf, "%s %d\n", stat.ip, stat.fvalue);
-    write_log(HEARTBEAT_LOG, buf);
+    write_log(HEARTBEAT_LOG, "%s %d\n", stat.ip, stat.fvalue);
     return TRUE;
 }
 
@@ -4432,7 +4410,7 @@ int process_message(connection_t conn, struct message msg) {
 
 	case QUERY_TORUS_NODE:
         #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "\nreceive request search torus node.\n");
+            write_log(TORUS_NODE_LOG, "receive request search torus node.\n");
         #endif
 
 		do_query_torus_node(msg);
@@ -4620,6 +4598,13 @@ int process_message(connection_t conn, struct message msg) {
         do_write_system_status(msg);
         break;
 
+    case CHECK_CONN_BUFFER:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request check connection buffer.\n");
+        #endif
+        do_check_conn_buffer(msg);
+        break;
+
     case CHECK_INSERT_DATA:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request check insert data.\n");
@@ -4638,14 +4623,14 @@ int process_message(connection_t conn, struct message msg) {
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
         #endif
-        do_check_range_query(msg);
+        do_check_range_query(&msg);
         break;
 
     case CHECK_NN_QUERY:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
         #endif
-        do_check_nn_query(msg);
+        do_check_nn_query(&msg);
         break;
 
     case QUERY_START:
@@ -4720,10 +4705,10 @@ int handle_read_event(connection_t conn) {
         return FALSE;
     } else {
         if(errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "handle_read_event: socket error.\n");
+            write_log(ERROR_LOG, "handle_read_event: socket error, %s\n", strerror(errno));
             return FALSE;
         }
-        write_log(ERROR_LOG, "handle_read_event: error occerred");
+        write_log(ERROR_LOG, "handle_read_event: error occerred, %s\n", strerror(errno));
     }
     return TRUE;
 }
@@ -4743,11 +4728,12 @@ int handle_write_event(connection_t conn) {
         return TRUE;
     }
     int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
-    if (ret == -1) {
+    if (ret < 0) {
         if (errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "handle_write_event: socket error.\n");
+            write_log(ERROR_LOG, "handle_write_event: socket error, %s\n", strerror(errno));
             return FALSE;
         }
+        write_log(ERROR_LOG, "handle_write_event: error occerred, %s\n", strerror(errno));
     } else {
         int remained = conn->woff - ret;
         if (remained > 0) {
@@ -4840,9 +4826,6 @@ void *manual_worker_monitor(void *args) {
                 ev.events = EPOLLIN | EPOLLONESHOT;
                 ev.data.fd = conn_socket;
 
-                // record enter_time of coming connection
-                //clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
-
                 /* register conn_socket to worker-pool's 
                  * epoll, not the listen epoll*/
                 g_conn_table[conn_socket].used = 1;
@@ -4932,7 +4915,7 @@ void *worker(void *args){
                     }
 
                     if(conn->used != 0) {
-                        ev.events = EPOLLIN | EPOLLONESHOT;
+                        ev.events = EPOLLOUT | EPOLLONESHOT;
                         ev.data.fd = conn_socket;
                         epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
                     }
@@ -4986,9 +4969,6 @@ void *compute_worker_monitor(void *args) {
                     ev.data.fd = conn_socket;
 
                     g_conn_table[conn_socket].used = 1;
-                    // record enter_time of coming connection
-                    //clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
-
                     g_conn_table[conn_socket].index = index; 
                     g_conn_table[conn_socket].socketfd = conn_socket; 
                     epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);

@@ -1,5 +1,9 @@
 #include "OctTree.h"
+
+extern "C" {
 #include "utils.h"
+#include "logs/log.h"
+}
 
 OctPoint::OctPoint(IDTYPE pid,double time,double *xyz, IDTYPE tid,IDTYPE pre,IDTYPE next){
 	p_id = pid;
@@ -10,7 +14,6 @@ OctPoint::OctPoint(IDTYPE pid,double time,double *xyz, IDTYPE tid,IDTYPE pre,IDT
 	p_tid = tid;
 	this->pre = pre;
 	this->next = next;
-
 }
 
 void OctPoint::printIt() {
@@ -109,6 +112,34 @@ void Traj::printIt() {
     sprintf(buffer, "tid:%d head:%d tail:%d\n", t_id, t_head, t_tail);
     fwrite(buffer, strlen(buffer), 1, fp);
     fclose(fp);
+}
+
+int Traj::printTraj() {
+    OctPoint *cur_point;
+    IDTYPE pid;
+    IDTYPE head_id = this->t_head;
+    IDTYPE tail_id = this->t_tail;
+    char buffer[DATA_SIZE];
+    size_t cpy_len = 0;
+
+    pid = head_id;
+    do {
+        cur_point = g_PtList.find(pid)->second;
+        if(cpy_len + 100 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "%d,%d,[%.4lf %.4lf %.4lf] ", \
+                    cur_point->p_id, cur_point->p_tid,\
+                    cur_point->p_xyz[0], cur_point->p_xyz[1], cur_point->p_xyz[2]);
+        }
+        pid = cur_point->next;
+        if(pid == -1) {
+            write_log(ERROR_LOG, "printTraj:%d traj occurred error", this->t_id);
+            return FALSE;
+        }
+    }while(cur_point->next != tail_id);
+
+    cpy_len += sprintf(buffer + cpy_len, "\n");
+    write_log(OCT_TREE_LOG, buffer);
+    return TRUE;
 }
 
 uint32_t Traj::getByteArraySize() {

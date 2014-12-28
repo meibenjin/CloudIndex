@@ -334,8 +334,8 @@ int main(int argc, char const* argv[]) {
         strncpy(entry_ips[i], torus_ip_list[i], IP_ADDR_LENGTH);
     }
     
-    insert_data(entry_ips, LEADER_NUM, cluster_id);
-    //insert_data_origin(entry_ips, LEADER_NUM, cluster_id);
+    //insert_data(entry_ips, LEADER_NUM, cluster_id);
+    insert_data_origin(entry_ips, LEADER_NUM, cluster_id);
     //insert_data_test(argv[2]);
     return 0;
 }

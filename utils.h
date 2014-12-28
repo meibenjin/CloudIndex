@@ -29,7 +29,8 @@
 #define LISTEN_QUEUE_LENGTH 20
 #define REQUEST_LIST_LENGTH 1024 
 #define SOCKET_BUF_SIZE 1024
-#define DATA_SIZE 8192
+#define BUF_SIZE 1024
+#define DATA_SIZE 10240 
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
 
@@ -46,7 +47,7 @@
 #define FLUSH_SIZE 120
 
 // limits for skip list
-#define LEADER_NUM 3
+#define LEADER_NUM 8
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -55,7 +56,7 @@
 #define CTRL_NODE_LOG "../logs/control_node.log"
 #define TORUS_NODE_LOG "../logs/torus_node.log"
 #define RESULT_LOG "../logs/query_result.log"
-#define RTREE_LOG "../logs/rtree.log"
+#define OCT_TREE_LOG "../logs/oct_tree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
 #define ERROR_LOG "../logs/error.log"
 #define NOTIFY_LOG "../logs/notify.log"
@@ -63,8 +64,7 @@
 #define QUERY_END_LOG "../logs/query_end.log"
 #define SYSTEM_STATUS_LOG "../logs/test_system_status.log"
 #define INSERT_DATA_LOG "../logs/test_insert_data.log"
-#define RANGE_QUERY_LOG "../logs/test_range_query.log"
-#define NN_QUERY_LOG "../logs/test_nn_query.log"
+#define RANGE_NN_QUERY_LOG "../logs/test_range_nn_query.log"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -188,6 +188,7 @@ typedef enum OP {
     WRITE_INSERT_DATA,   
     CHECK_RANGE_QUERY,   // test range query feature
     CHECK_NN_QUERY,     // test nn query feature
+    CHECK_CONN_BUFFER,
     QUERY_START,
     QUERY_END
 } OP;
