@@ -15,7 +15,7 @@
 
 #include"control.h"
 #include"torus_node/torus_node.h"
-#include"socket/socket.h"
+#include"communication/socket.h"
 #include"skip_list/skip_list.h"
 #include"config/config.h"
 
@@ -559,10 +559,21 @@ int dispatch_torus(torus_s *torus) {
 		memset(dst_ip, 0, IP_ADDR_LENGTH);
 		get_node_ip(node_ptr->info, dst_ip);
 
+        // get local ip address
+        struct message msg;
+        char local_ip[IP_ADDR_LENGTH];
+        memset(local_ip, 0, IP_ADDR_LENGTH);
+        if (FALSE == get_local_ip(local_ip)) {
+            return FALSE;
+        }
+        msg.msg_size = calc_msg_header_size() + cpy_len;
+        fill_message(msg.msg_size, CREATE_TORUS, local_ip, dst_ip, "", buf, cpy_len, &msg);
+        send_message(msg);
+
 		// send to dst_ip
-		if (FALSE == send_data(CREATE_TORUS, dst_ip, buf, cpy_len)) {
+		/*if (FALSE == send_data(CREATE_TORUS, dst_ip, buf, cpy_len)) {
 			return FALSE;
-		}
+		}*/
 
 	}
 	return TRUE;
@@ -575,6 +586,7 @@ int traverse_torus(const char *entry_ip) {
 	if (FALSE == socketfd) {
 		return FALSE;
 	}
+
 	// get local ip address
 	char local_ip[IP_ADDR_LENGTH];
 	memset(local_ip, 0, IP_ADDR_LENGTH);
@@ -585,7 +597,7 @@ int traverse_torus(const char *entry_ip) {
 	struct message msg;
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, TRAVERSE_TORUS, local_ip, entry_ip, "", "", 1, &msg);
-	send_message(socketfd, msg);
+	send_data(socketfd, (void *)&msg, msg.msg_size);
 	close(socketfd);
 
 	return TRUE;
@@ -619,7 +631,7 @@ int traverse_skip_list(const char *entry_ip) {
 	struct message msg;
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, TRAVERSE_SKIP_LIST, local_ip, entry_ip, "", "", 1, &msg);
-	send_message(socketfd, msg);
+	send_data(socketfd, (void *)&msg, msg.msg_size);
 	close(socketfd);
 	return TRUE;
 }
@@ -659,7 +671,7 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
 
         msg.msg_size = calc_msg_header_size() + cpy_len;
 
-        if (TRUE == forward_message(msg, 0)) {
+        if (TRUE == send_message(msg)) {
             printf("%s:\tcreate new skip list node ... success\n", leaders[i].ip);
         } else {
             printf("%s:\tcreate new skip list node ... failed\n", leaders[i].ip);
@@ -725,7 +737,7 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
 
                 msg.msg_size = calc_msg_header_size() + cpy_len;
 
-                if (TRUE == forward_message(msg, 0)) {
+                if (TRUE == send_message(msg)) {
                     printf("%s:\tupdate new skip list node's forward and backward ... success\n", dst_ip);
                 } else {
                     printf("%s:\tupdate new skip list node's forward and backward ... failed\n", dst_ip);
@@ -758,7 +770,7 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
                     cpy_len += sizeof(node_info) * LEADER_NUM;
 
                     msg.msg_size = calc_msg_header_size() + cpy_len;
-                    if (TRUE == forward_message(msg, 0)) {
+                    if (TRUE == send_message(msg)) {
                         printf("%s:\tupdate skip list node's backward ... success\n", dst_ip);
                     } else {
                         printf("%s:\tupdate skip list node's backward ... failed\n", dst_ip);
@@ -790,7 +802,7 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]) {
                     cpy_len += sizeof(node_info) * LEADER_NUM;
 
                     msg.msg_size = calc_msg_header_size() + cpy_len;
-                    if (TRUE == forward_message(msg, 0)) {
+                    if (TRUE == send_message(msg)) {
                         printf("%s:\tupdate skip list node's forward ... success\n", dst_ip);
                     } else {
                         printf("%s:\tupdate skip list node's forward ... failed\n", dst_ip);

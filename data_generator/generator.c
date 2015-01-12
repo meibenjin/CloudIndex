@@ -11,7 +11,7 @@
 #include <string.h>
 
 #include "generator.h"
-#include"socket/socket.h"
+#include"communication/socket.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
@@ -143,7 +143,7 @@ int insert_data_test(const char dst_ip[IP_ADDR_LENGTH]) {
         package_query_msg(&msg, local_ip, dst_ip, hops, new_query);
    
         //printf("send %d to %s\n", msg.msg_size, destination_ip);
-        send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
+        send_data(socketfd, (void *) &msg, msg.msg_size);
         query_idx++;
         if(query_idx % 10000 == 0) {
             printf("%d\n", query_idx);
@@ -183,7 +183,7 @@ int insert_data_origin(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cl
         strncpy(destination_ip, entry_ips[chosen_idx], IP_ADDR_LENGTH);
         package_query_msg(&msg, local_ip, destination_ip, hops, new_query);
         //printf("send %d to %s\n", msg.msg_size, destination_ip);
-        send_safe(socketfds[chosen_idx], (void *) &msg, msg.msg_size, 0);
+        send_data(socketfds[chosen_idx], (void *) &msg, msg.msg_size);
         if(query_idx % 10000 == 0) {
             printf("%d\n", query_idx);
         }
@@ -246,7 +246,7 @@ int insert_data(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_i
                     package_query_msg(&msg, local_ip, destination_ip, hops, new_query);
                
                     //printf("send %d to %s\n", msg.msg_size, destination_ip);
-                    send_safe(socketfds[chosen_idx], (void *) &msg, msg.msg_size, 0);
+                    send_data(socketfds[chosen_idx], (void *) &msg, msg.msg_size);
                     
                     traj_idx++;
                     point_id++;

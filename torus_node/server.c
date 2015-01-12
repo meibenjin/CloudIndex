@@ -22,7 +22,7 @@ extern "C" {
 #include"logs/log.h"
 #include"torus_node/torus_node.h"
 #include"skip_list/skip_list.h"
-#include"socket/socket.h"
+#include"communication/socket.h"
 #include"config/config.h"
 }; 
 
@@ -366,7 +366,7 @@ int forward_to_neighbors(struct message msg) {
                 get_node_ip(*nn_ptr->info, dst_ip);
                 strncpy(msg.src_ip, src_ip, IP_ADDR_LENGTH);
                 strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-                forward_message(msg, 0);
+                send_message(msg);
                 nn_ptr = nn_ptr->next;
             }
         }
@@ -598,7 +598,7 @@ int do_traverse_skip_list(struct message msg) {
             strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
             strncpy(msg.data, "f", DATA_SIZE);
             msg.msg_size += 1;
-            forward_message(msg, 0);
+            send_message(msg);
         }
 
         if (backward) {
@@ -606,21 +606,21 @@ int do_traverse_skip_list(struct message msg) {
             strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
             strncpy(msg.data, "b", DATA_SIZE);
             msg.msg_size += 1;
-            forward_message(msg, 0);
+            send_message(msg);
         }
 
     } else if (strcmp(msg.data, "f") == 0) {
         if (forward) {
             get_node_ip(forward->leader[i], dst_ip);
             strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-            forward_message(msg, 0);
+            send_message(msg);
         }
 
     } else {
         if (backward) {
             get_node_ip(backward->leader[i], dst_ip);
             strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
-            forward_message(msg, 0);
+            send_message(msg);
         }
     }
 
@@ -837,7 +837,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "forward to %s\n", dst_ip);
         #endif
-		//forward_message(new_msg, 0);
+		//send_message(new_msg);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
             async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
@@ -853,11 +853,11 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "forward to %s\n", dst_ip);
         #endif
-		//forward_message(new_msg, 0);
+		//send_message(new_msg);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
             async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
-            //send_safe(socketfd, (void *) &new_msg, new_msg.msg_size, 0);
+            //send_data(socketfd, (void *) &new_msg, new_msg.msg_size);
         }
         
 	}
@@ -948,7 +948,7 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
     struct message msg;
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, RELOAD_RTREE, local_ip, dst_ip, "", "", 1, &msg);
-    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
 
     size_t cpy_len = sizeof(uint32_t);
     int total_len = 0; 
@@ -988,7 +988,7 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
-            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
             clock_gettime(CLOCK_REALTIME, &end);
             elasped += get_elasped_time(start, end);
 
@@ -999,7 +999,7 @@ int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
         }
     }
     if(cpy_len > sizeof(uint32_t)) {
-        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+        send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
     }
 	close(socketfd);
 
@@ -1049,7 +1049,7 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, LOAD_OCT_TREE_POINTS, local_ip, dst_ip, "", \
                  "", 1, &msg);
-    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
 
     // begin to send oct tree points to dst_ip
     
@@ -1092,7 +1092,7 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
-            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
             clock_gettime(CLOCK_REALTIME, &end);
             elasped += get_elasped_time(start, end);
 
@@ -1103,7 +1103,7 @@ int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
         }
     }
     if(cpy_len > sizeof(uint32_t)) {
-        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+        send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
     }
 	close(socketfd);
 
@@ -1139,7 +1139,7 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, LOAD_OCT_TREE_NODES, local_ip, dst_ip, "", \
                  "", 1, &msg);
-    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
 
     // begin to send oct tree points to dst_ip
     
@@ -1183,7 +1183,7 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
-            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
             clock_gettime(CLOCK_REALTIME, &end);
             elasped += get_elasped_time(start, end);
 
@@ -1194,7 +1194,7 @@ int send_oct_nodes(const char *dst_ip, hash_map<int, OctTNode *> &nodes) {
         }
     }
     if(cpy_len > sizeof(uint32_t)) {
-        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+        send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
     }
 	close(socketfd);
 
@@ -1230,7 +1230,7 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
     msg.msg_size = calc_msg_header_size() + 1;
     fill_message(msg.msg_size, LOAD_OCT_TREE_TRAJECTORYS, local_ip, dst_ip, \
                  "", "", 1, &msg);
-    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
     // begin to send oct tree points to dst_ip
     
     char buf[SOCKET_BUF_SIZE];
@@ -1273,7 +1273,7 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
             continue;
         } else {
             clock_gettime(CLOCK_REALTIME, &start);
-            send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+            send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
             clock_gettime(CLOCK_REALTIME, &end);
             elasped += get_elasped_time(start, end);
 
@@ -1284,7 +1284,7 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
         }
     }
     if(cpy_len > sizeof(uint32_t)) {
-        send_safe(socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+        send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
     }
 	close(socketfd);
 
@@ -1385,9 +1385,19 @@ int torus_split() {
     get_node_ip(new_node->info, dst_ip);
 
     // send to dst_ip
-    if (FALSE == send_data(CREATE_TORUS, dst_ip, buf, cpy_len)) {
+    struct message msg;
+    char local_ip[IP_ADDR_LENGTH];
+    memset(local_ip, 0, IP_ADDR_LENGTH);
+    if (FALSE == get_local_ip(local_ip)) {
         return FALSE;
     }
+    msg.msg_size = calc_msg_header_size() + cpy_len;
+    fill_message(msg.msg_size, CREATE_TORUS, local_ip, dst_ip, "", buf, cpy_len, &msg);
+    send_message(msg);
+
+    /*if (FALSE == send_data(CREATE_TORUS, dst_ip, buf, cpy_len)) {
+        return FALSE;
+    }*/
 
     // append new torus node info to the_torus at lower direction of dimension d
     add_neighbor_info(the_torus, 2*d, &new_node->info);
@@ -1634,11 +1644,11 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
                     strncpy(msg.dst_ip, dst_ip, IP_ADDR_LENGTH);
 
                     msg.msg_size = calc_msg_header_size() + cpy_len;
-                    //send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+                    //send_data(socketfd, (void *)&msg, msg.msg_size);
                     async_send_data(&g_conn_table[socketfd], (char *) &msg, msg.msg_size);
 
                     // get return points vector
-                    if(recv_safe(socketfd, buf, SOCKET_BUF_SIZE, 0) == SOCKET_BUF_SIZE) {
+                    if(recv_data(socketfd, buf, SOCKET_BUF_SIZE) == SOCKET_BUF_SIZE) {
                         ptr = buf;
                         memcpy(&has_point, ptr, sizeof(int));
                         ptr += sizeof(int);
@@ -1844,7 +1854,7 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
         cpy_len += sizeof(int);
 
         msg.msg_size = calc_msg_header_size() + cpy_len;
-        send_message(socketfd, msg);
+        send_data(socketfd, (void *)&msg, msg.msg_size);
 
         struct message reply_msg;
         if(TRUE == receive_message(socketfd, &reply_msg)) {
@@ -2052,7 +2062,7 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     fill_message(qry_msg.msg_size, CHECK_NN_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
     //TODO uncomment it
-    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &qry_msg, qry_msg.msg_size);
 
     if(traj_num == 0) {
         *avg_qp = 0.0;
@@ -2488,10 +2498,10 @@ int send_refinement_request(hash_map<IDTYPE, Traj*> &trajs, struct query_struct 
     len += sizeof(uint32_t);
 
     msg.msg_size = calc_msg_header_size() + len;
-    send_safe(socketfd, (void *)&msg, msg.msg_size, 0);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
 
     // begin to send points to idle_ip
-    send_safe(socketfd, (void *)data, data_size, 0);
+    send_data(socketfd, (void *)data, data_size);
     // release the buf's space
     free(data);
 
@@ -2526,7 +2536,7 @@ int send_throw_out_query_msg(struct query_struct query, struct refinement_stat o
     memcpy(notify_msg.data, &note, strlen(note) + 1);
 
     notify_msg.msg_size = calc_msg_header_size() + strlen(note) + 1;
-    send_safe(result_sockfd, (void *) &notify_msg, notify_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &notify_msg, notify_msg.msg_size);
     return TRUE;
 }
 
@@ -2668,7 +2678,7 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
         memcpy(msg.data, &fl_st, sizeof(struct filter_log_struct));
 
         msg.msg_size = calc_msg_header_size() + sizeof(struct filter_log_struct);
-        send_safe(result_sockfd, (void *) &msg, msg.msg_size, 0);
+        send_data(result_sockfd, (void *) &msg, msg.msg_size);
     } else {
         // TODO write filter phrase statistics to result node
     }
@@ -2892,7 +2902,7 @@ int operate_oct_tree(struct query_struct query, int hops) {
                 cpy_len += sizeof(coordinate);
 
                 msg.msg_size = calc_msg_header_size() + cpy_len;
-                send_safe(result_sockfd, (void *) &msg, msg.msg_size, 0);
+                send_data(result_sockfd, (void *) &msg, msg.msg_size);
 
                 max_hop = -1;
             }
@@ -2932,7 +2942,7 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
         if(length == 0) {
             // client nomally closed
             close_connection(conn);
@@ -3045,7 +3055,7 @@ int do_nn_query_refinement(connection_t conn, struct message msg) {
         memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
         res_msg.msg_size = calc_msg_header_size() + sizeof(struct refinement_log_struct);
-        send_safe(result_sockfd, (void *) &res_msg, res_msg.msg_size, 0);
+        send_data(result_sockfd, (void *) &res_msg, res_msg.msg_size);
     } else {
         // TODO write refinement phrase statistics to result node
     }
@@ -3081,7 +3091,7 @@ int receive_refinement_data(connection_t conn, uint32_t data_size, struct traj_s
     memset(buf, 0, data_size);
 
     while(loop){
-        length = recv_safe(conn->socketfd, buf, data_size, 0);
+        length = recv_data(conn->socketfd, buf, data_size);
         if(length <= 0) {
             close_connection(conn);
             loop = 0;
@@ -3213,7 +3223,7 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
     fill_message(qry_msg.msg_size, CHECK_RANGE_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
-    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &qry_msg, qry_msg.msg_size);
 
 
     // decrease current fvalue
@@ -3229,7 +3239,7 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
         memcpy(res_msg.data, &rfmt_st, sizeof(struct refinement_log_struct));
 
         res_msg.msg_size = calc_msg_header_size() + sizeof(struct refinement_log_struct);
-        send_safe(result_sockfd, (void *) &res_msg, res_msg.msg_size, 0);
+        send_data(result_sockfd, (void *) &res_msg, res_msg.msg_size);
     } else {
         // TODO write refinement phrase statistics to result node
     }
@@ -3250,7 +3260,7 @@ int do_load_oct_tree_points(connection_t conn, struct message msg) {
     int min_p_id = -1;
 
     while(loop) {
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
         if(length == 0) {
             // client nomally closed
             close_connection(conn);
@@ -3297,7 +3307,7 @@ int do_load_oct_tree_nodes(connection_t conn, struct message msg) {
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
         if(length == 0) {
             // client nomally closed
             close_connection(conn);
@@ -3359,7 +3369,7 @@ int do_load_oct_tree_trajectorys(connection_t conn, struct message msg) {
     memset(buf, 0, SOCKET_BUF_SIZE);
 
     while(loop) {
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
         if(length == 0) {
             // client nomally closed
             close_connection(conn);
@@ -3662,7 +3672,7 @@ int do_load_data(struct message msg) {
     memcpy(notify_msg.data, &note, strlen(note) + 1);
 
     notify_msg.msg_size = calc_msg_header_size() + strlen(note) + 1;
-    send_safe(result_sockfd, (void *) &notify_msg, notify_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &notify_msg, notify_msg.msg_size);
 
     return TRUE;
 }
@@ -3764,7 +3774,7 @@ void hand_on_query_to_neighbour(struct message msg, int direction, const char *d
     fill_message(msg.msg_size, (OP)msg.op, src_ip, dst_ip, stamp, \
                  msg.data, data_len, &new_msg);
 
-    send_safe(sockfd, (void *) &new_msg, new_msg.msg_size, 0);
+    send_data(sockfd, (void *) &new_msg, new_msg.msg_size);
 }
 
 void hand_on_query(struct message msg, struct query_struct query, int index) {
@@ -4040,7 +4050,7 @@ int do_check_system_status(struct message msg) {
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_SYSTEM_STATUS, the_torus->info.ip, \
                             result_ip, "", buf, cpy_len, &status_msg); 
-    send_safe(result_sockfd, (void *) &status_msg, status_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &status_msg, status_msg.msg_size);
     return TRUE;
 }
 
@@ -4091,7 +4101,7 @@ int do_check_insert_data(struct message msg) {
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_INSERT_DATA, the_torus->info.ip, \
                             result_ip, "", buf, cpy_len, &status_msg); 
-    send_safe(result_sockfd, (void *) &status_msg, status_msg.msg_size, 0);
+    send_data(result_sockfd, (void *) &status_msg, status_msg.msg_size);
     return TRUE;
 
 }
@@ -4156,7 +4166,7 @@ int do_query_end(connection_t conn, struct message msg) {
     char buf[SOCKET_BUF_SIZE], *ptr;
     memset(buf, 0, SOCKET_BUF_SIZE);
     while(loop) {
-        length = recv_safe(conn->socketfd, buf, SOCKET_BUF_SIZE, 0);
+        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
         if(length == 0) {
             // client nomally closed
             close_connection(conn);
@@ -4308,7 +4318,7 @@ int do_trajectory_query(connection_t conn, struct message msg) {
 
         delete[] package_ptr;
     }
-    send_safe(conn->socketfd, (void *)buf, SOCKET_BUF_SIZE, 0);
+    send_data(conn->socketfd, (void *)buf, SOCKET_BUF_SIZE);
     return TRUE;
 }
 int do_heartbeat(struct message msg) {
@@ -4372,7 +4382,7 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
                     memcpy(msg.data, &route_count, sizeof(int));
 
                     msg.msg_size = calc_msg_header_size() + sizeof(int);
-                    send_message(backward_sockfd, msg);
+                    send_data(backward_sockfd, (void *)&msg, msg.msg_size);
                     struct reply_message reply;
                     if(TRUE == receive_reply(backward_sockfd, &reply)) {
                         if (SUCCESS != reply.reply_code) {
@@ -4402,7 +4412,7 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
     }
 
     reply_msg.msg_size = calc_msg_header_size() + cpy_len;
-    send_message(conn->socketfd, reply_msg);
+    send_data(conn->socketfd, (void *)&reply_msg, reply_msg.msg_size);
     return TRUE;
 }
 
@@ -5060,7 +5070,7 @@ int send_node_status(const char *dst_ip, struct node_stat stat) {
     memcpy(msg.data, &stat, sizeof(struct node_stat));
 
     msg.msg_size = calc_msg_header_size() + sizeof(struct node_stat);
-    send_message(socketfd, msg);
+    send_data(socketfd, (void *)&msg, msg.msg_size);
     return TRUE;
 }
 

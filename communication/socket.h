@@ -55,8 +55,6 @@ typedef struct reply_message{
 	REPLY_CODE reply_code;
 }reply_message;
 
-// initial a socket address
-void init_socket_addr(struct sockaddr_in *socket_addr, int port);
 
 /* create a new client socket
  * return: socket file descriptor
@@ -76,36 +74,31 @@ int set_blocking(int socketfd);
 // accept a connection from client
 int accept_connection(int socketfd);
 
-int send_reply(int socketfd, struct reply_message reply_msg);
 
-int receive_reply(int socketfd, struct reply_message *reply_msg);
-
-int send_message(int socketfd, struct message msg);
+// get local ip address based on if_name(eth0, eth1...)
+int get_local_ip(char *ip);
 
 void fill_message(size_t msg_size,  OP op, const char *src_ip, \
                   const char *dst_ip, const char *stamp, const char *data, \
                   size_t data_len, message *msg);
 
-// forward message to  msg.dst_ip
-int forward_message(struct message msg, int need_reply);
-
-int receive_message(int socketfd, struct message *msg);
-
-// get local ip address based on if_name(eth0, eth1...)
-int get_local_ip(char *ip);
+size_t calc_msg_header_size();
 
 void print_message(struct message msg);
 
-size_t calc_msg_header_size();
+// send data, with socket fd
+int send_data(int socketfd, void *data, size_t len);
 
-int recv_safe(int socketfd, void *data, size_t len, int flags);
-int send_safe(int socketfd, void *data, size_t len, int flags);
+int recv_data(int socketfd, void *data, size_t len);
 
-// send info to dst_ip
-int send_data(OP op, const char *dst_ip, const char *data, size_t length);
+// send data, without socket fd
+int send_message(struct message msg);
 
-//int performance_test(char *entry_ip);
+int receive_message(int socketfd, struct message *msg);
 
+int send_reply(int socketfd, struct reply_message reply_msg);
+
+int receive_reply(int socketfd, struct reply_message *reply_msg);
 
 #endif /* SOCKET_SERVER_H_ */
 

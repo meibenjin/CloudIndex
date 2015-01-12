@@ -17,7 +17,7 @@
 #include<errno.h>
 
 #include "utils.h"
-#include "socket/socket.h"
+#include "communication/socket.h"
 
 int query_oct_tree(struct query_struct query, const char *entry_ip) {
 
@@ -44,7 +44,7 @@ int query_oct_tree(struct query_struct query, const char *entry_ip) {
 
     msg.msg_size = calc_msg_header_size() + cpy_len;
 
-    if(FALSE == forward_message(msg, 0)) {
+    if(FALSE == send_message(msg)) {
         return FALSE;
     }
 
@@ -115,7 +115,7 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             cpy_len += sizeof(struct query_struct);
 
             msg.msg_size = calc_msg_header_size() + cpy_len;
-            send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
+            send_data(socketfd, (void *) &msg, msg.msg_size);
             printf("%d\n", count);
             count++;
             usleep(time_gap * 1000);
@@ -143,7 +143,7 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
             cpy_len += sizeof(struct query_struct);
 
             msg.msg_size = calc_msg_header_size() + cpy_len;
-            send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
+            send_data(socketfd, (void *) &msg, msg.msg_size);
             if(count % time_gap == 0) {
                 printf("%d\n", count);
             }

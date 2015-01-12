@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "utils.h"
-#include "socket/socket.h"
+#include "communication/socket.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
@@ -44,7 +44,7 @@ int send_properties(struct global_properties_struct props, int cluster_id) {
         size_t data_len = sizeof(struct global_properties_struct);
         msg.msg_size = calc_msg_header_size() + data_len;
         fill_message(msg.msg_size, RELOAD_PROPERTIES, local_ip, dst_ip, "", (char *)&props, data_len, &msg);
-        send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
+        send_data(socketfd, (void *) &msg, msg.msg_size);
         printf("send reload properties message to torus node %s.\n", dst_ip);
         close(socketfd);
     }

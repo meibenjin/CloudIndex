@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "utils.h"
-#include "socket/socket.h"
+#include "communication/socket.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
@@ -44,7 +44,7 @@ int check_system_status(int cluster_id) {
         struct message msg;
         msg.msg_size = calc_msg_header_size() + 1;
         fill_message(msg.msg_size, CHECK_SYSTEM_STATUS, local_ip, dst_ip, "", "", 1, &msg);
-        send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
+        send_data(socketfd, (void *) &msg, msg.msg_size);
 
         printf("notify torus node %s to check system status.\n", dst_ip);
 

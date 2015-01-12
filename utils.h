@@ -33,6 +33,7 @@
 #define DATA_SIZE 10240 
 #define SOCKET_ERROR -1
 #define STAMP_SIZE 40 
+#define NO_SOCK -100
 
 //limits for index 
 #define MAX_DIM_NUM 3
