@@ -92,6 +92,7 @@
 
 #define CONN_MAXFD 500 
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
+#define INSTRUCTION_INTERVAL 10
 
 //#define INT_DATA
 //typedef int data_type;
@@ -189,8 +190,10 @@ typedef enum OP {
     CHECK_RANGE_QUERY,   // test range query feature
     CHECK_NN_QUERY,     // test nn query feature
     CHECK_CONN_BUFFER,
+    CHECK_TRAJ_SEQ,    // check the traj sequences
     QUERY_START,
-    QUERY_END
+    QUERY_END,
+    FLUSH_CONN_BUF  // instruction for flush connections buffer
 } OP;
 
 // interval of each dimension
@@ -316,11 +319,10 @@ typedef struct connection_st {
     int index; 
     // flag
     int used;
-    // time when this socket to be used; 
-    struct timespec enter_time;
     //read offset
     size_t roff;
     char rbuf[CONN_BUF_SIZE];
+    //write offset
     size_t woff;
     char wbuf[CONN_BUF_SIZE];
 }*connection_t;

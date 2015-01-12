@@ -125,6 +125,8 @@ void *compute_worker_monitor(void *args);
 
 void *heartbeat_worker(void *args);
 
+void *instruction_worker(void *args);
+
 // worker thread threads handler
 void *worker(void *args);
 

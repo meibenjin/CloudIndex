@@ -118,7 +118,7 @@ int Traj::printTraj() {
     OctPoint *cur_point;
     IDTYPE pid;
     IDTYPE head_id = this->t_head;
-    IDTYPE tail_id = this->t_tail;
+    //IDTYPE tail_id = this->t_tail;
     char buffer[DATA_SIZE];
     size_t cpy_len = 0;
 
@@ -131,11 +131,7 @@ int Traj::printTraj() {
                     cur_point->p_xyz[0], cur_point->p_xyz[1], cur_point->p_xyz[2]);
         }
         pid = cur_point->next;
-        if(pid == -1) {
-            write_log(ERROR_LOG, "printTraj:%d traj occurred error", this->t_id);
-            return FALSE;
-        }
-    }while(cur_point->next != tail_id);
+    }while(pid != NONE);
 
     cpy_len += sprintf(buffer + cpy_len, "\n");
     write_log(OCT_TREE_LOG, buffer);

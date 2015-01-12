@@ -41,6 +41,8 @@ extern "C" {
 
 OctTree *the_torus_oct_tree;
 
+static int insert_cnt = 0;
+
 // mark torus node is active or not 
 int should_run;
 
@@ -91,11 +93,14 @@ pthread_t compute_worker_monitor_thread;
 pthread_t fast_worker_monitor_thread;
 pthread_t worker_thread[WORKER_NUM];
 pthread_t heartbeat_thread;
+// used for send instruction to active connection 
+pthread_t instruction_thread;
 
 // mutex variables
 pthread_mutex_t mutex;
 pthread_mutex_t global_variable_mutex;
 pthread_mutex_t replica_mutex;
+//pthread_mutex_t connection_mutex;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 int result_sockfd;
@@ -111,6 +116,7 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
 double points_distance(struct point p1, struct point p2);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
+// thread safe
 int async_send_data(connection_t conn, const char *data, uint32_t data_len);
 int unpack_message_from_buffer(connection_t conn);
 int find_leader_sock(const char ip[]);
@@ -473,7 +479,7 @@ int do_create_torus(struct message msg) {
             // add this neighbor to server epoll
             struct epoll_event ev;
             set_nonblocking(sockfd);
-            ev.events = EPOLLOUT | EPOLLONESHOT;
+            ev.events = EPOLLOUT;
             ev.data.fd = sockfd;
             g_conn_table[sockfd].used = 1;
             g_conn_table[sockfd].index = index; 
@@ -486,6 +492,7 @@ int do_create_torus(struct message msg) {
     }
 
 
+    //TODO this should move to main
     //create long socket fd from current node to result collecter
     result_sockfd = new_client_socket(result_ip, MANUAL_WORKER_PORT);
     if(FALSE == sockfd) {
@@ -1710,20 +1717,45 @@ int oct_tree_insert(OctPoint *pt) {
 
 			// 找到所在Trajectory的尾部，并更新相关信息
 			Traj *tmp = g_TrajList.find(pt->p_tid)->second;
-			/*
-			 *near函数用来判断是否是同一个点，这一步用来压缩输入数据用
-			 if(pt->isNear(tmp->t_tail)){
-			 return;
-			 }
-			 */
-            if(g_PtList.find(tmp->t_tail) != g_PtList.end()){
-			    g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
-            }
-            else{
+
+            OctPoint *cur_point, *next_point;
+            IDTYPE cur_pid;
+            hash_map<IDTYPE, OctPoint*>::iterator pit;
+            pit = g_PtList.find(tmp->t_tail);
+            if(pit == g_PtList.end()) {
                 printNodes();
+                return FALSE;
             }
-            pt->pre = tmp->t_tail;
-			tmp->t_tail = pt->p_id;
+
+            cur_point = pit->second;
+            cur_pid = cur_point->p_id;
+            while(pt->p_xyz[2] < cur_point->p_xyz[2]) {
+                cur_pid = cur_point->pre;
+                if(cur_pid == NONE) {
+                    break;
+                }
+                pit = g_PtList.find(cur_pid);
+                cur_point = pit->second;
+            }
+
+            if(cur_pid != NONE && cur_pid != tmp->t_tail) {
+                next_point = g_PtList.find(cur_point->next)->second;
+                next_point->pre = pt->p_id;
+                cur_point->next = pt->p_id;
+                pt->next = next_point->p_id;
+                pt->pre = cur_point->p_id;
+            } else if( cur_pid != NONE && cur_pid == tmp->t_tail){
+                cur_point->next = pt->p_id;
+                pt->pre = tmp->t_tail;
+                tmp->t_tail = pt->p_id;
+
+            } else if(cur_pid == NONE) {
+                // if current point id is NULL means traj head
+                // note: current point now is traj traj tail
+                tmp->t_head = pt->p_id;
+                cur_point->pre = pt->p_id;
+                pt->next = cur_point->p_id;
+            }
             root->nodeInsert(pt);
             g_ptCount++;
 		}
@@ -2004,7 +2036,7 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         if(qp < 0) {
             qp = 0.0;
         }
-        if(cpy_len + 30 < DATA_SIZE) {
+        if(cpy_len + 100  < DATA_SIZE) {
             cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, t_id, qp);
         }
         total_qp += qp;
@@ -2020,7 +2052,7 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     fill_message(qry_msg.msg_size, CHECK_NN_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
     //TODO uncomment it
-    //send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
+    send_safe(result_sockfd, (void *) &qry_msg, qry_msg.msg_size, 0);
 
     if(traj_num == 0) {
         *avg_qp = 0.0;
@@ -2131,7 +2163,6 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
 }
 
 
-// TODO:important check this function
 int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs) {
     size_t i;
     hash_map<int, OctPoint *> traj_head; 
@@ -2523,13 +2554,12 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     hash_map<IDTYPE, Traj*> trajs;
     recreate_trajs(pt_vector, trajs);
 
-    hash_map<IDTYPE, Traj *>::iterator it;
+    /*hash_map<IDTYPE, Traj *>::iterator it;
     Traj* cur_traj;
     for(it = trajs.begin(); it != trajs.end(); ++it) {
         cur_traj = it->second;
         cur_traj->printTraj();
-    }
-    return TRUE;
+    }*/
 
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
@@ -2821,7 +2851,8 @@ int operate_oct_tree(struct query_struct query, int hops) {
             timespec start, end;
             clock_gettime(CLOCK_REALTIME, &start);
             oct_tree_insert(point);
-            if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
+            //if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
+            if(g_ptCount >= (int)the_torus->info.capacity) {
                 torus_split();
             }
             clock_gettime(CLOCK_REALTIME, &end);
@@ -3130,13 +3161,13 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
 
     for(i = 0; i < traj_num; i++) {
         double traj_qp = 1.0;
-        //if(traj_segs[i].t_id != 0) {
-            //if(traj_segs[i].pair_num == 0) {
-            //    continue;
-            //} else { 
+        if(traj_segs[i].t_id != 0) {
+            if(traj_segs[i].pair_num == 0) {
+                continue;
+            } else { 
                 for(j = 0; j < traj_segs[i].pair_num; j++) {
                    traj_qp *= (1.0 - calc_refinement(query.intval, traj_segs[i].start[j], traj_segs[i].end[j]));
-                   if(cpy_len + 100 < DATA_SIZE) {
+                   /*if(cpy_len + 100 < DATA_SIZE) {
                        cpy_len += sprintf(buffer + cpy_len, "%d,%d,[%.4lf %.4lf %.4lf],[%.4lf %.4lf %.4lf]\n", \
                                query.data_id, traj_segs[i].t_id,\
                                traj_segs[i].start[j].axis[0],\
@@ -3145,9 +3176,9 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
                                traj_segs[i].end[j].axis[0],\
                                traj_segs[i].end[j].axis[1],\
                                traj_segs[i].end[j].axis[2]);
-                   }
+                   }*/
                 }
-            //}
+            }
             // release the memory
             if(traj_segs[i].start != NULL) {
                 free(traj_segs[i].start);
@@ -3155,17 +3186,17 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
             if(traj_segs[i].end != NULL) {
                 free(traj_segs[i].end);
             }
-        //}
+        }
         traj_qp = 1.0 - traj_qp; 
-        /*if(cpy_len + 30 < DATA_SIZE) {
-            cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, traj_segs[i].t_id, traj_qp);
-        } */
+        if(cpy_len + 100 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "%d,%d,%lf\n", query.data_id, traj_segs[i].t_id, traj_qp);
+        }
         total_qp += traj_qp; 
     }
-    /*if(cpy_len == 0) {
+    if(cpy_len == 0 ) {
         cpy_len += sprintf(buffer + cpy_len, "%d\n", query.data_id);
-    } 
-    cpy_len += sprintf(buffer + cpy_len, "\n");*/
+    }
+    cpy_len += sprintf(buffer + cpy_len, "\n");
 
     if(traj_num == 0){
         rfmt_st.avg_qp = 0;
@@ -3539,7 +3570,6 @@ int do_query_torus_node(struct message msg) {
 	}*/
 	return TRUE;
 }
-
 
 int write_global_properties() {
     char buf[1024];
@@ -4023,6 +4053,15 @@ int do_write_system_status(struct message msg) {
     return TRUE;
 }
 
+int do_check_traj_seq(struct message msg) {
+    hash_map<IDTYPE, Traj*>::iterator tit;
+    for(tit = g_TrajList.begin(); tit != g_TrajList.end(); ++tit) {
+        Traj *traj = tit->second;
+        traj->printTraj();
+    }
+    return TRUE;
+}
+
 int do_check_conn_buffer(struct message msg) {
     int i;
     char buf[BUF_SIZE * 2];
@@ -4046,8 +4085,8 @@ int do_check_insert_data(struct message msg) {
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
     cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
-    int data_num = g_NodeList.find(1)->second->n_ptCount;
-    cpy_len += sprintf(buf + cpy_len, "torus data num:%d\n\n", data_num);
+    int data_num = g_ptCount;//g_NodeList.find(1)->second->n_ptCount;
+    cpy_len += sprintf(buf + cpy_len, "torus data num:%d,%d\n\n", data_num, insert_cnt);
 
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
     fill_message(status_msg.msg_size, WRITE_INSERT_DATA, the_torus->info.ip, \
@@ -4605,6 +4644,13 @@ int process_message(connection_t conn, struct message msg) {
         do_check_conn_buffer(msg);
         break;
 
+    case CHECK_TRAJ_SEQ:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request check connection buffer.\n");
+        #endif
+        do_check_traj_seq(msg);
+        break;
+
     case CHECK_INSERT_DATA:
         #ifdef WRITE_LOG
             write_log(TORUS_NODE_LOG, "receive request check insert data.\n");
@@ -4641,11 +4687,17 @@ int process_message(connection_t conn, struct message msg) {
         do_query_end(conn, msg);
         break;
 
+    case FLUSH_CONN_BUF:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive instruction flush connection buf.\n");
+        #endif
+        ; //do nothing
+        break;
+
 	default:
 		reply_code = (REPLY_CODE)WRONG_OP;
         break;
 	}
-
 
 	return TRUE;
 }
@@ -4775,9 +4827,6 @@ void *fast_worker_monitor(void *args) {
                 /* register conn_socket to worker-pool's 
                  * epoll, not the listen epoll*/
                 g_conn_table[conn_socket].used = 1;
-                
-                // record enter_time of coming connection
-                //clock_gettime(CLOCK_REALTIME, &g_conn_table[conn_socket].enter_time);
 
                 g_conn_table[conn_socket].index = index; 
                 g_conn_table[conn_socket].socketfd = conn_socket; 
@@ -4843,7 +4892,6 @@ void *manual_worker_monitor(void *args) {
 }
 
 void close_connection(connection_t conn) {
-    //if(conn->used != 0) {
     struct epoll_event ev;
     conn->used = 0;
     conn->roff = 0;
@@ -4914,11 +4962,11 @@ void *worker(void *args){
                         continue;
                     }
 
-                    if(conn->used != 0) {
+                    /*if(conn->used != 0) {
                         ev.events = EPOLLOUT | EPOLLONESHOT;
                         ev.data.fd = conn_socket;
                         epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                    }
+                    }*/
                 } else {
                     //it won't happen for now
                     //TODO handle EPOLLOUT event which epoll is compute_worker 
@@ -5046,6 +5094,29 @@ void *heartbeat_worker(void *args){
     return NULL;
 }
 
+int send_flush_buf_instruction() {
+    int i;
+    struct message msg;
+    msg.msg_size = calc_msg_header_size() + 1;
+    fill_message(msg.msg_size, FLUSH_CONN_BUF, "", "", "", "", 1, &msg);
+    for(i = 0; i < CONN_MAXFD; i++) {
+        connection_t conn = &g_conn_table[i];
+        if(conn->used == 1) {
+            async_send_data(conn, (char *) &msg, msg.msg_size);
+        }
+    }
+    return TRUE;
+}
+
+void *instruction_worker(void *args){
+    while(should_run) {
+        //send heart beat
+        send_flush_buf_instruction();
+        sleep(INSTRUCTION_INTERVAL);
+    }
+    return NULL;
+}
+
 void init_conn_table() {
     int i;
     for(i = 0; i < CONN_MAXFD; i++) {
@@ -5137,6 +5208,7 @@ int main(int argc, char **argv) {
     pthread_mutex_init(&global_variable_mutex, NULL);
 
     pthread_mutex_init(&replica_mutex, NULL);
+    //pthread_mutex_init(&connection_mutex, NULL);
 
     // create two server socket to process different kind of requests
 	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
@@ -5198,6 +5270,9 @@ int main(int argc, char **argv) {
     // create heartbeat thread to send status info
     pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
+    //pthread_create(&instruction_thread, NULL, instruction_worker, NULL);
+
+    //pthread_join(instruction_thread, NULL);
     pthread_join(heartbeat_thread, NULL);
     pthread_join(fast_worker_monitor_thread, NULL);
     pthread_join(compute_worker_monitor_thread, NULL);

@@ -1,5 +1,5 @@
 /*
- * test_insert_data.c
+ * test_system_status.c
  *
  *  Created on: July 30, 2014
  *      Author: meibenjin
@@ -16,7 +16,7 @@
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
-int check_insert_data(int cluster_id) {
+int check_traj_seq(int cluster_id) {
     int i;
     int socketfd;
     //get torus partition
@@ -43,10 +43,10 @@ int check_insert_data(int cluster_id) {
         // basic packet to be sent
         struct message msg;
         msg.msg_size = calc_msg_header_size() + 1;
-        fill_message(msg.msg_size, CHECK_INSERT_DATA, local_ip, dst_ip, "", "", 1, &msg);
+        fill_message(msg.msg_size, CHECK_TRAJ_SEQ, local_ip, dst_ip, "", "", 1, &msg);
         send_safe(socketfd, (void *) &msg, msg.msg_size, 0);
 
-        printf("notify torus node %s to check insert data feature.\n", dst_ip);
+        printf("notify torus node %s to check traj sequence.\n", dst_ip);
 
         close(socketfd);
     }
@@ -70,7 +70,7 @@ int main(int argc, char const* argv[]) {
     }
 
     int cluster_id = atoi(argv[1]);
-    check_insert_data(cluster_id);
+    check_traj_seq(cluster_id);
     return 0;
 }
 
