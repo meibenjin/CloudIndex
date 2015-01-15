@@ -1,5 +1,5 @@
 /*
- * socket_server.c
+ * socket.c
  *
  *  Created on: Sep 12, 2013
  *      Author: meibenjin
@@ -178,30 +178,6 @@ int get_local_ip(char *ip) {
 	return ret;
 }
 
-
-void fill_message(size_t msg_size, OP op, const char *src_ip, \
-                  const char *dst_ip, const char *stamp, const char *data, \
-                  size_t data_len, struct message *msg)
-{
-    msg->msg_size = msg_size;
-	msg->op = op;
-	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
-	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
-	strncpy(msg->stamp, stamp, STAMP_SIZE);
-	memcpy(msg->data, data, data_len);
-}
-
-size_t calc_msg_header_size() {
-    size_t size = sizeof(size_t) + sizeof(enum OP) + 2 * IP_ADDR_LENGTH + STAMP_SIZE; 
-    return size; 
-}
-
-void print_message(struct message msg) {
-	printf("op:%d\n", msg.op);
-	printf("src:%s\n", msg.src_ip);
-	printf("dst:%s\n", msg.dst_ip);
-}
-
 int send_data(int socketfd, void *data, size_t len) {
     size_t nsend = 0;
     int isend = -1;
@@ -245,74 +221,6 @@ int recv_data(int socketfd, void *data, size_t len) {
     return nrecv;
 }
 
-int send_message(struct message msg) {
-	int socketfd;
-	socketfd = new_client_socket(msg.dst_ip, MANUAL_WORKER_PORT);
-	if (FALSE == socketfd) {
-		printf("send_message: create socket failed.\n");
-		return FALSE;
-	}
-
-	if (SOCKET_ERROR
-			== send(socketfd, (void *) &msg, msg.msg_size, 0)) {
-		// TODO do something if send failed
-		printf("send_message: %s send message failed.\n", msg.src_ip);
-		return FALSE;
-	}
-	return TRUE;
-}
-
-int receive_message(int socketfd, struct message *msg) {
-	if (msg == NULL) {
-		printf("receive_message: msg is null pointer.\n");
-		return FALSE;
-	}
-
-    // get message k
-    size_t msg_size;
-	ssize_t recv_len = -1;
-    recv_len = recv_data(socketfd, (void *) &msg_size, sizeof(msg_size));
-    if(recv_len <= 0) {
-		return FALSE;
-    }
-    msg->msg_size = msg_size;
-
-    recv_len = -1;
-	recv_len = recv_data(socketfd, ((void *) msg) + sizeof(msg_size), msg_size - sizeof(msg_size));
-	if (recv_len <= 0) {
-		//fprintf(stderr, "%s: recv()\n", strerror(errno));
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-int send_reply(int socketfd, struct reply_message reply_msg) {
-	if (SOCKET_ERROR
-			== send(socketfd, (void *)&reply_msg, sizeof(struct reply_message),
-					0)) {
-		// TODO do something if send failed
-		printf("send_reply: send reply failed.\n");
-		return FALSE;
-	}
-	return TRUE;
-}
-
-int receive_reply(int socketfd, struct reply_message *reply_msg) {
-	if (reply_msg == NULL) {
-		printf("receive_reply: reply_msg is null pointer.\n");
-		return FALSE;
-	}
-
-	ssize_t recv_len = -1;
-	recv_len = recv(socketfd, reply_msg, sizeof(struct reply_message), 0);
-	if (recv_len <= 0) {
-		fprintf(stderr, "%s: recv()\n", strerror(errno));
-		return FALSE;
-	}
-
-	return TRUE;
-}
 
 
 

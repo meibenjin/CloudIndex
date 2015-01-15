@@ -16,7 +16,9 @@
 #include"control.h"
 #include"torus_node/torus_node.h"
 #include"communication/socket.h"
+#include"communication/message.h"
 #include"skip_list/skip_list.h"
+#include "utils/geometry.h"
 #include"config/config.h"
 
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");

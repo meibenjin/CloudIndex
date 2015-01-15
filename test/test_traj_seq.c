@@ -13,6 +13,7 @@
 
 #include "utils.h"
 #include "communication/socket.h"
+#include "communication/message.h"
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 

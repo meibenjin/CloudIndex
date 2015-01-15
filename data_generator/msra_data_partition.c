@@ -14,6 +14,7 @@
 
 #include "config/config.h"
 #include "torus_node/torus_node.h"
+#include "utils/geometry.h"
 #include "skip_list/skip_list.h"
 
 leaders_info leaders[MAX_NODES_NUM];

@@ -9,6 +9,9 @@
 #define TORUS_NODE_H_
 
 #include"utils.h"
+#include "utils/geometry.h"
+
+/***********************************************************************/
 
 void init_node_info(node_info *node_ptr);
 

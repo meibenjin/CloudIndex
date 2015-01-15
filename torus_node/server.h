@@ -10,7 +10,6 @@
 
 #include"utils.h"
 
-
 // torus server request list
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 struct request *new_request();

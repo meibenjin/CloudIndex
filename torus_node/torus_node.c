@@ -98,22 +98,6 @@ int set_interval(node_info *node_ptr, torus_partitions tp, const interval data_r
     node_ptr->region[2].low = time_region.low + dim_intval * pc.z;
     node_ptr->region[2].high = node_ptr->region[2].low + dim_intval;
 	return TRUE;
-
-    /*char range_file[MAX_FILE_NAME];
-    snprintf(range_file, MAX_FILE_NAME, "%s/r%d_%d%d%d", DATA_DIR, c_id, pc.x, pc.y, pc.z);
-    FILE *fp = fopen(range_file, "rb");
-    if(fp == NULL) {
-        printf("can't open range file %s\n", range_file);
-        return FALSE;
-    }
-    for (i = 0; i < MAX_DIM_NUM; i++) {
-        #ifdef INT_DATA
-            fscanf(fp, "%d\t%d", &node_ptr->region[i].low, &node_ptr->region[i].high);
-        #else
-            fscanf(fp, "%lf\t%lf", &node_ptr->region[i].low, &node_ptr->region[i].high);
-        #endif
-    }
-    fclose(fp);*/
 }
 
 void set_node_capacity(node_info *info_ptr, int c) {

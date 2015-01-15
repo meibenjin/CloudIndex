@@ -23,6 +23,8 @@ extern "C" {
 #include"torus_node/torus_node.h"
 #include"skip_list/skip_list.h"
 #include"communication/socket.h"
+#include"communication/message.h"
+#include"utils/geometry.h"
 #include"config/config.h"
 }; 
 
@@ -40,6 +42,7 @@ extern "C" {
  * some are used for torus nodes, and some used for both two */
 
 OctTree *the_torus_oct_tree;
+ISpatialIndex* the_torus_rtree;
 
 static int insert_cnt = 0;
 
@@ -51,7 +54,6 @@ struct node_stat the_node_stat = {"", 0};
 struct skip_list *the_skip_list;
 node_info the_torus_leaders[LEADER_NUM];
 struct torus_partitions the_partition;
-ISpatialIndex* the_torus_rtree;
 
 // if current torus node is a leader node(this means it is a skip list node)
 // create socket for this node to it's forward and backward neighbor at every level 
@@ -332,7 +334,6 @@ int do_traverse_torus(struct message msg) {
 		printf("traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
 
         #ifdef WRITE_LOG
-            //write log
             write_log(TORUS_NODE_LOG, "traverse torus: %s -> %s\n", msg.src_ip, msg.dst_ip);
         #endif
 
@@ -2070,15 +2071,6 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         *avg_qp = total_qp / traj_num;
     }
     return TRUE;
-}
-
-double points_distance(struct point p1, struct point p2) {
-    double distance = 0;
-    int i;
-    for(i = 0; i < MAX_DIM_NUM; i++) {
-        distance += (p1.axis[i] - p2.axis[i]) * (p1.axis[i] - p2.axis[i]); 
-    }
-    return sqrt(distance);
 }
 
 int Comp(const void *p1,const void *p2, void *p0){

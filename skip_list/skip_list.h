@@ -10,20 +10,6 @@
 
 #include"utils.h"
 
-int overlaps(interval c[], interval o[]);
-
-int point_contain(point p, interval o[]);
-
-int line_intersect(interval o[], point start, point end);
-int line_contain(interval o[], point start, point end);
-
-data_type get_distance(interval c, interval o);
-
-// compare two torus_node by time interval
-int compare(interval cinterval, interval ointerval);
-
-int interval_overlap(interval cinterval, interval ointerval);
-
 // random choose the skip list level
 int random_level();
 
@@ -50,6 +36,5 @@ void print_skip_list(skip_list *slist);
 void print_skip_list_node(skip_list *slist);
 
 #endif /* SKIP_LIST_H_ */
-
 
 

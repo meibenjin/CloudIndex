@@ -95,10 +95,6 @@
 #define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
 #define INSTRUCTION_INTERVAL 10
 
-//#define INT_DATA
-//typedef int data_type;
-typedef double data_type;
-
 // operation for oct_tree
 #define DATA_INSERT 1
 #define DATA_DELETE 0
@@ -125,6 +121,22 @@ extern double           ESTIMATE_NN_QUERY_COEFFICIENT;
 extern int              ACTIVE_LEADER_NUM;
 extern int              FIXED_IDLE_NODE_NUM;
 
+//#define INT_DATA
+//typedef int data_type;
+typedef double data_type;
+
+// interval of each dimension
+typedef struct interval {
+	data_type low;
+	data_type high;
+} interval;
+
+// a MAX_DIM_NUM dimension point
+typedef struct point {
+    data_type axis[MAX_DIM_NUM];
+}point;
+
+
 
 // 3-dimension coordinate
 typedef struct coordinate {
@@ -132,11 +144,6 @@ typedef struct coordinate {
 	int y;
 	int z;
 } coordinate;
-
-
-typedef struct point {
-    data_type axis[MAX_DIM_NUM];
-}point;
 
 typedef struct traj_point {
     struct point p;
@@ -197,12 +204,6 @@ typedef enum OP {
     FLUSH_CONN_BUF  // instruction for flush connections buffer
 } OP;
 
-// interval of each dimension
-typedef struct interval {
-	data_type low;
-	data_type high;
-} interval;
-
 // torus node info 
 typedef struct node_info {
 	// torus node ip address
@@ -221,12 +222,6 @@ typedef struct node_info {
 
 } node_info;
 
-// torus neighbors node information
-struct neighbor_node{
-    struct node_info *info;
-    struct neighbor_node *next;
-};
-
 typedef struct torus_node {
 	// torus node info
 	struct node_info info;
@@ -241,6 +236,14 @@ typedef struct torus_node {
     struct neighbor_node *neighbors[DIRECTIONS]; 
 
 } torus_node;
+
+
+
+// torus neighbors node information
+struct neighbor_node{
+    struct node_info *info;
+    struct neighbor_node *next;
+};
 
 //skip list node structure
 typedef struct skip_list_node {

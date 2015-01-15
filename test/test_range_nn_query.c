@@ -18,6 +18,7 @@
 
 #include "utils.h"
 #include "communication/socket.h"
+#include"communication/message.h"
 
 int query_oct_tree(struct query_struct query, const char *entry_ip) {
 
