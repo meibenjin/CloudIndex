@@ -97,12 +97,6 @@ long get_elasped_time(struct timespec start, struct timespec end);
  */
 int process_message(connection_t conn, struct message msg);
 
-// create a new server instance
-int new_server(int port);
-
-// close a connection
-void close_connection(connection_t conn);
-
 /*
  * read message size from ptr_buf + beg
  * return message size if roff - beg >= sizeof(size_t) 
@@ -110,28 +104,8 @@ void close_connection(connection_t conn);
  */
 size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff);
 
-// handle epoll read event
-int handle_read_event(connection_t conn);
-
-// handle epoll write event
-int handle_write_event(connection_t conn);
-
-// manual worker monitor thread handler
-void *manual_worker_monitor(void *args);
-
-// compute worker monitor thread handler
-void *compute_worker_monitor(void *args);
-
-void *heartbeat_worker(void *args);
-
-void *instruction_worker(void *args);
-
-// worker thread threads handler
-void *worker(void *args);
-
 void send_heartbeat();
-
-void init_conn_table();
+void *heartbeat_worker(void *args);
 
 double calc_refinement(struct interval region[], point start, point end);
 
@@ -142,6 +116,12 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
 int local_oct_tree_nn_query(struct interval region[], double low[], double high[]);
 
 int local_oct_tree_range_query(struct query_struct query, double low[], double high[]);
+
+// implement connection manager's read event function 
+int handle_read_event(connection_t conn);
+
+// implement connection manager's write event function 
+int handle_write_event(connection_t conn);
 
 #endif /* SERVER_H_ */
 

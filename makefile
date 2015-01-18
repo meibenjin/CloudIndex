@@ -28,8 +28,8 @@ all: control start-node data_generator data_split query_split query_sim data_par
 control:log.o utils.o geometry.o control.o torus-node.o socket.o message.o skip-list.o config.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
 
-start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o skip-list.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
-	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
+start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o conn_manager.o skip-list.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
+	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 
 data_generator:log.o utils.o data_generator.o socket.o message.o config.o torus-node.o 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
@@ -77,6 +77,9 @@ socket.o:
 
 message.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/message.c -I$(VPATH)
+
+conn_manager.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/connection_mgr.c -I$(VPATH)
 
 cqueue.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CQUEUEDIR)/cqueue.c -I$(VPATH)

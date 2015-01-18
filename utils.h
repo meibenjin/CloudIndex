@@ -316,21 +316,6 @@ typedef struct query_struct {
     interval intval[MAX_DIM_NUM];
 } query_struct;
 
-// struct connections
-typedef struct connection_st {
-    int socketfd;
-    // which epoll fd this conn belongs to
-    int index; 
-    // flag
-    int used;
-    //read offset
-    size_t roff;
-    char rbuf[CONN_BUF_SIZE];
-    //write offset
-    size_t woff;
-    char wbuf[CONN_BUF_SIZE];
-}*connection_t;
-
 // status of current torus node
 // only max_wait_time now
 typedef struct node_stat {

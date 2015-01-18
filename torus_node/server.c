@@ -10,13 +10,13 @@ __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
-#include<sys/time.h>
 #include<time.h>
 #include<unistd.h>
 #include<math.h>
-#include<sys/epoll.h>
 #include<pthread.h>
 #include<errno.h>
+#include<sys/time.h>
+#include<sys/epoll.h>
 
 extern "C" {
 #include"logs/log.h"
@@ -24,6 +24,7 @@ extern "C" {
 #include"skip_list/skip_list.h"
 #include"communication/socket.h"
 #include"communication/message.h"
+#include"communication/connection_mgr.h"
 #include"utils/geometry.h"
 #include"config/config.h"
 }; 
@@ -67,42 +68,13 @@ struct socket_st leader_sock[LEADER_NUM];
 struct socket_st neighbor_sock[MAX_NEIGHBORS];
 int neighbor_sock_num;
 
-// connections queue 
-struct connection_st g_conn_table[CONN_MAXFD];
-
-// worker epoll fds
-// these epoll fds handle ready connections from client
-int worker_epfd[EPOLL_NUM];
-
-// socket for accept query requests from client
-// this socket accept those requests that will cost
-// some cpu resource
-int manual_worker_socket;
-
-// socket for accept compute or data transform task from client
-// this socket accept those requests that will
-// transform some data and process some time-cost task 
-int compute_worker_socket;
-
-// socket for accept fast requests from client
-// this socket used to accept those requests that 
-// need to be processed or replied immediately
-int fast_worker_socket;
-
-// multiple threads in torus node
-pthread_t manual_worker_monitor_thread;
-pthread_t compute_worker_monitor_thread;
-pthread_t fast_worker_monitor_thread;
-pthread_t worker_thread[WORKER_NUM];
-pthread_t heartbeat_thread;
-// used for send instruction to active connection 
-pthread_t instruction_thread;
+// connections manager 
+connection_mgr_t the_conn_mgr = NULL;
 
 // mutex variables
 pthread_mutex_t mutex;
 pthread_mutex_t global_variable_mutex;
 pthread_mutex_t replica_mutex;
-//pthread_mutex_t connection_mutex;
 
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
 int result_sockfd;
@@ -478,14 +450,14 @@ int do_create_torus(struct message msg) {
             neighbor_sock_num++;
 
             // add this neighbor to server epoll
-            struct epoll_event ev;
             set_nonblocking(sockfd);
-            ev.events = EPOLLOUT;
-            ev.data.fd = sockfd;
-            g_conn_table[sockfd].used = 1;
-            g_conn_table[sockfd].index = index; 
-            g_conn_table[sockfd].socketfd = sockfd; 
-            epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, sockfd, &ev);
+            connection_t conn = &(the_conn_mgr->conn_table[sockfd]);
+            set_connection_info(conn, sockfd, index, 1);
+            int ret = register_to_worker_epoll(index, sockfd, EPOLLOUT | EPOLLONESHOT);
+            if(FALSE == ret) {
+                write_log(ERROR_LOG, "do_create_torus: add neighbor socket to worker epoll failed.\n");
+                return FALSE;
+            }
 
             index = (index + 1) % MANUAL_WORKER;
         }
@@ -841,7 +813,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
 		//send_message(new_msg);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
-            async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+            async_send_data(&the_conn_mgr->conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
         }
 	}
 	if (upper_neighbor != NULL) {
@@ -857,7 +829,7 @@ int forward_search(int op, struct interval intval[], struct message msg, int d) 
 		//send_message(new_msg);
         socketfd = find_neighbor_sock(dst_ip);
         if(FALSE != socketfd) {
-            async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+            async_send_data(&the_conn_mgr->conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
             //send_data(socketfd, (void *) &new_msg, new_msg.msg_size);
         }
         
@@ -1232,8 +1204,8 @@ int send_oct_trajectorys(const char *dst_ip, hash_map<IDTYPE, Traj *> &trajs) {
     fill_message(msg.msg_size, LOAD_OCT_TREE_TRAJECTORYS, local_ip, dst_ip, \
                  "", "", 1, &msg);
     send_data(socketfd, (void *)&msg, msg.msg_size);
+
     // begin to send oct tree points to dst_ip
-    
     char buf[SOCKET_BUF_SIZE];
     memset(buf, 0, SOCKET_BUF_SIZE);
 
@@ -1646,7 +1618,7 @@ int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vecto
 
                     msg.msg_size = calc_msg_header_size() + cpy_len;
                     //send_data(socketfd, (void *)&msg, msg.msg_size);
-                    async_send_data(&g_conn_table[socketfd], (char *) &msg, msg.msg_size);
+                    async_send_data(&the_conn_mgr->conn_table[socketfd], (char *) &msg, msg.msg_size);
 
                     // get return points vector
                     if(recv_data(socketfd, buf, SOCKET_BUF_SIZE) == SOCKET_BUF_SIZE) {
@@ -3445,7 +3417,7 @@ int replicate_data(struct message msg) {
 
             socketfd = find_neighbor_sock(dst_ips[i]);
             if(FALSE != socketfd) {
-                async_send_data(&g_conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
+                async_send_data(&the_conn_mgr->conn_table[socketfd], (char *) &new_msg, new_msg.msg_size);
             }
 
         }
@@ -4070,7 +4042,7 @@ int do_check_conn_buffer(struct message msg) {
     memset(buf, 0, BUF_SIZE * 2);
     size_t cpy_len = 0;
     for(i = 0; i < CONN_MAXFD; i++) {
-        connection_t conn = &g_conn_table[i];
+        connection_t conn = &the_conn_mgr->conn_table[i];
         if(conn->used == 1) {
             cpy_len += sprintf(buf + cpy_len, "%d,%lu,%lu\n", i, conn->roff, conn->woff);
         }
@@ -4704,15 +4676,6 @@ int process_message(connection_t conn, struct message msg) {
 	return TRUE;
 }
 
-int new_server(int port) {
-	int server_socket;
-	server_socket = new_server_socket(port);
-	if (server_socket == FALSE) {
-		return FALSE;
-	}
-	return server_socket;
-}
-
 size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
     if(beg + sizeof(size_t) > roff) {
         return 0;
@@ -4720,185 +4683,6 @@ size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
     size_t msg_size;
     memcpy(&msg_size, (void *)(ptr_buf + beg), sizeof(size_t));
     return msg_size;
-}
-
-int unpack_message_from_buffer(connection_t conn) {
-    size_t beg = 0;
-
-    // msg_size = 0 means can't get complete message
-    size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-    if(msg_size > 0) {
-        struct message msg;
-        while(beg + msg_size <= conn->roff) {
-            memcpy(&msg, conn->rbuf + beg, msg_size);
-            beg = beg + msg_size;
-            process_message(conn, msg);
-            msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-            if(msg_size == 0) {
-                break;
-            }
-        }
-    }
-    size_t remained = conn->roff - beg;
-    if( beg > 0) {
-        memmove(conn->rbuf, conn->rbuf + beg, remained);
-    }
-    conn->roff = remained;
-    return TRUE;
-}
-
-int handle_read_event(connection_t conn) {
-    if(conn->roff == CONN_BUF_SIZE) {
-        unpack_message_from_buffer(conn);
-    }
-    int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
-    if(ret > 0) {
-        conn->roff += ret;
-        unpack_message_from_buffer(conn);
-    } else if(ret == 0){
-        return FALSE;
-    } else {
-        if(errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "handle_read_event: socket error, %s\n", strerror(errno));
-            return FALSE;
-        }
-        write_log(ERROR_LOG, "handle_read_event: error occerred, %s\n", strerror(errno));
-    }
-    return TRUE;
-}
-
-int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
-    while(conn->woff + data_len > CONN_BUF_SIZE) {
-        handle_write_event(conn);
-    }
-    memcpy(conn->wbuf + conn->woff, data, data_len);
-    conn->woff += data_len;
-    handle_write_event(conn);
-    return TRUE;
-}
-
-int handle_write_event(connection_t conn) {
-    if (conn->woff == 0) {
-        return TRUE;
-    }
-    int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
-    if (ret < 0) {
-        if (errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "handle_write_event: socket error, %s\n", strerror(errno));
-            return FALSE;
-        }
-        write_log(ERROR_LOG, "handle_write_event: error occerred, %s\n", strerror(errno));
-    } else {
-        int remained = conn->woff - ret;
-        if (remained > 0) {
-            memmove(conn->wbuf, conn->wbuf + ret, remained);
-        }
-        conn->woff = remained;
-    }
-    return TRUE;
-}
-
-void *fast_worker_monitor(void *args) {
-	// add fast_worker_listener 
-	int epfd;
-	struct epoll_event ev, events[MAX_EVENTS];
-	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = fast_worker_socket;
-	ev.events = EPOLLIN;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, fast_worker_socket, &ev);
-
-	int nfds;
-    int conn_socket;
-
-    // fast worker index from MANUAL_WORKER ~ (MANUAL_WORKER + FAST_WORKER - 1)
-    int index = MANUAL_WORKER;
-    int i;
-	while(should_run) {
-		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
-		for(i = 0; i < nfds; i++) {
-            while((conn_socket = accept_connection(fast_worker_socket)) > 0) {
-                if(conn_socket > CONN_MAXFD) {
-                    // TODO handle conn_socket fd exceed CONN_MAXFD
-                    write_log(ERROR_LOG, "faster_worker_monitor: conn_socket exceed CONN_MAXFD.\n");
-                    close(conn_socket);
-                }
-                set_nonblocking(conn_socket);
-                ev.events = EPOLLIN | EPOLLONESHOT;
-                ev.data.fd = conn_socket;
-
-                /* register conn_socket to worker-pool's 
-                 * epoll, not the listen epoll*/
-                g_conn_table[conn_socket].used = 1;
-
-                g_conn_table[conn_socket].index = index; 
-                g_conn_table[conn_socket].socketfd = conn_socket; 
-                epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
-
-                index = (index + 1) % (MANUAL_WORKER + FAST_WORKER);
-                if(index == 0) {
-                    index = MANUAL_WORKER;
-                }
-            }
-		} 
-	}
-
-    close(epfd);
-    return NULL;
-}
-
-
-void *manual_worker_monitor(void *args) {
-	// add manual_worker_listener 
-	int epfd;
-	struct epoll_event ev, events[MAX_EVENTS];
-	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = manual_worker_socket;
-	ev.events = EPOLLIN;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, manual_worker_socket, &ev);
-
-	int nfds;
-    int conn_socket;
-
-    // manual worker index from 0 ~ MANUAL_WORKER - 1
-    int index = 0;
-    int i;
-
-	while(should_run) {
-		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
-		for(i = 0; i < nfds; i++) {
-        //if(nfds > 0) {
-            while((conn_socket = accept_connection(manual_worker_socket)) > 0) {
-                if(conn_socket > CONN_MAXFD) {
-                    // TODO handle conn_socket fd overhead CONN_MAXFD
-                    write_log(ERROR_LOG, "manual_worker_monitor: conn_socket exceed CONN_MAXFD.\n");
-                    close(conn_socket);
-                }
-                set_nonblocking(conn_socket);
-                ev.events = EPOLLIN | EPOLLONESHOT;
-                ev.data.fd = conn_socket;
-
-                /* register conn_socket to worker-pool's 
-                 * epoll, not the listen epoll*/
-                g_conn_table[conn_socket].used = 1;
-                g_conn_table[conn_socket].index = index; 
-                g_conn_table[conn_socket].socketfd = conn_socket; 
-                epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
-
-                index = (index + 1) % MANUAL_WORKER;
-            }
-		} 
-	}
-
-    close(epfd);
-    return NULL;
-}
-
-void close_connection(connection_t conn) {
-    struct epoll_event ev;
-    conn->used = 0;
-    conn->roff = 0;
-    epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
-    close(conn->socketfd);
 }
 
 void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op) {
@@ -4911,131 +4695,6 @@ void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query,
     pthread_mutex_unlock(&global_variable_mutex);
 }
 
-
-void *worker(void *args){
-    int epfd = *(int *)args;
-
-	struct epoll_event events[MAX_EVENTS], ev;
-
-    int i, nfds;
-    struct message msg;
-    int conn_socket;
-    connection_t conn;
-
-	while(should_run) {
-		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
-		for(i = 0; i < nfds; i++) {
-        //if(nfds > 0) {
-            if (events[i].events && EPOLLIN) {
-				conn_socket = events[i].data.fd;
-
-                conn = &g_conn_table[conn_socket];
-
-                // handle manual task (connection closed here)
-                if(conn->index < (MANUAL_WORKER + FAST_WORKER)) {
-                    if(FALSE == handle_read_event(conn)) {
-                        close_connection(conn);
-                        continue;
-                    }
-                    if(conn->used != 0) {
-                        ev.events = EPOLLIN | EPOLLONESHOT;
-                        ev.data.fd = conn_socket;
-                        epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                    }
-                } else {
-                    // handle compute task (connection closed by receiver)
-                    memset(&msg, 0, sizeof(struct message));
-
-                    // receive message through the conn_socket
-                    if (TRUE == receive_message(conn->socketfd, &msg)) {
-                        process_message(conn, msg);
-                    } else {
-                        write_log(ERROR_LOG, "receive compute task request failed.\n");
-                        close_connection(conn);
-                    }
-                }
-			} else if(events[i].events && EPOLLOUT) {
-				conn_socket = events[i].data.fd;
-                conn = &g_conn_table[conn_socket];
-                // handle manual task (connection closed here)
-                if(conn->index < (MANUAL_WORKER + FAST_WORKER)) {
-                    if(FALSE == handle_write_event(conn)) {
-                        close_connection(conn);
-                        continue;
-                    }
-
-                    /*if(conn->used != 0) {
-                        ev.events = EPOLLOUT | EPOLLONESHOT;
-                        ev.data.fd = conn_socket;
-                        epoll_ctl(epfd, EPOLL_CTL_MOD, conn->socketfd, &ev);
-                    }*/
-                } else {
-                    //it won't happen for now
-                    //TODO handle EPOLLOUT event which epoll is compute_worker 
-                    write_log(ERROR_LOG, "unexpect EPOLLOUT event.\n");
-                }
-
-            } else if(events[i].events && EPOLLRDHUP) {
-				conn_socket = events[i].data.fd;
-                connection_t conn = &g_conn_table[conn_socket];
-                close_connection(conn);
-            } 
-
-		}
-	}
-
-    return NULL;
-}
-
-void *compute_worker_monitor(void *args) {
-	// listen epoll
-	int epfd;
-	struct epoll_event ev, events[MAX_EVENTS];
-	epfd = epoll_create(MAX_EVENTS);
-	ev.data.fd = compute_worker_socket;
-	ev.events = EPOLLIN | EPOLLET;
-	epoll_ctl(epfd, EPOLL_CTL_ADD, compute_worker_socket, &ev);
-
-	int nfds;
-    int conn_socket;
-
-    // epoll index from (MANUAL_WORKER + FAST_WORKER) ~ (WORKER_NUM - 1) used for compute worker
-    int index = MANUAL_WORKER + FAST_WORKER;
-    int i;
-
-	while(should_run) {
-		nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
-		for(i = 0; i < nfds; i++) {
-        //if(nfds > 0) {
-            if(events[i].data.fd == compute_worker_socket) {
-                while((conn_socket = accept_connection(compute_worker_socket)) > 0) {
-                    if(conn_socket > CONN_MAXFD) {
-                        // TODO handle conn_socket fd exceed CONN_MAXFD
-                        write_log(ERROR_LOG, "compute_worker_monitor: conn_socket exceed CONN_MAXFD\n");
-                        close(conn_socket);
-                    }
-                    set_nonblocking(conn_socket);
-                    ev.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-                    ev.data.fd = conn_socket;
-
-                    g_conn_table[conn_socket].used = 1;
-                    g_conn_table[conn_socket].index = index; 
-                    g_conn_table[conn_socket].socketfd = conn_socket; 
-                    epoll_ctl(worker_epfd[index], EPOLL_CTL_ADD, conn_socket, &ev);
-
-                    // here WORKER_NUM = (MANUAL_WORKER + FAST_WORKER + COMPUTE_WORKER)
-                    index = (index + 1) % WORKER_NUM;
-                    if(index == 0) {
-                        index = MANUAL_WORKER + FAST_WORKER;
-                    }
-                }
-            }
-		} 
-	}
-
-    close(epfd);
-    return NULL;
-}
 
 int send_node_status(const char *dst_ip, struct node_stat stat) {
     int socketfd;
@@ -5096,41 +4755,96 @@ void *heartbeat_worker(void *args){
     return NULL;
 }
 
-int send_flush_buf_instruction() {
-    int i;
+int handle_conn_buffer(connection_t conn) {
     struct message msg;
-    msg.msg_size = calc_msg_header_size() + 1;
-    fill_message(msg.msg_size, FLUSH_CONN_BUF, "", "", "", "", 1, &msg);
-    for(i = 0; i < CONN_MAXFD; i++) {
-        connection_t conn = &g_conn_table[i];
-        if(conn->used == 1) {
-            async_send_data(conn, (char *) &msg, msg.msg_size);
+    size_t beg = 0;
+
+    // msg_size = 0 means can't get complete message
+    size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+    if(msg_size > 0) {
+        while(beg + msg_size <= conn->roff) {
+            memcpy(&msg, conn->rbuf + beg, msg_size);
+            beg = beg + msg_size;
+            process_message(conn, msg);
+            msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+            if(msg_size == 0) {
+                break;
+            }
+        }
+    }
+    size_t remained = conn->roff - beg;
+    if( beg > 0) {
+        memmove(conn->rbuf, conn->rbuf + beg, remained);
+    }
+    conn->roff = remained;
+    return TRUE;
+}
+
+int handle_read_event(connection_t conn) {
+    // special case when the connection is compute task
+    if(conn->index >= MANUAL_WORKER + FAST_WORKER) {
+        struct message msg;
+        memset(&msg, 0, sizeof(struct message));
+
+        if (TRUE == receive_message(conn->socketfd, &msg)) {
+            process_message(conn, msg);
+        } else {
+            write_log(ERROR_LOG, "receive compute task request failed.\n");
+            return FALSE;
+        }
+    } else {
+        if(conn->roff == CONN_BUF_SIZE) {
+            handle_conn_buffer(conn);
+        }
+        int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
+        if(ret > 0) {
+            conn->roff += ret;
+            handle_conn_buffer(conn);
+        } else if(ret == 0){
+            return FALSE;
+        } else {
+            if(errno != EINTR && errno != EAGAIN) {
+                write_log(ERROR_LOG, "handle_read_event: socket error, %s\n", strerror(errno));
+                return FALSE;
+            }
+            write_log(ERROR_LOG, "handle_read_event: error occerred, %s\n", strerror(errno));
         }
     }
     return TRUE;
 }
 
-void *instruction_worker(void *args){
-    while(should_run) {
-        //send heart beat
-        send_flush_buf_instruction();
-        sleep(INSTRUCTION_INTERVAL);
+int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
+    while(conn->woff + data_len > CONN_BUF_SIZE) {
+        handle_write_event(conn);
     }
-    return NULL;
+    memcpy(conn->wbuf + conn->woff, data, data_len);
+    conn->woff += data_len;
+    handle_write_event(conn);
+    return TRUE;
 }
 
-void init_conn_table() {
-    int i;
-    for(i = 0; i < CONN_MAXFD; i++) {
-        g_conn_table[i].socketfd = 0;
-        g_conn_table[i].index = 0;
-        g_conn_table[i].used = 0;
-        g_conn_table[i].roff = 0;
-        memset(g_conn_table[i].rbuf, 0, CONN_BUF_SIZE);
-        g_conn_table[i].woff = 0;
-        memset(g_conn_table[i].wbuf, 0, CONN_BUF_SIZE);
+int handle_write_event(connection_t conn) {
+    if (conn->woff == 0) {
+        return TRUE;
     }
+    int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
+    if (ret < 0) {
+        if (errno != EINTR && errno != EAGAIN) {
+            write_log(ERROR_LOG, "handle_write_event: socket error, %s\n", strerror(errno));
+            return FALSE;
+        }
+        write_log(ERROR_LOG, "handle_write_event: error occerred, %s\n", strerror(errno));
+    } else {
+        int remained = conn->woff - ret;
+        if (remained > 0) {
+            memmove(conn->wbuf, conn->wbuf + ret, remained);
+        }
+        conn->woff = remained;
+    }
+    return TRUE;
 }
+
+
 
 int main(int argc, char **argv) {
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
@@ -5185,15 +4899,6 @@ int main(int argc, char **argv) {
 	// create a new request list
 	req_list = new_request();
 
-	// create rtree
-    /*the_torus_rtree = NULL;
-	the_torus_rtree = rtree_create();
-    if(the_torus_rtree == NULL){
-        write_log(TORUS_NODE_LOG, "create rtree failed.\n");
-        exit(1);
-    }
-	write_log(TORUS_NODE_LOG, "create rtree.\n");*/
-
     // init oct_tree
     // do nothing, all structure are stored in global hash_maps in OctTree;
 	the_torus_oct_tree = NULL;
@@ -5208,90 +4913,30 @@ int main(int argc, char **argv) {
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
-
     pthread_mutex_init(&replica_mutex, NULL);
-    //pthread_mutex_init(&connection_mutex, NULL);
 
-    // create two server socket to process different kind of requests
-	manual_worker_socket = new_server(MANUAL_WORKER_PORT);
-	if (manual_worker_socket == FALSE) {
-        write_log(TORUS_NODE_LOG, "start manual-worker server failed.\n");
-        exit(1);
-	}
-	printf("start manual-worker server.\n");
-	write_log(TORUS_NODE_LOG, "start manual-worker server.\n");
-
-    fast_worker_socket = new_server(FAST_WORKER_PORT);
-	if (fast_worker_socket == FALSE) {
-        write_log(TORUS_NODE_LOG, "start fast-worker server failed.\n");
-        exit(1);
-	}
-	printf("start fast-worker server.\n");
-	write_log(TORUS_NODE_LOG, "start fast-worker server.\n");
-
-	compute_worker_socket = new_server(COMPUTE_WORKER_PORT);
-	if (compute_worker_socket == FALSE) {
-        write_log(TORUS_NODE_LOG, "start compute-worker server failed.\n");
-        exit(1);
-	}
-	printf("start compute-worker server.\n");
-	write_log(TORUS_NODE_LOG, "start compute-worker server.\n");
-
-	// set server socket nonblocking
-	set_nonblocking(manual_worker_socket);
-	set_nonblocking(fast_worker_socket);
-	set_nonblocking(compute_worker_socket);
-
-    // init connection table
-    init_conn_table();
-
-    //create EPOLL_NUM different epoll fd for workers
-    for (i = 0; i < EPOLL_NUM; i++) {
-        worker_epfd[i] = epoll_create(MAX_EVENTS);
-    }
-
-    // step 3: create several threads and start service for client 
-    
-    // create listen thread for epoll listerner
-    pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, NULL);
-
-    // create worker thread to handle ready socket fds
-    for(i = 0; i < EPOLL_NUM; i++) {
-        int j; 
-        for(j = 0; j < WORKER_PER_GROUP; j++) {
-            pthread_create(worker_thread + (i * WORKER_PER_GROUP + j), NULL, worker, worker_epfd + i);
-        }
-    }
-
-    // create thread to handle data-transform and time-cost request
-    pthread_create(&compute_worker_monitor_thread, NULL, compute_worker_monitor, NULL);
-
-    // create thread to handle fast-processed request
-    pthread_create(&fast_worker_monitor_thread, NULL, fast_worker_monitor, NULL);
-
-    // create heartbeat thread to send status info
+    // before start connection mgr
+    // start heartbeat thread first
+    pthread_t heartbeat_thread;
     pthread_create(&heartbeat_thread, NULL, heartbeat_worker, NULL);
 
-    //pthread_create(&instruction_thread, NULL, instruction_worker, NULL);
+    // init current torus node's connection manager
+    the_conn_mgr = new_connection_mgr();
+    if(NULL == the_conn_mgr) {
+        write_log(ERROR_LOG, "new connection manager failed.\n");
+    }
 
-    //pthread_join(instruction_thread, NULL);
+    init_connection_mgr(the_conn_mgr, &handle_read_event, &handle_write_event);
+
+    // start connection manager
+    run_connection_mgr(the_conn_mgr);
+
+    /* wait for heartbeat threat finish
+     * note: actually, this code will be executed 
+     * only if the server has some bugs
+     * */
     pthread_join(heartbeat_thread, NULL);
-    pthread_join(fast_worker_monitor_thread, NULL);
-    pthread_join(compute_worker_monitor_thread, NULL);
-    for (i = 0; i < WORKER_NUM; i++) {
-        pthread_join(worker_thread[i], NULL);
-    }
-    pthread_join(manual_worker_monitor_thread, NULL);
-
-    // close worker epoll fds
-    for (i = 0; i < EPOLL_NUM; i++) {
-        close(worker_epfd[i]);
-    }
-
-    close(compute_worker_socket);
-    close(fast_worker_socket);
-    close(manual_worker_socket);
-
+    write_log(TORUS_NODE_LOG, "the torus server safety exit.\n");
 	return 0;
 }
 

@@ -265,7 +265,7 @@ void print_neighbors(torus_node node) {
 	}
 }
 
-torus_node *new_torus_node() {
+torus_node* new_torus_node() {
 	torus_node *new_torus;
 	new_torus = (torus_node *) malloc(sizeof(torus_node));
 	if (new_torus == NULL) {
