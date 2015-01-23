@@ -14,7 +14,13 @@
 #define HAVE_PTHREAD_H 1
 
 // limits for common
+#define LOCAL_CMD 0
+#define REMOTE_CMD 1
 #define MAX_FILE_NAME 255 
+#define MAX_CMD_LEN 50
+#define MAX_DOC_LEN 200 
+#define MAX_CMD_NUM 100 
+#define MAX_MSG_NUM 100
 #define INT_MAX 0x7fffffff
 #define PI 3.1415926
 #define PRECISION 1e-8
@@ -66,6 +72,7 @@
 #define SYSTEM_STATUS_LOG "../logs/test_system_status.log"
 #define INSERT_DATA_LOG "../logs/test_insert_data.log"
 #define RANGE_NN_QUERY_LOG "../logs/test_range_nn_query.log"
+#define LOG_DIR "../logs"
 
 // Data file path
 //#define DATA_DIR "./"
@@ -167,13 +174,16 @@ typedef enum REPLY_CODE {
 typedef enum OP {
 	// update torus node info
 	CREATE_TORUS = 80,
-	UPDATE_PARTITION,
+	REP_CREATE_TORUS,
+	//UPDATE_PARTITION,
 	TRAVERSE_TORUS,
     QUERY_TORUS_NODE, 
 	QUERY_TORUS_CLUSTER,
+    REP_INSERT_DATA,
     LOAD_DATA,
     REPLICA_DATA,
 	NEW_SKIP_LIST,
+    REP_NEW_SKIP_LIST,
 	UPDATE_SKIP_LIST,       // only for control node
 	UPDATE_SKIP_LIST_NODE,
 	TRAVERSE_SKIP_LIST,
@@ -182,17 +192,18 @@ typedef enum OP {
     THROUGHPUT_INSERT,
     RECEIVE_FILTER_LOG,
     RECEIVE_REFINEMENT_LOG,
-    RELOAD_RTREE,
     LOAD_OCT_TREE_POINTS,
     LOAD_OCT_TREE_NODES,
     LOAD_OCT_TREE_TRAJECTORYS,
     TRAJ_QUERY,
     RANGE_QUERY_REFINEMENT,
+    REP_RANGE_QUERY,
     NN_QUERY_REFINEMENT,
+    REP_NN_QUERY,
     NOTIFY_MESSAGE,
     RELOAD_PROPERTIES,
     CHECK_SYSTEM_STATUS,
-    WRITE_SYSTEM_STATUS, // for result node 83
+    REP_CHECK_SYSTEM_STATUS,
     CHECK_INSERT_DATA,   // test insert data feature
     WRITE_INSERT_DATA,   
     CHECK_RANGE_QUERY,   // test range query feature
@@ -200,8 +211,7 @@ typedef enum OP {
     CHECK_CONN_BUFFER,
     CHECK_TRAJ_SEQ,    // check the traj sequences
     QUERY_START,
-    QUERY_END,
-    FLUSH_CONN_BUF  // instruction for flush connections buffer
+    QUERY_END
 } OP;
 
 // torus node info 
