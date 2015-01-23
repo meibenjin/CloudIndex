@@ -67,5 +67,15 @@ int dispatch_skip_list(skip_list *list, node_info leaders[]);
 // used for choose leaders
 void shuffle(int array[], int n);
 
+int cmd_create_torus_cluster(void *);
+
+/* process "initcluster" command
+ * send basic info to deploy cluster
+ */
+int cmd_deploy_torus_cluster(void *);
+
+//TODO this function should move to module torus_cluster_mgr
+int new_torus_cluster_mgr();
+
 #endif /* CONTROL_H_ */
 
