@@ -24,6 +24,8 @@ extern "C" {
 #include"skip_list/skip_list.h"
 #include"communication/socket.h"
 #include"communication/message.h"
+#include"communication/message_handler.h"
+#include"communication/connection.h"
 #include"communication/connection_mgr.h"
 #include"utils/geometry.h"
 #include"config/config.h"
@@ -31,7 +33,7 @@ extern "C" {
 
 #include"server.h"
 #include"oct_tree/OctTree.h"
-#include"torus_rtree.h"
+//#include"torus_rtree.h"
 
 #include "gsl_rng.h"
 #include "gsl_randist.h"
@@ -43,7 +45,7 @@ extern "C" {
  * some are used for torus nodes, and some used for both two */
 
 OctTree *the_torus_oct_tree;
-ISpatialIndex* the_torus_rtree;
+//ISpatialIndex* the_torus_rtree;
 
 static int insert_cnt = 0;
 
@@ -70,13 +72,14 @@ int neighbor_sock_num;
 
 // connections manager 
 connection_mgr_t the_conn_mgr = NULL;
+extern message_mgr_t the_msg_mgr;
 
 // mutex variables
 pthread_mutex_t mutex;
 pthread_mutex_t global_variable_mutex;
 pthread_mutex_t replica_mutex;
 
-char result_ip[IP_ADDR_LENGTH] = "172.16.0.83";
+char result_ip[IP_ADDR_LENGTH] = "172.16.0.166";
 int result_sockfd;
 char result_log[100];
 char filter_log[100];
@@ -90,8 +93,6 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
 double points_distance(struct point p1, struct point p2);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
-// thread safe
-int async_send_data(connection_t conn, const char *data, uint32_t data_len);
 int unpack_message_from_buffer(connection_t conn);
 int find_leader_sock(const char ip[]);
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, struct query_struct query, char **buf_ptr, uint32_t *data_size, struct refinement_stat *r_stat);
@@ -349,148 +350,146 @@ int forward_to_neighbors(struct message msg) {
 }
 
 int do_create_torus(struct message msg) {
-	int i, j, d;
-    size_t cpy_len = 0;
-	int num, leaders_num, neighbors_num = 0;
-    char neighbor_ip[IP_ADDR_LENGTH], leader_ip[IP_ADDR_LENGTH];
     int sockfd;
+	int i, j, d;
+	int num, leaders_num, neighbors_num = 0;
+    size_t cpy_len = 0, reply_len = 0;
+    char neighbor_ip[IP_ADDR_LENGTH], leader_ip[IP_ADDR_LENGTH];
+    char reply[BUF_SIZE];
+    memset(reply, 0, BUF_SIZE);
 
     // allocate for the_torus if it's NULL
     if(the_torus == NULL) {
         the_torus = new_torus_node();
-    }
 
-    // get torus partitons info from msg
-    memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
-    cpy_len += sizeof(struct torus_partitions);
+        // get torus partitons info from msg
+        memcpy(&the_partition, (void *)msg.data, sizeof(struct torus_partitions));
+        cpy_len += sizeof(struct torus_partitions);
 
-    write_log(TORUS_NODE_LOG, "torus partitions:[%d %d %d]\n", \
-            the_partition.p_x, the_partition.p_y, the_partition.p_z);
+        write_log(TORUS_NODE_LOG, "torus partitions:[%d %d %d]\n", \
+                the_partition.p_x, the_partition.p_y, the_partition.p_z);
 
-    // get torus leaders info 
-    memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
-    cpy_len += sizeof(int);
+        // get torus leaders info 
+        memcpy(&leaders_num, (void *)(msg.data + cpy_len), sizeof(int));
+        cpy_len += sizeof(int);
 
-    for(j = 0; j < leaders_num; j++) {
-        memcpy(&the_torus_leaders[j], (void *)(msg.data + cpy_len), sizeof(node_info));
-        cpy_len += sizeof(node_info);
-
-        //create long socket fd from current node to it's leaders
-        //these sockets accept fast-process task 
-        get_node_ip(the_torus_leaders[j], leader_ip);
-        sockfd = new_client_socket(leader_ip, FAST_WORKER_PORT);
-        if(FALSE == sockfd) {
-            return FALSE;
-        }
-        leader_sock[j].sockfd = sockfd;
-        strncpy(leader_sock[j].ip, leader_ip, IP_ADDR_LENGTH);
-
-    }
-    // write leader node into log file
-    print_torus_leaders(the_torus_leaders);
-
-
-    // get leader flag from msg
-    memcpy(&the_torus->is_leader, (void *)(msg.data + cpy_len), sizeof(int));
-    cpy_len += sizeof(int);
-
-    // get local torus node from msg
-    memcpy(&the_torus->info, (void *)(msg.data + cpy_len), sizeof(node_info));
-    cpy_len += sizeof(node_info);
-
-    // set oct tree's region
-    // important!
-    if(the_torus_oct_tree == NULL) {
-        double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
-
-        for (i = 0; i < MAX_DIM_NUM; i++) {
-            plow[i] = (double)the_torus->info.region[i].low;
-            phigh[i] = (double)the_torus->info.region[i].high;
-        }
-        the_torus_oct_tree = new OctTree(plow, phigh);
-    }
-
-    /* init the_torus_stat and node_stat
-     * note: if current torus node is not a leader node
-     * the_torus_stat is NULL */
-    if(the_torus->is_leader == 0) {
-        the_torus_stat = NULL;
-    } else {
-        the_torus_stat = new_torus_stat();
-    }
-    strncpy(the_node_stat.ip, the_torus->info.ip, IP_ADDR_LENGTH);
-    the_node_stat.fvalue = 0;
-
-    // get neighbors info from msg 
-    for(d = 0; d < DIRECTIONS; d++) {
-        num = 0;
-        memcpy(&num, (void *)(msg.data + cpy_len), sizeof(int));
-        cpy_len += sizeof(int); 
-
-        int index = 0;
-        for(i = 0; i < num; i++) {
-            // allocate space for the_torus's neighbor at direction d
-            torus_node *new_node = new_torus_node();
-            if (new_node == NULL) {
-                return FALSE;
-            }
-            memcpy(&new_node->info, (void *)(msg.data + cpy_len), sizeof(node_info));
+        for(j = 0; j < leaders_num; j++) {
+            memcpy(&the_torus_leaders[j], (void *)(msg.data + cpy_len), sizeof(node_info));
             cpy_len += sizeof(node_info);
 
-            add_neighbor_info(the_torus, d, &new_node->info);
-
-            //create long socket fd from current node to every neighbor
-            get_node_ip(new_node->info, neighbor_ip);
-            sockfd = new_client_socket(neighbor_ip, MANUAL_WORKER_PORT);
+            //create long socket fd from current node to it's leaders
+            //these sockets accept fast-process task 
+            get_node_ip(the_torus_leaders[j], leader_ip);
+            sockfd = new_client_socket(leader_ip, FAST_WORKER_PORT);
             if(FALSE == sockfd) {
                 return FALSE;
             }
-            strncpy(neighbor_sock[neighbor_sock_num].ip, neighbor_ip, IP_ADDR_LENGTH);
-            neighbor_sock[neighbor_sock_num].sockfd = sockfd;
-            neighbor_sock_num++;
+            leader_sock[j].sockfd = sockfd;
+            strncpy(leader_sock[j].ip, leader_ip, IP_ADDR_LENGTH);
 
-            // add this neighbor to server epoll
-            set_nonblocking(sockfd);
-            connection_t conn = &(the_conn_mgr->conn_table[sockfd]);
-            set_connection_info(conn, sockfd, index, 1);
-            int ret = register_to_worker_epoll(index, sockfd, EPOLLOUT | EPOLLONESHOT);
-            if(FALSE == ret) {
-                write_log(ERROR_LOG, "do_create_torus: add neighbor socket to worker epoll failed.\n");
-                return FALSE;
-            }
-
-            index = (index + 1) % MANUAL_WORKER;
         }
-        neighbors_num += num;
+        // write leader node into log file
+        print_torus_leaders(the_torus_leaders);
+
+
+        // get leader flag from msg
+        memcpy(&the_torus->is_leader, (void *)(msg.data + cpy_len), sizeof(int));
+        cpy_len += sizeof(int);
+
+        // get local torus node from msg
+        memcpy(&the_torus->info, (void *)(msg.data + cpy_len), sizeof(node_info));
+        cpy_len += sizeof(node_info);
+
+        // set oct tree's region
+        // important!
+        if(the_torus_oct_tree == NULL) {
+            double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
+
+            for (i = 0; i < MAX_DIM_NUM; i++) {
+                plow[i] = (double)the_torus->info.region[i].low;
+                phigh[i] = (double)the_torus->info.region[i].high;
+            }
+            the_torus_oct_tree = new OctTree(plow, phigh);
+        }
+
+        /* init the_torus_stat and node_stat
+         * note: if current torus node is not a leader node
+         * the_torus_stat is NULL */
+        if(the_torus->is_leader == 0) {
+            the_torus_stat = NULL;
+        } else {
+            the_torus_stat = new_torus_stat();
+        }
+        strncpy(the_node_stat.ip, the_torus->info.ip, IP_ADDR_LENGTH);
+        the_node_stat.fvalue = 0;
+
+        // get neighbors info from msg 
+        for(d = 0; d < DIRECTIONS; d++) {
+            num = 0;
+            memcpy(&num, (void *)(msg.data + cpy_len), sizeof(int));
+            cpy_len += sizeof(int); 
+
+            int index = 0;
+            for(i = 0; i < num; i++) {
+                // allocate space for the_torus's neighbor at direction d
+                torus_node *new_node = new_torus_node();
+                if (new_node == NULL) {
+                    return FALSE;
+                }
+                memcpy(&new_node->info, (void *)(msg.data + cpy_len), sizeof(node_info));
+                cpy_len += sizeof(node_info);
+
+                add_neighbor_info(the_torus, d, &new_node->info);
+
+                //create long socket fd from current node to every neighbor
+                get_node_ip(new_node->info, neighbor_ip);
+                sockfd = new_client_socket(neighbor_ip, MANUAL_WORKER_PORT);
+                if(FALSE == sockfd) {
+                    return FALSE;
+                }
+                strncpy(neighbor_sock[neighbor_sock_num].ip, neighbor_ip, IP_ADDR_LENGTH);
+                neighbor_sock[neighbor_sock_num].sockfd = sockfd;
+                neighbor_sock_num++;
+
+                // add this neighbor to server epoll
+                set_nonblocking(sockfd);
+                connection_t conn = &(the_conn_mgr->conn_table[sockfd]);
+                set_connection_info(conn, sockfd, index, 1);
+                int ret = register_to_worker_epoll(index, sockfd, EPOLLOUT | EPOLLONESHOT);
+                if(FALSE == ret) {
+                    write_log(ERROR_LOG, "do_create_torus: add neighbor socket to worker epoll failed.\n");
+                    return FALSE;
+                }
+
+                index = (index + 1) % MANUAL_WORKER;
+            }
+            neighbors_num += num;
+        }
+
+
+       //TODO this should move to main
+       //create long socket fd from current node to result collecter
+        result_sockfd = new_client_socket(result_ip, MANUAL_WORKER_PORT);
+        if(FALSE == sockfd) {
+            return FALSE;
+        }
+
+        // set the_torus's neighbors_num
+        set_neighbors_num(the_torus, neighbors_num);
+
+        // set reply string and local_ip
+        reply_len = sprintf(reply, "reply from %s: initialize info received.\n", the_torus->info.ip);
+
+    } else {
+        reply_len = sprintf(reply, "reply from %s: initialize info has been received before.\n", the_torus->info.ip); 
     }
 
+    struct message rep_msg;
+    rep_msg.msg_size = calc_msg_header_size() + reply_len; 
+    fill_message(rep_msg.msg_size, REP_CREATE_TORUS, the_torus->info.ip, result_ip, \
+                     "", reply, reply_len, &rep_msg);
 
-    //TODO this should move to main
-    //create long socket fd from current node to result collecter
-    result_sockfd = new_client_socket(result_ip, MANUAL_WORKER_PORT);
-    if(FALSE == sockfd) {
-        return FALSE;
-    }
-
-    // set the_torus's neighbors_num
-	set_neighbors_num(the_torus, neighbors_num);
-
-    #ifdef WRITE_LOG 
-        write_log(TORUS_NODE_LOG, "torus node capacity:%d %d\n", \
-                the_torus->info.capacity, neighbor_sock_num);
-    #endif
-
-	return TRUE;
-}
-
-int do_update_partition(struct message msg) {
-
-	memcpy(&the_partition, msg.data, sizeof(struct torus_partitions));
-
-    #ifdef WRITE_LOG 
-        write_log(TORUS_NODE_LOG, "torus partitions:[%d %d %d]\n", \
-                the_partition.p_x, the_partition.p_y, the_partition.p_z);
-    #endif
+    send_data(result_sockfd, (void *) &rep_msg, rep_msg.msg_size);
 
 	return TRUE;
 }
@@ -602,6 +601,8 @@ int do_traverse_skip_list(struct message msg) {
 }
 
 int do_update_skip_list_node(struct message msg) {
+    assert(the_skip_list != NULL);
+
 	int i, j, socketfd, update_forward, update_backword;
     char dst_ip[IP_ADDR_LENGTH];
 
@@ -673,12 +674,15 @@ int do_update_skip_list_node(struct message msg) {
             sln_backward_sockfd[i][j] = socketfd;
         }
 	}
+
 	return TRUE;
 }
 
 int do_new_skip_list(struct message msg) {
 	int level, i;
-    size_t cpy_len = 0;
+    size_t cpy_len = 0, reply_len = 0;
+    char reply[BUF_SIZE];
+    memset(reply, 0, BUF_SIZE);
 
 	// get node info from message
 	skip_list_node *sln_ptr;
@@ -689,17 +693,30 @@ int do_new_skip_list(struct message msg) {
 	memcpy(leaders, msg.data + cpy_len, sizeof(node_info) * LEADER_NUM);
     cpy_len += sizeof(node_info) * LEADER_NUM;
 
+
     if(the_skip_list == NULL) {
         the_skip_list = new_skip_list(level);
+        sln_ptr = the_skip_list->header;
+        for(i = 0; i < LEADER_NUM; ++i) {
+            sln_ptr->leader[i] = leaders[i];
+        }
+
+        sln_ptr->height = level;
+        the_skip_list->level = level;
+        // set reply string and local_ip
+        reply_len = sprintf(reply, "reply from %s: route info received.\n", the_torus->info.ip);
+
+    } else {
+        reply_len = sprintf(reply, "reply from %s: route info has been received before.\n", the_torus->info.ip); 
     }
 
-    sln_ptr = the_skip_list->header;
-    for(i = 0; i < LEADER_NUM; ++i) {
-        sln_ptr->leader[i] = leaders[i];
-    }
+    struct message rep_msg;
+    rep_msg.msg_size = calc_msg_header_size() + reply_len; 
+    fill_message(rep_msg.msg_size, REP_NEW_SKIP_LIST, the_torus->info.ip, result_ip, \
+                     "", reply, reply_len, &rep_msg);
 
-    sln_ptr->height = level;
-    the_skip_list->level = level;
+    send_data(result_sockfd, (void *) &rep_msg, rep_msg.msg_size);
+
 	return TRUE;
 }
 
@@ -853,150 +870,6 @@ torus_node *append_torus_node(int d){
     set_node_capacity(info_ptr, DEFAULT_CAPACITY);
 
     return new_node;
-}
-
-int get_split_dimension() {
-    int d = 0, i, j;
-    double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
-    size_t balance_gain = -1, min_gain = -1; 
-    size_t pnum = 0, nnum = 0;
-
-    size_t c = rtree_get_utilization(the_torus_rtree);
-    char buf[1024];
-    memset(buf, 0, 1024);
-    int len = sprintf(buf, "%lu ", c);
-    for(i = 0; i < MAX_DIM_NUM; i++) {
-        for (j = 0; j < MAX_DIM_NUM; j++) {
-            plow[j] = (double)the_torus->info.region[j].low;
-            phigh[j] = (double)the_torus->info.region[j].high;
-        }
-        plow[i] = (plow[i] + phigh[i]) * 0.5;
-        pnum = rtree_query_count(plow, phigh, the_torus_rtree);
-        nnum = c - pnum; 
-        balance_gain = (pnum > nnum) ? (pnum - nnum) : (nnum - pnum);
-        if(balance_gain < min_gain) {
-            min_gain = balance_gain;
-            d = i;
-        }
-        len += sprintf(buf + len, "%f ", plow[i]);
-        len += sprintf(buf + len, "%lu %lu ", pnum, nnum);
-    }
-    len += sprintf(buf + len, "%d\n", d);
-    write_log(OCT_TREE_LOG, buf);
-    return d;
-}
-
-int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]) {
-
-    struct timespec start, end, s, e;
-    double elasped = 0L, el;
-    clock_gettime(CLOCK_REALTIME, &start);
-    MyVisitor vis;
-    rtree_range_query(plow, phigh, the_torus_rtree, vis);
-
-    std::vector<SpatialIndex::IData*> v = vis.GetResults();
-    std::vector<SpatialIndex::IData*>::iterator it;
-
-    clock_gettime(CLOCK_REALTIME, &end);
-    elasped = get_elasped_time(start, end);
-    write_log(RESULT_LOG, "get split data spend %f ms\n", elasped / 1000000.0);
-    elasped = 0L;
-
-	int socketfd;
-
-    // create a data socket to send rtree data
-	socketfd = new_client_socket(dst_ip, COMPUTE_WORKER_PORT);
-	if (FALSE == socketfd) {
-		return FALSE;
-	}
-
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-    get_node_ip(the_torus->info, local_ip);
-	/*if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}*/
-
-    struct message msg;
-    msg.msg_size = calc_msg_header_size() + 1;
-    fill_message(msg.msg_size, RELOAD_RTREE, local_ip, dst_ip, "", "", 1, &msg);
-    send_data(socketfd, (void *)&msg, msg.msg_size);
-
-    size_t cpy_len = sizeof(uint32_t);
-    int total_len = 0; 
-    uint32_t count = 0;
-    RTree::Data *data;
-
-    char buf[SOCKET_BUF_SIZE];
-    memset(buf, 0, SOCKET_BUF_SIZE);
-
-    for(it = v.begin(); it != v.end(); it++) {
-        clock_gettime(CLOCK_REALTIME, &s);
-
-        // data include data_id region and data content
-        data = dynamic_cast<RTree::Data *>(*it);
-        byte *package_ptr;
-        uint32_t package_len;
-        data->storeToByteArray(&package_ptr, package_len);
-
-        // data num
-        count++;
-        memcpy(buf + 0, &count, sizeof(uint32_t));
-
-        // package_len may be unused in do_rtree_load_data() need more test
-        //memcpy(buf + cpy_len, &package_len, sizeof(uint32_t));
-        //cpy_len += sizeof(uint32_t);
-
-        memcpy(buf + cpy_len, package_ptr, package_len);
-        cpy_len += package_len;
-
-        delete[] package_ptr;
-
-        clock_gettime(CLOCK_REALTIME, &e);
-        el += get_elasped_time(s, e);
-
-        uint32_t next_len = sizeof(uint32_t) * 2 + package_len;
-        if(cpy_len + next_len < SOCKET_BUF_SIZE) {
-            continue;
-        } else {
-            clock_gettime(CLOCK_REALTIME, &start);
-            send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
-            clock_gettime(CLOCK_REALTIME, &end);
-            elasped += get_elasped_time(start, end);
-
-            total_len += cpy_len;
-            count = 0;
-            cpy_len = sizeof(uint32_t);
-            memset(buf, 0, SOCKET_BUF_SIZE);
-        }
-    }
-    if(cpy_len > sizeof(uint32_t)) {
-        send_data(socketfd, (void *)buf, SOCKET_BUF_SIZE);
-    }
-	close(socketfd);
-
-    total_len += cpy_len;
-    write_log(RESULT_LOG, "total send %f k\n", total_len/ 1000.0);
-
-    write_log(RESULT_LOG, "package split data spend %f ms\n", el/ 1000000.0);
-
-    write_log(RESULT_LOG, "send split data spend %f ms\n", elasped/ 1000000.0);
-    return TRUE;
-}
-
-
-int rtree_recreate(double plow[], double phigh[]){
-
-    MyVisitor vis;
-    rtree_range_query(plow, phigh, the_torus_rtree, vis);
-    std::vector<SpatialIndex::IData*> v = vis.GetResults();
-
-    // delete origional rtree 
-    rtree_delete(the_torus_rtree);
-
-    the_torus_rtree = rtree_bulkload(vis.GetResults());
-    return TRUE;
 }
 
 int send_oct_points(const char *dst_ip, hash_map<int, OctPoint *> &points) {
@@ -1503,59 +1376,6 @@ int get_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int *
     return TRUE;
 }
 
-int local_rtree_query(double low[], double high[]) {
-    MyVisitor vis;
-    rtree_range_query(low, high, the_torus_rtree, vis);
-    std::vector<SpatialIndex::IData*> v = vis.GetResults();
-
-    //find a idle torus node to do refinement
-    char idle_ip[IP_ADDR_LENGTH];
-    memset(idle_ip, 0, IP_ADDR_LENGTH);
-    //find_idle_torus_node(idle_ip);
-
-    return TRUE;
-}
-
-int operate_rtree(struct query_struct query) {
-
-    if(the_torus_rtree == NULL) {
-        write_log(ERROR_LOG, "torus rtree didn't create.\n");
-        return FALSE;
-    }
-
-    int i;
-    double plow[MAX_DIM_NUM], phigh[MAX_DIM_NUM];
-
-    for (i = 0; i < MAX_DIM_NUM; i++) {
-        plow[i] = (double)query.intval[i].low;
-        phigh[i] = (double)query.intval[i].high;
-    }
-
-    // rtree operation 
-    if(query.op == DATA_INSERT) {
-        // need lock when insert rtree
-        pthread_mutex_lock(&mutex);
-        if(FALSE == rtree_insert(query.trajectory_id, query.data_id, plow, phigh, the_torus_rtree)) {
-            return FALSE;
-        }
-        size_t c = rtree_get_utilization(the_torus_rtree);
-        if(c >= the_torus->info.capacity){
-            torus_split();
-        }
-        pthread_mutex_unlock(&mutex);
-    } else if(query.op == DATA_DELETE) {
-        if(FALSE == rtree_delete(query.data_id, plow, phigh, the_torus_rtree)) {
-            return FALSE;
-        }
-    } else if(query.op == RANGE_QUERY) {
-        // TODO add read lock
-        if(FALSE == local_rtree_query(plow, phigh)) {
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
-
 // get pre point of pt in trajectory pt->t_id by range query
 int traj_range_query(double *low, double *high, IDTYPE t_id, OctPoint *pt, vector<OctPoint*> &pt_vector) {
     int i;
@@ -2011,6 +1831,12 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     char buffer[DATA_SIZE];
     size_t cpy_len = 0;
 
+    cpy_len += sprintf(buffer + cpy_len, "nn query %d:", query.data_id);
+    for (i = 0; i < MAX_DIM_NUM; i++) {
+        cpy_len += sprintf(buffer + cpy_len, "(%lf, %lf) ", query.intval[i].low, query.intval[i].high);
+    }
+    cpy_len += sprintf(buffer + cpy_len, "\n{\n");
+
     double total_qp = 0.0;
     for(it = qp_map.begin(); it != qp_map.end(); it++) {
         t_id = it->first;
@@ -2019,22 +1845,26 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         if(qp < 0) {
             qp = 0.0;
         }
-        if(cpy_len + 100  < DATA_SIZE) {
+
+        /*if(cpy_len + 100  < DATA_SIZE) {
             cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, t_id, qp);
+        }*/
+        if(cpy_len + 100 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "\ttrajectory id:%d\n", t_id);
         }
+
         total_qp += qp;
     }
-    if(cpy_len == 0 ) {
-        cpy_len += sprintf(buffer + cpy_len, "%d\n", query.data_id);
-    } 
-    cpy_len += sprintf(buffer + cpy_len, "\n");
+
+    cpy_len += sprintf(buffer + cpy_len, "}\n");
+    //cpy_len += sprintf(buffer + cpy_len, "\n");
 
     // standard test case
     struct message qry_msg;
     qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
-    fill_message(qry_msg.msg_size, CHECK_NN_QUERY, the_torus->info.ip, result_ip, \
+    fill_message(qry_msg.msg_size, REP_NN_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
-    //TODO uncomment it
+
     send_data(result_sockfd, (void *) &qry_msg, qry_msg.msg_size);
 
     if(traj_num == 0) {
@@ -2822,54 +2652,28 @@ int operate_oct_tree(struct query_struct query, int hops) {
         pthread_mutex_lock(&mutex);
 		OctPoint *point = new OctPoint(query.data_id, -1, plow, query.trajectory_id, NONE, NONE);//后继指针都为空
 		if(the_torus_oct_tree->containPoint(point)){
-            timespec start, end;
-            clock_gettime(CLOCK_REALTIME, &start);
             oct_tree_insert(point);
-            //if(g_NodeList.find(1)->second->n_ptCount >= (int)the_torus->info.capacity) {
             if(g_ptCount >= (int)the_torus->info.capacity) {
                 torus_split();
             }
-            clock_gettime(CLOCK_REALTIME, &end);
-            static double elasped = 0L;
-            elasped += (get_elasped_time(start, end) / 1000000.0);
-
-            static int count = 0;
-            static long hops_sum = 0;
-            static double max_hop = -1;
-            hops_sum += hops;
-            if(hops > max_hop) {
-                max_hop = hops;
-            }
+            /*static size_t count = 0;
             count++;
-            if(count % 40000 == 0) {
+            int freq = 100000;
+            if(count % freq == 0) {
                 struct message msg;
-                msg.op = THROUGHPUT_INSERT;
-                strncpy(msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
-                strncpy(msg.dst_ip, result_ip, IP_ADDR_LENGTH);
-                strncpy(msg.stamp, "", STAMP_SIZE);
-                int c = 40000;
-                double hop = hops_sum / (40000 * 1.0);
-                double el = elasped / (40000 * 1.0);
-                hops_sum = 0;
-                elasped = 0;
+                char reply[BUF_SIZE];
+                memset(reply, 0, BUF_SIZE);
 
-                int cpy_len = 0;
-                memcpy(msg.data, &c, sizeof(int));
-                cpy_len += sizeof(int);
-                memcpy(msg.data + cpy_len, &hop, sizeof(double));
-                cpy_len += sizeof(double);
-                memcpy(msg.data + cpy_len, &max_hop, sizeof(double));
-                cpy_len += sizeof(double);
-                memcpy(msg.data + cpy_len, &el, sizeof(double));
-                cpy_len += sizeof(double);
-                memcpy(msg.data + cpy_len, &the_torus->info.node_id, sizeof(coordinate));
-                cpy_len += sizeof(coordinate);
+                size_t reply_len = 0;
+                reply_len = snprintf(reply, BUF_SIZE, "%s:%lu points inserted.\n", \
+                        the_torus->info.ip, count);
 
-                msg.msg_size = calc_msg_header_size() + cpy_len;
+                msg.msg_size = calc_msg_header_size() + reply_len;
+                fill_message(msg.msg_size, REP_INSERT_DATA, the_torus->info.ip, \
+                        result_ip,"", reply, reply_len, &msg);
+
                 send_data(result_sockfd, (void *) &msg, msg.msg_size);
-
-                max_hop = -1;
-            }
+            }*/
 		}
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RANGE_NN_QUERY) {
@@ -2884,85 +2688,6 @@ int operate_oct_tree(struct query_struct query, int hops) {
         local_oct_tree_query(query, plow, phigh);
         pthread_mutex_unlock(&mutex);
     }
-    return TRUE;
-}
-
-int do_rtree_load_data(connection_t conn, struct message msg){
-    struct timespec start, end;
-    double elasped = 0L;
-
-    clock_gettime(CLOCK_REALTIME, &start);
-
-    byte *data_ptr, *ptr;
-    id_type data_id;
-    uint32_t package_num, data_len;// package_len;
-    Region region;
-    static int count = 0;
-
-    int length = 0, loop = 1;
-    std::vector<SpatialIndex::IData *> v;
-
-    byte buf[SOCKET_BUF_SIZE];
-    memset(buf, 0, SOCKET_BUF_SIZE);
-
-    while(loop) {
-        length = recv_data(conn->socketfd, buf, SOCKET_BUF_SIZE);
-        if(length == 0) {
-            // client nomally closed
-            close_connection(conn);
-            loop = 0;
-        } else {
-            length = 0;
-            ptr = reinterpret_cast<byte *>(buf); 
-            memcpy(&package_num, ptr, sizeof(uint32_t));
-            ptr += sizeof(uint32_t);
-            count += package_num;
-            while(package_num--){
-
-                //memcpy(&package_len, ptr, sizeof(uint32_t));
-                //ptr += sizeof(uint32_t);
-
-                memcpy(&data_id, ptr, sizeof(id_type));
-                ptr += sizeof(id_type);
-
-                memcpy(&data_len, ptr , sizeof(uint32_t));
-                ptr += sizeof(uint32_t);
-
-                if (data_len > 0){
-                    data_ptr = new byte[data_len];
-                    memcpy(data_ptr, ptr, data_len);
-                    ptr += data_len;
-                }
-
-                region.loadFromByteArray(ptr);
-                ptr += region.getByteArraySize();
-
-                SpatialIndex::IData *data = dynamic_cast<SpatialIndex::IData*>(new Data(data_len, data_ptr, region, data_id));
-                v.push_back(data);
-            }
-            memset(buf, 0, SOCKET_BUF_SIZE);
-        } 
-    }
-
-    clock_gettime(CLOCK_REALTIME, &end);
-    elasped = get_elasped_time(start, end);
-
-    write_log(RESULT_LOG, "receive split data %f ms\n", (double) elasped/ 1000000.0);
-
-    //bulkload rtree
-    the_torus_rtree = rtree_bulkload(v);
-
-    std::vector<SpatialIndex::IData*>::iterator it;
-    for (it = v.begin(); it != v.end(); it++) {
-        delete *it;
-    } 
-
-    size_t c = rtree_get_utilization(the_torus_rtree);
-    write_log(RESULT_LOG, "%lu\n", c);
-
-    time_t now;
-    now = time(NULL);
-    write_log(RESULT_LOG, "%ld %d\n", now, count);
     return TRUE;
 }
 
@@ -3133,6 +2858,12 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     char buffer[DATA_SIZE];
     size_t cpy_len = 0;
 
+    cpy_len += sprintf(buffer + cpy_len, "range query %d:", query.data_id);
+    for (i = 0; i < MAX_DIM_NUM; i++) {
+        cpy_len += sprintf(buffer + cpy_len, "(%lf, %lf) ", query.intval[i].low, query.intval[i].high);
+    }
+    cpy_len += sprintf(buffer + cpy_len, "\n{\n");
+
     for(i = 0; i < traj_num; i++) {
         double traj_qp = 1.0;
         if(traj_segs[i].t_id != 0) {
@@ -3141,16 +2872,6 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
             } else { 
                 for(j = 0; j < traj_segs[i].pair_num; j++) {
                    traj_qp *= (1.0 - calc_refinement(query.intval, traj_segs[i].start[j], traj_segs[i].end[j]));
-                   /*if(cpy_len + 100 < DATA_SIZE) {
-                       cpy_len += sprintf(buffer + cpy_len, "%d,%d,[%.4lf %.4lf %.4lf],[%.4lf %.4lf %.4lf]\n", \
-                               query.data_id, traj_segs[i].t_id,\
-                               traj_segs[i].start[j].axis[0],\
-                               traj_segs[i].start[j].axis[1],\
-                               traj_segs[i].start[j].axis[2],\
-                               traj_segs[i].end[j].axis[0],\
-                               traj_segs[i].end[j].axis[1],\
-                               traj_segs[i].end[j].axis[2]);
-                   }*/
                 }
             }
             // release the memory
@@ -3162,15 +2883,17 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
             }
         }
         traj_qp = 1.0 - traj_qp; 
-        if(cpy_len + 100 < DATA_SIZE) {
+        /*if(cpy_len + 100 < DATA_SIZE) {
             cpy_len += sprintf(buffer + cpy_len, "%d,%d,%lf\n", query.data_id, traj_segs[i].t_id, traj_qp);
+        }*/
+        if(cpy_len + 100 < DATA_SIZE) {
+            cpy_len += sprintf(buffer + cpy_len, "\ttrajectory id:%d\n", traj_segs[i].t_id);
         }
+
         total_qp += traj_qp; 
     }
-    if(cpy_len == 0 ) {
-        cpy_len += sprintf(buffer + cpy_len, "%d\n", query.data_id);
-    }
-    cpy_len += sprintf(buffer + cpy_len, "\n");
+
+    cpy_len += sprintf(buffer + cpy_len, "}\n");
 
     if(traj_num == 0){
         rfmt_st.avg_qp = 0;
@@ -3185,8 +2908,9 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
     //standard test case
     struct message qry_msg;
     qry_msg.msg_size = calc_msg_header_size() + cpy_len; 
-    fill_message(qry_msg.msg_size, CHECK_RANGE_QUERY, the_torus->info.ip, result_ip, \
+    fill_message(qry_msg.msg_size, REP_RANGE_QUERY, the_torus->info.ip, result_ip, \
                      "", buffer, cpy_len, &qry_msg);
+
     send_data(result_sockfd, (void *) &qry_msg, qry_msg.msg_size);
 
 
@@ -3516,9 +3240,6 @@ int do_query_torus_node(struct message msg) {
                 }
             }
 
-			// do rtree operation 
-            //operate_rtree(query);
-            
 			// do oct tree operation 
             //write_log(TORUS_NODE_LOG, "operate oct tree\n");
             operate_oct_tree(query, hops - 1);
@@ -3986,44 +3707,50 @@ int do_check_system_status(struct message msg) {
     struct message status_msg;
     size_t cpy_len = 0;
 
-    char buf[BUF_SIZE];
-    memset(buf, 0, BUF_SIZE);
+    char buf[DATA_SIZE];
+    memset(buf, 0, DATA_SIZE);
+
+    char local_ip[IP_ADDR_LENGTH];
+    memset(local_ip, 0, IP_ADDR_LENGTH);
 
     if(the_torus == NULL) {
-        char local_ip[IP_ADDR_LENGTH];
-        memset(local_ip, 0, IP_ADDR_LENGTH);
         if (FALSE == get_local_ip(local_ip)) {
             write_log(ERROR_LOG, "do_check_system_status: get local ip occurred error.\n");
             return FALSE;
         }
         cpy_len += sprintf(buf + cpy_len, "%s:the torus node didn't create.\n", local_ip); 
     } else {
-        cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
-        cpy_len += sprintf(buf + cpy_len, "torus partitions:[%d %d %d]\n", the_partition.p_x,
-                the_partition.p_y, the_partition.p_z);
-
         node_info node = the_torus->info;
         coordinate id = node.node_id;
-        cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d]:", the_torus->info.cluster_id, id.x, id.y, id.z);
-        int i;
-        for(i = 0; i < MAX_DIM_NUM; ++i){
-            cpy_len += sprintf(buf + cpy_len, "[%lf, %lf] ", node.region[i].low, node.region[i].high);
-        }
-        cpy_len += sprintf(buf + cpy_len, "\n\n");
+
+        cpy_len += sprintf(buf + cpy_len, "[%d_%d%d%d] ", node.cluster_id, id.x, id.y, id.z);
+        cpy_len += sprintf(buf + cpy_len, "%s:\n{\n", node.ip); 
+        cpy_len += sprintf(buf + cpy_len, "\tcapacity:%d,\n", the_torus->info.capacity);
+
+        cpy_len += sprintf(buf + cpy_len, "\tX:(%lf, %lf),\n", \
+                the_torus->info.region[0].low, the_torus->info.region[0].high);
+
+        cpy_len += sprintf(buf + cpy_len, "\tY:(%lf, %lf),\n", \
+                the_torus->info.region[1].low, the_torus->info.region[1].high);
+
+        cpy_len += sprintf(buf + cpy_len, "\tZ:(%lf, %lf),\n", \
+                the_torus->info.region[2].low, the_torus->info.region[2].high);
+
+
+        int data_num = g_ptCount;
+        cpy_len += sprintf(buf + cpy_len, "\tdata points:%d\n", data_num);
+
+        cpy_len += sprintf(buf + cpy_len, "}\n");
+
+        // set local_ip
+        strncpy(local_ip, node.ip, IP_ADDR_LENGTH);
     }
+
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
-    fill_message(status_msg.msg_size, WRITE_SYSTEM_STATUS, the_torus->info.ip, \
+    fill_message(status_msg.msg_size, REP_CHECK_SYSTEM_STATUS, local_ip, \
                             result_ip, "", buf, cpy_len, &status_msg); 
     send_data(result_sockfd, (void *) &status_msg, status_msg.msg_size);
-    return TRUE;
-}
 
-int do_write_system_status(struct message msg) {
-    char buf[BUF_SIZE];
-    memset(buf, 0, BUF_SIZE);
-    size_t data_len = msg.msg_size - calc_msg_header_size();
-    memcpy(buf, msg.data, data_len);
-    write_log(SYSTEM_STATUS_LOG, buf);
     return TRUE;
 }
 
@@ -4058,13 +3785,29 @@ int do_check_insert_data(struct message msg) {
 
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
-    cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
-    int data_num = g_ptCount;//g_NodeList.find(1)->second->n_ptCount;
-    cpy_len += sprintf(buf + cpy_len, "torus data num:%d,%d\n\n", data_num, insert_cnt);
+    char local_ip[IP_ADDR_LENGTH];
+    memset(local_ip, 0, IP_ADDR_LENGTH);
+
+    if(the_torus == NULL) {
+        if (FALSE == get_local_ip(local_ip)) {
+            write_log(ERROR_LOG, "do_check_system_status: get local ip occurred error.\n");
+            return FALSE;
+        }
+        cpy_len += sprintf(buf + cpy_len, "%s:the torus node didn't create.\n", local_ip); 
+    } else {
+
+        cpy_len += sprintf(buf + cpy_len, "torus node ip:%s\n", the_torus->info.ip); 
+        int data_num = g_ptCount;//g_NodeList.find(1)->second->n_ptCount;
+        cpy_len += sprintf(buf + cpy_len, "torus data num:%d,%d\n\n", data_num, insert_cnt);
+
+        // set local_ip
+        strncpy(local_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    }
 
     status_msg.msg_size = calc_msg_header_size() + cpy_len;
-    fill_message(status_msg.msg_size, WRITE_INSERT_DATA, the_torus->info.ip, \
+    fill_message(status_msg.msg_size, WRITE_INSERT_DATA, local_ip, \
                             result_ip, "", buf, cpy_len, &status_msg); 
+
     send_data(result_sockfd, (void *) &status_msg, status_msg.msg_size);
     return TRUE;
 
@@ -4079,22 +3822,22 @@ int do_write_insert_data(struct message msg) {
     return TRUE;
 }
 
-int do_check_range_query(struct message *msg) {
+int do_check_range_query(struct message msg) {
     char buf[DATA_SIZE];
     memset(buf, 0, DATA_SIZE);
-    size_t data_len = msg->msg_size - calc_msg_header_size();
-    memcpy(buf, msg->data, data_len);
+    size_t data_len = msg.msg_size - calc_msg_header_size();
+    memcpy(buf, msg.data, data_len);
     pthread_mutex_lock(&global_variable_mutex);
     write_log(RANGE_NN_QUERY_LOG, buf);
     pthread_mutex_unlock(&global_variable_mutex);
     return TRUE;
 }
 
-int do_check_nn_query(struct message *msg) {
+int do_check_nn_query(struct message msg) {
     char buf[DATA_SIZE];
     memset(buf, 0, DATA_SIZE);
-    size_t data_len = msg->msg_size - calc_msg_header_size();
-    memcpy(buf, msg->data, data_len);
+    size_t data_len = msg.msg_size - calc_msg_header_size();
+    memcpy(buf, msg.data, data_len);
     pthread_mutex_lock(&global_variable_mutex);
     write_log(RANGE_NN_QUERY_LOG, buf);
     pthread_mutex_unlock(&global_variable_mutex);
@@ -4268,7 +4011,7 @@ int do_trajectory_query(connection_t conn, struct message msg) {
     } 
 
     int cpy_len = 0;
-    byte buf[SOCKET_BUF_SIZE];
+    char buf[SOCKET_BUF_SIZE];
     memset(buf, 0, SOCKET_BUF_SIZE);
     memcpy(buf, &has_point, sizeof(int));
     cpy_len += sizeof(int);
@@ -4380,310 +4123,6 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
     return TRUE;
 }
 
-int process_message(connection_t conn, struct message msg) {
-
-	struct reply_message reply_msg;
-	REPLY_CODE reply_code = SUCCESS;
-	switch (msg.op) {
-
-	case CREATE_TORUS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request update torus.\n");
-        #endif
-		if (FALSE == do_create_torus(msg)) {
-			reply_code = FAILED;
-		}
-		break;
-
-	case UPDATE_PARTITION:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request update torus.\n");
-        #endif
-		if (FALSE == do_update_partition(msg)) {
-			reply_code = FAILED;
-		}
-
-		reply_msg.op = (OP)msg.op;
-		reply_msg.reply_code = (REPLY_CODE)reply_code;
-		strncpy(reply_msg.stamp, msg.stamp, STAMP_SIZE);
-
-		if (FALSE == send_reply(conn->socketfd, reply_msg)) {
-			// TODO handle send reply failed
-			return FALSE;
-		}
-		break;
-
-	case TRAVERSE_TORUS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request traverse torus.\n");
-        #endif
-
-		do_traverse_torus(msg);
-		break;
-
-	case QUERY_TORUS_NODE:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request search torus node.\n");
-        #endif
-
-		do_query_torus_node(msg);
-		break;
-
-	case UPDATE_SKIP_LIST:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request update skip list.\n");
-        #endif
-
-		do_update_skip_list(msg);
-		//print_skip_list_node(the_skip_list);
-		break;
-
-	case UPDATE_SKIP_LIST_NODE:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request update skip list node.\n");
-        #endif
-
-		do_update_skip_list_node(msg);
-		print_skip_list_node(the_skip_list);
-		break;
-
-	case QUERY_TORUS_CLUSTER:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
-        #endif
-        /*static int count = 0;
-        count++;
-        if(count % 10000 == 0) {
-            char b[10];
-            sprintf(b, "%d\n", count);
-            write_log(TORUS_NODE_LOG, b);
-        }*/
-
-		do_query_torus_cluster(msg);
-		break;
-
-    case LOAD_DATA:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "\nreceive request search skip list node.\n");
-        #endif
-		do_load_data(msg);
-        break;
-
-    case REPLICA_DATA:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "\nreceive request replica data.\n");
-        #endif
-        do_replica_data(msg);
-        break;
-
-	case NEW_SKIP_LIST:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request new skip list.\n");
-        #endif
-		do_new_skip_list(msg);
-		print_skip_list_node(the_skip_list);
-		break;
-
-	case TRAVERSE_SKIP_LIST:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request traverse skip list.\n");
-        #endif
-
-		do_traverse_skip_list(msg);
-		break;
-
-    case THROUGHPUT_INSERT:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request throughput insert test.\n");
-        #endif
-
-        do_throughput_insert(msg);
-        break;
-
-    case RECEIVE_FILTER_LOG:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request range query test filter.\n");
-        #endif
-
-        do_receive_filter_log(msg);
-        break;
-
-    case RECEIVE_REFINEMENT_LOG:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request range query test refinement.\n");
-        #endif
-
-        do_receive_refinement_log(msg);
-        break;
-    
-    case HEARTBEAT:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive heartbeat information.\n");
-        #endif
-
-        do_heartbeat(msg);
-        break;
-
-    case SEEK_IDLE_NODE:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive heartbeat information.\n");
-        #endif
-
-        do_seek_idle_node(conn, msg);
-        break;
-
-    case RELOAD_RTREE:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request reload rtree data.\n");
-        #endif
-        do_rtree_load_data(conn, msg);
-        break;
-
-    case LOAD_OCT_TREE_POINTS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request reload oct tree points.\n");
-        #endif
-        do_load_oct_tree_points(conn, msg);
-        break;
-
-    case LOAD_OCT_TREE_NODES:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request reload oct tree nodes.\n");
-        #endif
-        do_load_oct_tree_nodes(conn, msg);
-        break;
-
-    case LOAD_OCT_TREE_TRAJECTORYS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request reload oct tree trajectorys.\n");
-        #endif
-        do_load_oct_tree_trajectorys(conn, msg);
-        break;
-
-    case TRAJ_QUERY:
-        //conn->used = 0;
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request query oct tree trajectory.\n");
-        #endif
-        do_trajectory_query(conn, msg);
-        //conn->used = 1;
-        break;
-
-    case RANGE_QUERY_REFINEMENT:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request calc range query refinement.\n");
-        #endif
-        do_range_query_refinement(conn, msg);
-        break;
-
-    case NN_QUERY_REFINEMENT:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request calc nn query refinement.\n");
-        #endif
-        do_nn_query_refinement(conn, msg);
-        break;
-
-    case NOTIFY_MESSAGE:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request notify message .\n");
-        #endif
-        do_notify_message(msg);
-        break;
-    
-    case RELOAD_PROPERTIES:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request reload properties message .\n");
-        #endif
-        do_reload_properties(msg);
-        break;
-
-    case CHECK_SYSTEM_STATUS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request check system status.\n");
-        #endif
-        do_check_system_status(msg);
-        break;
-
-    case WRITE_SYSTEM_STATUS:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request write system status.\n");
-        #endif
-        do_write_system_status(msg);
-        break;
-
-    case CHECK_CONN_BUFFER:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request check connection buffer.\n");
-        #endif
-        do_check_conn_buffer(msg);
-        break;
-
-    case CHECK_TRAJ_SEQ:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request check connection buffer.\n");
-        #endif
-        do_check_traj_seq(msg);
-        break;
-
-    case CHECK_INSERT_DATA:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request check insert data.\n");
-        #endif
-        do_check_insert_data(msg);
-        break;
-
-    case WRITE_INSERT_DATA:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request write insert data.\n");
-        #endif
-        do_write_insert_data(msg);
-        break;
-
-    case CHECK_RANGE_QUERY:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
-        #endif
-        do_check_range_query(&msg);
-        break;
-
-    case CHECK_NN_QUERY:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive request write nn query.\n");
-        #endif
-        do_check_nn_query(&msg);
-        break;
-
-    case QUERY_START:
-        do_query_start(msg);
-        break;
-
-    case QUERY_END:
-        do_query_end(conn, msg);
-        break;
-
-    case FLUSH_CONN_BUF:
-        #ifdef WRITE_LOG
-            write_log(TORUS_NODE_LOG, "receive instruction flush connection buf.\n");
-        #endif
-        ; //do nothing
-        break;
-
-	default:
-		reply_code = (REPLY_CODE)WRONG_OP;
-        break;
-	}
-
-	return TRUE;
-}
-
-size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
-    if(beg + sizeof(size_t) > roff) {
-        return 0;
-    }
-    size_t msg_size;
-    memcpy(&msg_size, (void *)(ptr_buf + beg), sizeof(size_t));
-    return msg_size;
-}
 
 void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op) {
     // estimate response time based on the r_stat and query type
@@ -4755,96 +4194,44 @@ void *heartbeat_worker(void *args){
     return NULL;
 }
 
-int handle_conn_buffer(connection_t conn) {
-    struct message msg;
-    size_t beg = 0;
+static int register_message_handler_list() {
+    // TODO register all message
+    register_message_handler2(CREATE_TORUS, &do_create_torus);
+    register_message_handler2(QUERY_TORUS_NODE, do_query_torus_node);
+    register_message_handler2(QUERY_TORUS_CLUSTER, &do_query_torus_cluster);
+    register_message_handler2(LOAD_DATA, &do_load_data);
+    register_message_handler2(REPLICA_DATA, &do_replica_data);
+    register_message_handler2(NEW_SKIP_LIST, &do_new_skip_list);
+    register_message_handler2(UPDATE_SKIP_LIST, &do_update_skip_list);
+    register_message_handler2(UPDATE_SKIP_LIST_NODE, &do_update_skip_list_node);
+    register_message_handler2(TRAVERSE_SKIP_LIST, &do_traverse_skip_list);
+    register_message_handler2(HEARTBEAT, &do_heartbeat);
+    register_message_handler2(THROUGHPUT_INSERT, &do_throughput_insert);
+    register_message_handler2(RECEIVE_FILTER_LOG, &do_receive_filter_log);
+    register_message_handler2(RECEIVE_REFINEMENT_LOG, &do_receive_refinement_log);
+    register_message_handler2(NOTIFY_MESSAGE, &do_notify_message);
+    register_message_handler2(RELOAD_PROPERTIES, &do_reload_properties);
+    register_message_handler2(CHECK_SYSTEM_STATUS, &do_check_system_status);
+    register_message_handler2(CHECK_INSERT_DATA, &do_check_insert_data);
+    register_message_handler2(WRITE_INSERT_DATA, &do_write_insert_data);
+    register_message_handler2(CHECK_RANGE_QUERY, &do_check_range_query);
+    register_message_handler2(CHECK_NN_QUERY, &do_check_nn_query);
+    register_message_handler2(CHECK_CONN_BUFFER, &do_check_conn_buffer);
+    register_message_handler2(CHECK_TRAJ_SEQ, &do_check_traj_seq);
+    register_message_handler2(QUERY_START, &do_query_start);
 
-    // msg_size = 0 means can't get complete message
-    size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-    if(msg_size > 0) {
-        while(beg + msg_size <= conn->roff) {
-            memcpy(&msg, conn->rbuf + beg, msg_size);
-            beg = beg + msg_size;
-            process_message(conn, msg);
-            msg_size = read_message_size(conn->rbuf, beg, conn->roff);
-            if(msg_size == 0) {
-                break;
-            }
-        }
-    }
-    size_t remained = conn->roff - beg;
-    if( beg > 0) {
-        memmove(conn->rbuf, conn->rbuf + beg, remained);
-    }
-    conn->roff = remained;
+
+    // this need connection struct 
+    register_message_handler1(SEEK_IDLE_NODE, &do_seek_idle_node);
+    register_message_handler1(LOAD_OCT_TREE_POINTS, &do_load_oct_tree_points);
+    register_message_handler1(LOAD_OCT_TREE_NODES, &do_load_oct_tree_nodes);
+    register_message_handler1(LOAD_OCT_TREE_TRAJECTORYS, &do_load_oct_tree_trajectorys);
+    register_message_handler1(TRAJ_QUERY, &do_trajectory_query);
+    register_message_handler1(RANGE_QUERY_REFINEMENT, &do_range_query_refinement);
+    register_message_handler1(NN_QUERY_REFINEMENT, &do_nn_query_refinement);
+    register_message_handler1(QUERY_END, &do_query_end);
     return TRUE;
 }
-
-int handle_read_event(connection_t conn) {
-    // special case when the connection is compute task
-    if(conn->index >= MANUAL_WORKER + FAST_WORKER) {
-        struct message msg;
-        memset(&msg, 0, sizeof(struct message));
-
-        if (TRUE == receive_message(conn->socketfd, &msg)) {
-            process_message(conn, msg);
-        } else {
-            write_log(ERROR_LOG, "receive compute task request failed.\n");
-            return FALSE;
-        }
-    } else {
-        if(conn->roff == CONN_BUF_SIZE) {
-            handle_conn_buffer(conn);
-        }
-        int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
-        if(ret > 0) {
-            conn->roff += ret;
-            handle_conn_buffer(conn);
-        } else if(ret == 0){
-            return FALSE;
-        } else {
-            if(errno != EINTR && errno != EAGAIN) {
-                write_log(ERROR_LOG, "handle_read_event: socket error, %s\n", strerror(errno));
-                return FALSE;
-            }
-            write_log(ERROR_LOG, "handle_read_event: error occerred, %s\n", strerror(errno));
-        }
-    }
-    return TRUE;
-}
-
-int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
-    while(conn->woff + data_len > CONN_BUF_SIZE) {
-        handle_write_event(conn);
-    }
-    memcpy(conn->wbuf + conn->woff, data, data_len);
-    conn->woff += data_len;
-    handle_write_event(conn);
-    return TRUE;
-}
-
-int handle_write_event(connection_t conn) {
-    if (conn->woff == 0) {
-        return TRUE;
-    }
-    int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
-    if (ret < 0) {
-        if (errno != EINTR && errno != EAGAIN) {
-            write_log(ERROR_LOG, "handle_write_event: socket error, %s\n", strerror(errno));
-            return FALSE;
-        }
-        write_log(ERROR_LOG, "handle_write_event: error occerred, %s\n", strerror(errno));
-    } else {
-        int remained = conn->woff - ret;
-        if (remained > 0) {
-            memmove(conn->wbuf, conn->wbuf + ret, remained);
-        }
-        conn->woff = remained;
-    }
-    return TRUE;
-}
-
-
 
 int main(int argc, char **argv) {
 	write_log(TORUS_NODE_LOG, "start torus node.\n");
@@ -4910,6 +4297,15 @@ int main(int argc, char **argv) {
         neighbor_sock[i].sockfd = -1;
     }
 
+
+	the_msg_mgr = new_message_mgr();
+	if (NULL == the_msg_mgr) {
+		exit(1);
+	}
+
+    // load message handler collection
+    register_message_handler_list();
+
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
     pthread_mutex_init(&global_variable_mutex, NULL);
@@ -4931,7 +4327,7 @@ int main(int argc, char **argv) {
     // start connection manager
     run_connection_mgr(the_conn_mgr);
 
-    /* wait for heartbeat threat finish
+    /* wait for heartbeat thread finish
      * note: actually, this code will be executed 
      * only if the server has some bugs
      * */

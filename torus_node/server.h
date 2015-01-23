@@ -31,19 +31,10 @@ int do_traverse_torus(struct message msg);
 // forward message to current torus node's neighbors
 int forward_to_neighbors(struct message msg);
 
-// send part of current torus node's rtree 
-int send_splitted_rtree(char *dst_ip, double plow[], double phigh[]);
-
-// recreate local rtree by specified region
-int rtree_recreate(double plow[], double phigh[]);
-
 // append a new torus node if current torus node is up to bound
 int torus_split();
 
 void update_max_fvalue(struct refinement_stat r_stat, struct query_struct query, int op);
-
-// query type can be insert, delete or query
-int operate_rtree(struct query_struct query);
 
 // query type can be insert, delete or query
 int operate_oct_tree(struct query_struct query, int hops);
@@ -116,12 +107,6 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
 int local_oct_tree_nn_query(struct interval region[], double low[], double high[]);
 
 int local_oct_tree_range_query(struct query_struct query, double low[], double high[]);
-
-// implement connection manager's read event function 
-int handle_read_event(connection_t conn);
-
-// implement connection manager's write event function 
-int handle_write_event(connection_t conn);
 
 #endif /* SERVER_H_ */
 
