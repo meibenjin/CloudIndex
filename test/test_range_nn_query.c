@@ -20,60 +20,17 @@
 #include "communication/socket.h"
 #include"communication/message.h"
 
-int query_oct_tree(struct query_struct query, const char *entry_ip) {
+#include "test.h"
 
-	// get local ip address
-	char local_ip[IP_ADDR_LENGTH];
-	memset(local_ip, 0, IP_ADDR_LENGTH);
-	if (FALSE == get_local_ip(local_ip)) {
-		return FALSE;
-	}
-
-	struct message msg;
-	msg.op = QUERY_TORUS_CLUSTER;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
-
-    size_t cpy_len = 0; 
-	int count = 0;
-	memcpy(msg.data, &count, sizeof(int));
-    cpy_len += sizeof(int);
-
-    memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
-    cpy_len += sizeof(struct query_struct);
-
-    msg.msg_size = calc_msg_header_size() + cpy_len;
-
-    if(FALSE == send_message(msg)) {
-        return FALSE;
-    }
-
-	return TRUE;
-}
-
-//return elasped time from start to finish
-long get_elasped_time(struct timespec start, struct timespec end) {
-	return 1000000000L * (end.tv_sec - start.tv_sec)
-			+ (end.tv_nsec - start.tv_nsec);
-}
-
-
-int range_query(const char *entry_ip, char *file_name, int time_gap) {
-	int count = 0, i;
-    struct query_struct query;
+static int send_query(const char *entry_ip, const char *file, int time_gap) {
+	int i, socketfd;
     FILE *fp;
 
-    char file[MAX_FILE_NAME];
-    snprintf(file, MAX_FILE_NAME, "%s/%s", DATA_DIR, file_name);
-	fp = fopen(file, "rb");
-	if (fp == NULL) {
-		printf("can't open file %s\n", file);
-		exit(1);
-	}
+    // basic packet to be sent
+    struct message msg;
+    struct query_struct query;
 
     // create socket to server for transmitting data points
-    int socketfd;
     socketfd = new_client_socket(entry_ip, MANUAL_WORKER_PORT);
     if (FALSE == socketfd) {
         return FALSE;
@@ -87,85 +44,78 @@ int range_query(const char *entry_ip, char *file_name, int time_gap) {
 		return FALSE;
 	}
 
-    // basic packet to be sent
-    struct message msg;
-    msg.op = QUERY_TORUS_CLUSTER;
-	strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
-	strncpy(msg.dst_ip, entry_ip, IP_ADDR_LENGTH);
-	strncpy(msg.stamp, "", STAMP_SIZE);
+	fp = fopen(file, "rb");
+	if (fp == NULL) {
+		printf("can't open file %s\n", file);
+        return FALSE;
+	}
 
-    size_t cpy_len = 0; 
 	int hops= 0;
-
-    if(strcmp(file_name, "range_query") == 0){
-        printf("begin range query.\n");
-        while (!feof(fp)) {
-            fscanf(fp, "%d %d", &query.op, &query.data_id);
-            //printf("%d. ", ++count);
-            for (i = 0; i < MAX_DIM_NUM; i++) {
-                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
-            }
-            fscanf(fp, "\n");
-
-            // package query into message struct
-            cpy_len = 0;
-            memset(msg.data, 0, DATA_SIZE);
-            memcpy(msg.data, &hops, sizeof(int));
-            cpy_len += sizeof(int);
-            memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
-            cpy_len += sizeof(struct query_struct);
-
-            msg.msg_size = calc_msg_header_size() + cpy_len;
-            send_data(socketfd, (void *) &msg, msg.msg_size);
-            printf("%d\n", count);
-            count++;
-            usleep(time_gap * 1000);
+    size_t cpy_len = 0; 
+    while (!feof(fp)) {
+        fscanf(fp, "%d %d", &query.op, &query.data_id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
         }
-        printf("finish range query.\n");
-        fclose(fp);
+        fscanf(fp, "\n");
+
+        // package query into message struct
+        cpy_len = 0;
+        char buf[DATA_SIZE];
+        memset(buf, 0, DATA_SIZE);
+        memcpy(buf, &hops, sizeof(int));
+        cpy_len += sizeof(int);
+        memcpy(buf + cpy_len, (void *)&query, sizeof(struct query_struct));
+        cpy_len += sizeof(struct query_struct);
+
+        msg.msg_size = calc_msg_header_size() + cpy_len;
+		fill_message(msg.msg_size, QUERY_TORUS_CLUSTER, local_ip, entry_ip, \
+                "", buf, cpy_len, &msg);
+
+        send_data(socketfd, (void *) &msg, msg.msg_size);
+
+        printf("query %d:", query.data_id);
+        for (i = 0; i < MAX_DIM_NUM; i++) {
+            printf("(%lf, %lf) ", query.intval[i].low, query.intval[i].high);
+        }
+        printf("\n");
+        usleep(time_gap * 1000);
     }
 
-    if(strcmp(file_name, "nn_query") == 0){
-        printf("begin nn query.\n");
-        while (!feof(fp)) {
-            fscanf(fp, "%d %d", &query.op, &query.data_id);
-            //printf("%d. ", ++count);
-            for (i = 0; i < MAX_DIM_NUM; i++) {
-                fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
-            }
-            fscanf(fp, "\n");
-
-            // package query into message struct
-            cpy_len = 0;
-            memset(msg.data, 0, DATA_SIZE);
-            memcpy(msg.data, &hops, sizeof(int));
-            cpy_len += sizeof(int);
-            memcpy(msg.data + cpy_len, (void *)&query, sizeof(struct query_struct));
-            cpy_len += sizeof(struct query_struct);
-
-            msg.msg_size = calc_msg_header_size() + cpy_len;
-            send_data(socketfd, (void *) &msg, msg.msg_size);
-            if(count % time_gap == 0) {
-                printf("%d\n", count);
-            }
-            count++;
-            usleep(time_gap * 1000);
-        }
-        printf("finish nn query.\n");
-        fclose(fp);
-    }
+    fclose(fp);
     close(socketfd);
 
     return TRUE;
 }
 
-int main(int argc, char **argv){
+
+int query(const char *entry_ip, char *file_name, int time_gap) {
+    char file_path[MAX_FILE_NAME];
+    snprintf(file_path, MAX_FILE_NAME, "%s/%s", DATA_DIR, file_name);
+
+    if(strcmp(file_name, "range_query") == 0){
+        printf("begin range query.\n");
+        send_query(entry_ip, file_path, time_gap);
+        printf("finish range query.\n");
+    } else if(strcmp(file_name, "nn_query") == 0){
+        printf("begin nn query.\n");
+        send_query(entry_ip, file_path, time_gap);
+        printf("finish nn query.\n");
+    } else {
+        printf("query file not found.\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*int main(int argc, char **argv){
     if (argc < 4) {
         printf("usage: %s leader_ip query_file time_gap\n", argv[0]);
         exit(1);
     }
     range_query(argv[1], argv[2], atoi(argv[3]));
     return 0;
-}
+}*/
 
 

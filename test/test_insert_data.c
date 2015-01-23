@@ -17,16 +17,21 @@
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
+#include "test.h"
+
+//global configuration
+extern configuration_t the_config;
+
 int check_insert_data(int cluster_id) {
     int i;
     int socketfd;
     //get torus partition
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     int torus_num = tp.p_x * tp.p_y * tp.p_z;
 
     char dst_ip[IP_ADDR_LENGTH];
     for(i = 0; i < torus_num; i++) {
-        strncpy(dst_ip, torus_ip_list[i], IP_ADDR_LENGTH);
+        strncpy(dst_ip, the_config->nodes[i], IP_ADDR_LENGTH);
         socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
         if (FALSE == socketfd) {
             printf("create new socket failed!\n");
@@ -60,15 +65,15 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    // read ip pool from file 
-	if (FALSE == read_torus_ip_list()) {
+	// create a new configuration
+	the_config = new_configuration();
+	if (NULL == the_config) {
 		exit(1);
 	}
-
-    // read cluster partitions from file 
-    if(FALSE == read_cluster_partitions()) {
-        exit(1);
-    }
+	// load all configuration from file
+	if (FALSE == load_configuration(the_config)) {
+		exit(1);
+	}
 
     int cluster_id = atoi(argv[1]);
     check_insert_data(cluster_id);
