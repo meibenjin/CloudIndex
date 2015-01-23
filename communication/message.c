@@ -30,7 +30,8 @@ void fill_message(size_t msg_size, OP op, const char *src_ip, \
 }
 
 inline size_t calc_msg_header_size() {
-    return sizeof(size_t) + sizeof(enum OP) + 2 * IP_ADDR_LENGTH + STAMP_SIZE; 
+    return sizeof(struct message) - DATA_SIZE;
+    //return sizeof(size_t) + sizeof(enum OP) + 2 * IP_ADDR_LENGTH + STAMP_SIZE; 
 }
 
 void print_message(struct message msg) {
@@ -49,7 +50,7 @@ int send_message(struct message msg) {
 
     int ret = send_data(socketfd, (void *) &msg, msg.msg_size);
     if(ret < msg.msg_size) {
-		printf("send_message: %s send message failed.\n", msg.src_ip);
+		printf("%s socket error: %s.\n", msg.src_ip, strerror(errno));
 		return FALSE;
     }
 	return TRUE;

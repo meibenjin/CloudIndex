@@ -8,14 +8,23 @@
 #include<stdlib.h>
 #include<string.h>
 #include<assert.h>
+#include<errno.h>
+#include<unistd.h>
 #include<sys/epoll.h>
 #include<pthread.h>
 
-#include "connection_mgr.h"
+
 #include "logs/log.h"
 #include "socket.h"
+#include "connection_mgr.h"
+#include "message.h"
+#include "message_handler.h"
 
-int worker_epfd[EPOLL_NUM];
+static int worker_epfd[EPOLL_NUM];
+
+static pthread_t manual_worker_monitor_thread;
+static pthread_t fast_worker_monitor_thread;
+static pthread_t compute_worker_monitor_thread;
 
 // internal functions 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
@@ -44,13 +53,7 @@ static void init_conn_table(connection_mgr_t conn_mgr);
 static void init_conn_table(connection_mgr_t conn_mgr) {
     int i;
     for(i = 0; i < CONN_MAXFD; i++) {
-        conn_mgr->conn_table[i].socketfd = 0;
-        conn_mgr->conn_table[i].index = 0;
-        conn_mgr->conn_table[i].used = 0;
-        conn_mgr->conn_table[i].roff = 0;
-        memset(conn_mgr->conn_table[i].rbuf, 0, CONN_BUF_SIZE);
-        conn_mgr->conn_table[i].woff = 0;
-        memset(conn_mgr->conn_table[i].wbuf, 0, CONN_BUF_SIZE);
+        init_connection(&conn_mgr->conn_table[i]);
     }
 }
 
@@ -80,20 +83,6 @@ int modify_epoll(int epoll_fd, int sockfd, uint32_t event_types) {
 
 int register_to_worker_epoll(int index, int sockfd, uint32_t event_types) {
     return add_to_epoll(worker_epfd[index], sockfd, event_types);
-}
-
-void set_connection_info(connection_t conn, int conn_socket, int epoll_idx, int in_use) {
-    conn->socketfd = conn_socket; 
-    conn->index = epoll_idx; 
-    conn->used = in_use;
-}
-
-void close_connection(connection_t conn) {
-    struct epoll_event ev;
-    conn->used = 0;
-    conn->roff = 0;
-    epoll_ctl(worker_epfd[conn->index], EPOLL_CTL_DEL, conn->socketfd, &ev);
-    close(conn->socketfd);
 }
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
@@ -168,6 +157,7 @@ void *manual_worker_monitor(void *args) {
 
     close(manual_worker_socket);
     close(epfd);
+    pthread_cancel(pthread_self());
     return NULL;
 }
 
@@ -222,6 +212,7 @@ void *fast_worker_monitor(void *args) {
 
     close(fast_worker_socket);
     close(epfd);
+    pthread_cancel(pthread_self());
     return NULL;
 }
 
@@ -278,6 +269,7 @@ void *compute_worker_monitor(void *args) {
 
     close(compute_worker_socket);
     close(epfd);
+    pthread_cancel(pthread_self());
     return NULL;
 }
 
@@ -320,6 +312,7 @@ void *worker(void *args){
 
 		}
 	}
+    pthread_cancel(pthread_self());
     return NULL;
 }
 
@@ -348,13 +341,10 @@ void run_connection_mgr(connection_mgr_t conn_mgr) {
     }
     
     // multiple threads in torus node
-    pthread_t manual_worker_monitor_thread;
     pthread_create(&manual_worker_monitor_thread, NULL, manual_worker_monitor, conn_mgr);
 
-    pthread_t fast_worker_monitor_thread;
     pthread_create(&fast_worker_monitor_thread, NULL, fast_worker_monitor, conn_mgr);
 
-    pthread_t compute_worker_monitor_thread;
     pthread_create(&compute_worker_monitor_thread, NULL, compute_worker_monitor, conn_mgr);
 
     pthread_join(manual_worker_monitor_thread, NULL);
@@ -374,5 +364,118 @@ void stop_connection_mgr(connection_mgr_t conn_mgr) {
     }
     conn_mgr->running = 0;
 }
+
+
+//////////////////////////////////////////////////////////////////////
+
+// put here temporarily
+
+size_t read_message_size(const char * ptr_buf, size_t beg, size_t roff) {
+    if(beg + sizeof(size_t) > roff) {
+        return 0;
+    }
+    size_t msg_size;
+    memcpy(&msg_size, (void *)(ptr_buf + beg), sizeof(size_t));
+    return msg_size;
+}
+
+int handle_conn_buffer(connection_t conn) {
+    struct message msg;
+    size_t beg = 0;
+
+    // msg_size = 0 means can't get complete message
+    size_t msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+    if(msg_size > 0) {
+        while(beg + msg_size <= conn->roff) {
+            memcpy(&msg, conn->rbuf + beg, msg_size);
+            beg = beg + msg_size;
+            //process_message(conn, msg);
+            message_handler* msg_h = find_message_handler(msg.op);
+            if(msg_h != NULL) {
+                msg_h->process2(msg);
+            }
+
+            msg_size = read_message_size(conn->rbuf, beg, conn->roff);
+            if(msg_size == 0) {
+                break;
+            }
+        }
+    }
+    size_t remained = conn->roff - beg;
+    if( beg > 0) {
+        memmove(conn->rbuf, conn->rbuf + beg, remained);
+    }
+    conn->roff = remained;
+    return TRUE;
+}
+
+int handle_read_event(connection_t conn) {
+    // special case when the connection is compute task
+    if(conn->index >= MANUAL_WORKER + FAST_WORKER) {
+        struct message msg;
+        memset(&msg, 0, sizeof(struct message));
+
+        if (TRUE == receive_message(conn->socketfd, &msg)) {
+            //process_message(conn, msg);
+            message_handler* msg_h = find_message_handler(msg.op);
+            if(msg_h != NULL) {
+                msg_h->process1(conn, msg);
+            }
+        } else {
+            write_log(ERROR_LOG, "receive compute task request failed.\n");
+            return FALSE;
+        }
+    } else {
+        if(conn->roff == CONN_BUF_SIZE) {
+            handle_conn_buffer(conn);
+        }
+        int ret = recv(conn->socketfd, conn->rbuf + conn->roff, CONN_BUF_SIZE - conn->roff, 0);
+        if(ret > 0) {
+            conn->roff += ret;
+            handle_conn_buffer(conn);
+        } else if(ret == 0){
+            return FALSE;
+        } else {
+            if(errno != EINTR && errno != EAGAIN) {
+                write_log(ERROR_LOG, "handle_read_event: socket error, %s\n", strerror(errno));
+                return FALSE;
+            }
+            write_log(ERROR_LOG, "handle_read_event: error occerred, %s\n", strerror(errno));
+        }
+    }
+    return TRUE;
+}
+
+int async_send_data(connection_t conn, const char * data, uint32_t data_len) {
+    while(conn->woff + data_len > CONN_BUF_SIZE) {
+        handle_write_event(conn);
+    }
+    memcpy(conn->wbuf + conn->woff, data, data_len);
+    conn->woff += data_len;
+    handle_write_event(conn);
+    return TRUE;
+}
+
+int handle_write_event(connection_t conn) {
+    if (conn->woff == 0) {
+        return TRUE;
+    }
+    int ret = send(conn->socketfd, conn->wbuf, conn->woff, 0);
+    if (ret < 0) {
+        if (errno != EINTR && errno != EAGAIN) {
+            write_log(ERROR_LOG, "handle_write_event: socket error, %s\n", strerror(errno));
+            return FALSE;
+        }
+        write_log(ERROR_LOG, "handle_write_event: error occerred, %s\n", strerror(errno));
+    } else {
+        int remained = conn->woff - ret;
+        if (remained > 0) {
+            memmove(conn->wbuf, conn->wbuf + ret, remained);
+        }
+        conn->woff = remained;
+    }
+    return TRUE;
+}
+
 
 

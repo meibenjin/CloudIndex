@@ -51,7 +51,7 @@ int new_client_socket(const char *ip, int port) {
 	int client_socket = socket(AF_INET, SOCK_STREAM, 0);
 	//int client_socket = socket(AF_INET, SOCK_DGRAM, 0);
 	if (client_socket < 0) {
-		fprintf(stderr, "%s: socket()\n", strerror(errno));
+		printf("new_client_socket: create socket for %s, %s\n", ip, strerror(errno));
 		return FALSE;
 	}
 
@@ -60,7 +60,7 @@ int new_client_socket(const char *ip, int port) {
 
 	if (connect(client_socket, (struct sockaddr *) &client_addr,
 			sizeof(struct sockaddr)) < 0) {
-		fprintf(stderr, "%d, %s: connect()\n", errno, strerror(errno));
+		printf("new_client_socket: connect to %s, %s\n", ip, strerror(errno));
 		return FALSE;
 	}
 	return client_socket;
@@ -76,7 +76,7 @@ int new_server_socket(int port) {
 	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 	//int server_socket = socket(AF_INET, SOCK_DGRAM, 0);
 	if (server_socket < 0) {
-		fprintf(stderr, "%s: socket()\n", strerror(errno));
+		printf("new_server_socket: create socket failed, %s\n", strerror(errno));
 		return FALSE;
 	}
 
@@ -85,7 +85,7 @@ int new_server_socket(int port) {
 			sizeof(struct sockaddr));
 
 	if (ret < 0) {
-		fprintf(stderr, "%s: bind()\n", strerror(errno));
+		printf("new_server_socket: bind server failed, %s\n", strerror(errno));
 		return FALSE;
 	}
 
@@ -94,7 +94,7 @@ int new_server_socket(int port) {
     setsockopt(server_socket, SOL_SOCKET, SO_RCVBUF, (const char*)&rcv_buf, sizeof(int));
 
 	if (listen(server_socket, LISTEN_QUEUE_LENGTH) < 0) {
-		fprintf(stderr, "%s: listen()\n", strerror(errno));
+		printf("new_server_socket: listen server failed, %s\n", strerror(errno));
 		return FALSE;
 	}
 
@@ -159,7 +159,7 @@ int get_local_ip(char *ip) {
 	struct ifreq ifr;
 	socketfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (socketfd < 0) {
-		fprintf(stderr, "%s: socket()\n", strerror(errno));
+		printf("get_local_ip:create socket failed, %s\n", strerror(errno));
 		return FALSE;
 	}
 

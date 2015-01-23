@@ -8,22 +8,9 @@
 #ifndef CONNECTION_MGR_H_
 #define CONNECTION_MGR_H_
 
-#include "utils.h"
+#include"utils.h"
+#include"connection.h"
 
-// struct connections
-typedef struct connection_st {
-    int socketfd;
-    // which epoll fd this conn belongs to
-    int index; 
-    // flag
-    int used;
-    //read offset
-    size_t roff;
-    char rbuf[CONN_BUF_SIZE];
-    //write offset
-    size_t woff;
-    char wbuf[CONN_BUF_SIZE];
-}*connection_t;
 
 // define coming connections' I/O event handler pointer
 typedef int (*event_func)(connection_t);
@@ -47,10 +34,6 @@ typedef struct connection_mgr{
  * */
 int register_to_worker_epoll(int index, int sockfd, uint32_t event_types);
 
-void set_connection_info(connection_t conn, int conn_socket, int epoll_idx, int in_use);
-
-void close_connection(connection_t conn);
-
 // create a new connection manager instance
 connection_mgr* new_connection_mgr();
 
@@ -72,5 +55,18 @@ void init_connection_mgr(connection_mgr_t conn_mgr, \
 void run_connection_mgr(connection_mgr_t conn_mgr);
 
 void stop_connection_mgr(connection_mgr_t conn_mgr);
+
+//////////////////////////////////////////////////////////////////////
+
+
+// put here temporarily
+
+// implement connection manager's read event function 
+int handle_read_event(connection_t conn);
+
+// implement connection manager's write event function 
+int handle_write_event(connection_t conn);
+
+int async_send_data(connection_t conn, const char *data, uint32_t data_len);
 
 #endif

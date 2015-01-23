@@ -5,13 +5,12 @@
  *      Author: meibenjin
  */
 
-#ifndef REQUEST_H_
-#define REQUEST_H_
+#ifndef MESSAGE_H_
+#define MESSAGE_H_
 
 #include"utils.h"
 
-typedef struct message
-{
+typedef struct message {
     size_t msg_size; 
 	OP op;
 	char src_ip[IP_ADDR_LENGTH];
@@ -19,11 +18,6 @@ typedef struct message
 	char stamp[STAMP_SIZE];
     char data[DATA_SIZE];
 }message, *message_p;
-
-typedef struct packet {
-    char *data;
-    uint32_t data_len;
-}packet;
 
 /* reply message for transport among torus nodes
  * op: operation code
