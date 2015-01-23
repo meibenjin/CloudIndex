@@ -21,6 +21,9 @@ int cluster_id;
 struct query_struct query[6000000];
 int query_num;
 
+//global configuration
+extern configuration_t the_config;
+
 int read_data() {
     // read data file
     char data_file[MAX_FILE_NAME];
@@ -68,7 +71,7 @@ int split_data(int split_num) {
     int idx;
     int id = 0;
     //get torus partition
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     int num = (tp.p_x * tp.p_y * tp.p_z);
     for(i = 0; i < query_num; i++) {
         idx = query[i].trajectory_id % split_num;
@@ -93,15 +96,15 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    // read test data region from file 
-    if(FALSE == read_data_region()) {
-        exit(1);
-    }
-
-    // read cluster partitions from file 
-    if(FALSE == read_cluster_partitions()) {
-        exit(1);
-    }
+	// create a new configuration
+	the_config = new_configuration();
+	if (NULL == the_config) {
+		exit(1);
+	}
+	// load all configuration from file
+	if (FALSE == load_configuration(the_config)) {
+		exit(1);
+	}
 
     /*for(i = 0; i < cluster_num; i++) {
         leaders[i].partition = cluster_partitions[i];

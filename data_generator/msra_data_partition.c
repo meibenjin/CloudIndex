@@ -23,11 +23,16 @@ int cluster_id;
 struct query_struct query[20000000];
 int query_num = 0;
 
+//global configuration
+extern configuration_t the_config;
+
 int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query) {
     int i;
 
     // calc each dimension's data range
     double range[MAX_DIM_NUM];
+    interval data_region[MAX_DIM_NUM];
+    memcpy(data_region, the_config->data_region, sizeof(struct interval) * MAX_DIM_NUM);
     for(i = 0; i < MAX_DIM_NUM; i++) {
         range[i] = data_region[i].high - data_region[i].low;
     }
@@ -86,11 +91,13 @@ int write_to_file(struct query_struct query, coordinate file_id) {
 }
 
 int data_contain(struct query_struct query, int cluster_id, struct coordinate node_id) {
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
 
     // calc each dimension's data range
     int i;
     double range[MAX_DIM_NUM];
+    interval data_region[MAX_DIM_NUM];
+    memcpy(data_region, the_config->data_region, sizeof(struct interval) * MAX_DIM_NUM);
     for(i = 0; i < MAX_DIM_NUM; i++) {
         range[i] = data_region[i].high - data_region[i].low;
     }
@@ -125,7 +132,7 @@ int data_contain(struct query_struct query, int cluster_id, struct coordinate no
 }
 int get_file_id(struct query_struct query, int cluster_id) {
     int i, j, k;
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     struct coordinate node_id;
     int file_id = 0;
     for(i = 0; i < tp.p_x; i++) {
@@ -149,7 +156,7 @@ int data_partition(int cluster_id) {
     struct query_struct new_query;
 
     //get torus partition
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     int torus_num = tp.p_x * tp.p_y * tp.p_z;
 
 
@@ -235,15 +242,16 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    // read test data region from file 
-    if(FALSE == read_data_region()) {
-        exit(1);
-    }
+	// create a new configuration
+	the_config = new_configuration();
+	if (NULL == the_config) {
+		exit(1);
+	}
+	// load all configuration from file
+	if (FALSE == load_configuration(the_config)) {
+		exit(1);
+	}
 
-    // read cluster partitions from file 
-    if(FALSE == read_cluster_partitions()) {
-        exit(1);
-    }
 
     cluster_id = atoi(argv[1]);
 

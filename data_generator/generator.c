@@ -16,17 +16,24 @@
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
-leaders_info leaders[MAX_NODES_NUM];
-int cluster_id;
+//static leaders_info leaders[MAX_NODES_NUM];
+//static int cluster_id;
 
-struct query_struct query[15000000];
-int query_num = 0;
+static struct query_struct query[4500000];
+static int query_num = 0;
+
+//global configuration
+extern configuration_t the_config;
+
+int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query);
 
 int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *query) {
     int i;
 
     // calc each dimension's data range
     double range[MAX_DIM_NUM];
+    interval data_region[MAX_DIM_NUM];
+    memcpy(data_region, the_config->data_region, sizeof(struct interval) * MAX_DIM_NUM);
     for(i = 0; i < MAX_DIM_NUM; i++) {
         range[i] = data_region[i].high - data_region[i].low;
     }
@@ -118,42 +125,6 @@ void package_query_msg(struct message * ptr_msg, char src_ip[IP_ADDR_LENGTH], co
     ptr_msg->msg_size = calc_msg_header_size() + cpy_len;
 }
 
-int insert_data_test(const char dst_ip[IP_ADDR_LENGTH]) {
-    int socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
-    if (FALSE == socketfd) {
-        printf("creat new socket failed for ip=%s\n", dst_ip);
-        return FALSE;
-    } 
-
-    // get local ip
-    char local_ip[IP_ADDR_LENGTH];
-    memset(local_ip, 0, IP_ADDR_LENGTH);
-    if (FALSE == get_local_ip(local_ip)) {
-        close(socketfd);
-        printf("insert_data stops because we cannot get local ip.\n");
-        return FALSE;
-    }
-
-    struct message msg;
-    int hops= 0;
-    int query_idx = 0;
-    struct query_struct new_query;
-
-    while(query_idx<query_num) {
-        new_query = query[query_idx];
-        package_query_msg(&msg, local_ip, dst_ip, hops, new_query);
-   
-        //printf("send %d to %s\n", msg.msg_size, destination_ip);
-        send_data(socketfd, (void *) &msg, msg.msg_size);
-        query_idx++;
-        if(query_idx % 10000 == 0) {
-            printf("%d\n", query_idx);
-        }
-    }
-    return TRUE;
-
-}
-
 int insert_data_origin(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_id) {
     int socketfds[entries_num];
     if (FALSE == create_sockets(entry_ips, socketfds, entries_num)) {
@@ -183,9 +154,9 @@ int insert_data_origin(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cl
         memset(destination_ip, 0, IP_ADDR_LENGTH);
         strncpy(destination_ip, entry_ips[chosen_idx], IP_ADDR_LENGTH);
         package_query_msg(&msg, local_ip, destination_ip, hops, new_query);
-        //printf("send %d to %s\n", msg.msg_size, destination_ip);
         send_data(socketfds[chosen_idx], (void *) &msg, msg.msg_size);
-        if(query_idx % 10000 == 0) {
+
+        if(query_idx % 100000 == 0) {
             printf("%d\n", query_idx);
         }
         query_idx++;
@@ -194,8 +165,62 @@ int insert_data_origin(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cl
     close_sockets(socketfds, entries_num);
     return TRUE;
 }
+
+int insert_data(const char *file_path, int freq) {
+    // read spatio-temporal data file
+    if(FALSE == read_data()) {
+        return FALSE;
+    }
+
+    int i = 0;
+    char entry_ips[LEADER_NUM][IP_ADDR_LENGTH];
+    for(i = 0; i < LEADER_NUM; i++) {
+        strncpy(entry_ips[i], the_config->nodes[i], IP_ADDR_LENGTH);
+    }
+    int entries_num = LEADER_NUM;
+
+    int socketfds[entries_num];
+    if (FALSE == create_sockets(entry_ips, socketfds, entries_num)) {
+        printf("insert_data stops because some sockets cannot be established.\n");
+        return FALSE;
+    }
+
+    // get local ip
+    char local_ip[IP_ADDR_LENGTH];
+    memset(local_ip, 0, IP_ADDR_LENGTH);
+    if (FALSE == get_local_ip(local_ip)) {
+        close_sockets(socketfds, entries_num);
+        printf("insert_data stops because we cannot get local ip.\n");
+        return FALSE;
+    }
+
+    struct message msg;
+    int hops= 0;
+    struct query_struct new_query;
+    char destination_ip[IP_ADDR_LENGTH];
+
+    int query_idx = 0;
+    while(query_idx < query_num) {
+        new_query = query[query_idx];
+        int chosen_idx = rand() % entries_num;
+        memset(destination_ip, 0, IP_ADDR_LENGTH);
+        strncpy(destination_ip, entry_ips[chosen_idx], IP_ADDR_LENGTH);
+        package_query_msg(&msg, local_ip, destination_ip, hops, new_query);
+        send_data(socketfds[chosen_idx], (void *) &msg, msg.msg_size);
+
+        query_idx++;
+        if(query_idx % freq == 0) {
+            printf("insert data to cluster:%d finished\n", query_idx);
+        }
+    }
+    printf("total insert:%d data points\n", query_idx);
+
+    close_sockets(socketfds, entries_num);
+    return TRUE;
+}
+
  
-int insert_data(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_id) {
+int insert_data_old(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_id) {
     
     int socketfds[entries_num];
     if (FALSE == create_sockets(entry_ips, socketfds, entries_num)) {
@@ -220,7 +245,7 @@ int insert_data(char entry_ips[][IP_ADDR_LENGTH], int entries_num, int cluster_i
     char destination_ip[IP_ADDR_LENGTH];
 
     //get torus partition
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     
     int i, j, k;
     int query_idx = 0;
@@ -273,7 +298,7 @@ int read_data() {
     snprintf(data_file, MAX_FILE_NAME, "%s/data", DATA_DIR);
     FILE *fp = fopen(data_file, "rb");
     if (fp == NULL) {
-	printf("can't open file\n");
+        printf("can't open file\n");
         return FALSE;
     }
 
@@ -302,22 +327,22 @@ int read_data() {
     return TRUE;
 }
 
-int main(int argc, char const* argv[]) {
+/*int main(int argc, char const* argv[]) {
     //TODO the usage needs to be changed
     if (argc < 2) {
         printf("usage: %s cluster_id ip\n", argv[0]); 
         exit(1);
     }
 
-    // read test data region from file 
-    if(FALSE == read_data_region()) {
-        exit(1);
-    }
-
-    // read cluster partitions from file 
-    if(FALSE == read_cluster_partitions()) {
-        exit(1);
-    }
+	// create a new configuration
+	the_config = new_configuration();
+	if (NULL == the_config) {
+		exit(1);
+	}
+	// load all configuration from file
+	if (FALSE == load_configuration(the_config)) {
+		exit(1);
+	}
 
     cluster_id = atoi(argv[1]);
 
@@ -325,21 +350,17 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    if(FALSE == read_torus_ip_list()) {
-        exit(1);
-    }
-
     char entry_ips[LEADER_NUM][IP_ADDR_LENGTH];
     int i = 0;
     for(i = 0; i < LEADER_NUM; i++) {
-        strncpy(entry_ips[i], torus_ip_list[i], IP_ADDR_LENGTH);
+        strncpy(entry_ips[i], the_config->nodes[i], IP_ADDR_LENGTH);
     }
     
-    //insert_data(entry_ips, LEADER_NUM, cluster_id);
+    //insert_data_old(entry_ips, LEADER_NUM, cluster_id);
     insert_data_origin(entry_ips, LEADER_NUM, cluster_id);
     //insert_data_test(argv[2]);
     return 0;
-}
+}*/
 
 
 

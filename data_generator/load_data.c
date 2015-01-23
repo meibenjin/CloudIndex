@@ -17,29 +17,32 @@
 #include "config/config.h"
 #include "torus_node/torus_node.h"
 
+//global configuration
+extern configuration_t the_config;
+
 int notify_load_data(int cluster_id) {
     int i;
-    int socketfd;
+    //int socketfd;
     //get torus partition
-    torus_partitions tp = cluster_partitions[cluster_id];
+    torus_partitions tp = the_config->partitions[cluster_id];
     int torus_num = tp.p_x * tp.p_y * tp.p_z;
 
     char dst_ip[IP_ADDR_LENGTH];
     for(i = 0; i < torus_num; i++) {
-        strncpy(dst_ip, torus_ip_list[i], IP_ADDR_LENGTH);
+        strncpy(dst_ip, the_config->nodes[i], IP_ADDR_LENGTH);
         // test oct_tree split
         //strncpy(dst_ip, "172.16.0.188", IP_ADDR_LENGTH);
-        socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
+        /*socketfd = new_client_socket(dst_ip, MANUAL_WORKER_PORT);
         if (FALSE == socketfd) {
             printf("create new socket failed!\n");
             return FALSE;
-        }
+        }*/
 
         // get local ip
         char local_ip[IP_ADDR_LENGTH];
         memset(local_ip, 0, IP_ADDR_LENGTH);
         if (FALSE == get_local_ip(local_ip)) {
-            close(socketfd);
+            //close(socketfd);
             return FALSE;
         }
 
@@ -48,11 +51,12 @@ int notify_load_data(int cluster_id) {
         struct message msg;
         msg.msg_size = calc_msg_header_size() + 1;
         fill_message(msg.msg_size, LOAD_DATA, local_ip, dst_ip, "", "", 1, &msg);
-        send_data(socketfd, (void *) &msg, msg.msg_size);
+        send_message(msg);
+        //send_data(socketfd, (void *) &msg, msg.msg_size);
 
         printf("notify torus node %s to load data.\n", dst_ip);
 
-        close(socketfd);
+        //close(socketfd);
     }
     return TRUE;
 }
@@ -63,21 +67,20 @@ int main(int argc, char const* argv[]) {
         exit(1);
     }
 
-    // read ip pool from file 
-	if (FALSE == read_torus_ip_list()) {
+	// create a new configuration
+	the_config = new_configuration();
+	if (NULL == the_config) {
 		exit(1);
 	}
-
-    // read cluster partitions from file 
-    if(FALSE == read_cluster_partitions()) {
-        exit(1);
-    }
+	// load all configuration from file
+	if (FALSE == load_configuration(the_config)) {
+		exit(1);
+	}
 
     int cluster_id = atoi(argv[1]);
     notify_load_data(cluster_id);
     return 0;
 }
-
 
 
 
