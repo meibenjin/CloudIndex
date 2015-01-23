@@ -8,6 +8,7 @@ GSL_INCLUDE=./deps/gsl/include
 CQUEUEDIR=./deps/cqueue/
 UTILSDIR=./utils
 SOCKETDIR=./communication
+CMDDIR=./command
 TORUSDIR=./torus_node
 OCTTREEDIR=./oct_tree
 CONTROLDIR=./control_node
@@ -23,16 +24,19 @@ CXX=g++
 CFLAGS= -g -lrt -Wall -Wno-deprecated
 #CFLAGS= -lrt -Wall -Wno-deprecated
 
-all: control start-node data_generator data_split query_split query_sim data_partition msra_data_partition load_data test_system_status test_insert_data test_range_nn_query test_conn_buffer test_traj_seq reload_properties del_obj_file 
+all: control start-node data_split query_split query_sim data_partition msra_data_partition load_data test_insert_data test_conn_buffer test_traj_seq reload_properties del_obj_file 
 
-control:log.o utils.o geometry.o control.o torus-node.o socket.o message.o skip-list.o config.o 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o -lm
+control:log.o utils.o geometry.o control.o torus-node.o socket.o message.o message_mgr.o connection.o conn_manager.o skip-list.o config.o command_mgr.o data_generator.o test_system_status.o test_range_nn_query.o
+	$(CXX) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/control.o $(BIN)/torus-node.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/message_mgr.o $(BIN)/connection.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o  $(BIN)/config.o $(BIN)/command_mgr.o $(BIN)/data_generator.o $(BIN)/test_system_status.o $(BIN)/test_range_nn_query.o -lm -lreadline -lncurses -lpthread
 
-start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o conn_manager.o skip-list.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
-	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
+#start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o conn_manager.o skip-list.o torus_rtree.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
+	#$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 
-data_generator:log.o utils.o data_generator.o socket.o message.o config.o torus-node.o 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
+start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o message_mgr.o connection.o conn_manager.o skip-list.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
+	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/message_mgr.o $(BIN)/connection.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -lgsl -lgslcblas -lm -pthread
+
+#data_generator:log.o utils.o data_generator.o socket.o message.o config.o torus-node.o 
+#	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
 data_generator.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/generator.c -I$(VPATH)
 
@@ -46,8 +50,8 @@ load_data:log.o utils.o load_data.o socket.o message.o config.o torus-node.o
 load_data.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(DATAGENDIR)/load_data.c -I$(VPATH)
 
-reload_properties:utils.o reload_properties.o config.o socket.o message.o torus-node.o 
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/reload_properties.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/torus-node.o 
+reload_properties:log.o utils.o reload_properties.o config.o socket.o message.o torus-node.o 
+	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/log.o $(BIN)/utils.o $(BIN)/reload_properties.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/torus-node.o 
 reload_properties.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONTROLDIR)/reload_properties.c -I$(VPATH)
 
@@ -78,9 +82,17 @@ socket.o:
 message.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/message.c -I$(VPATH)
 
+message_mgr.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/message_handler.c -I$(VPATH)
+
+connection.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/connection.c -I$(VPATH)
+
 conn_manager.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(SOCKETDIR)/connection_mgr.c -I$(VPATH)
 
+command_mgr.o:
+	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CMDDIR)/command.c -I$(VPATH) 
 cqueue.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CQUEUEDIR)/cqueue.c -I$(VPATH)
 
@@ -129,8 +141,8 @@ query_sim.o:
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #test case
 
-test_system_status:log.o utils.o test_system_status.o socket.o message.o config.o torus-node.o  
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/test_system_status.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
+#test_system_status:log.o utils.o test_system_status.o socket.o message.o config.o torus-node.o  
+#	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/test_system_status.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/log.o
 test_system_status.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_system_status.c -I$(VPATH)
 
@@ -139,8 +151,8 @@ test_insert_data:log.o utils.o test_insert_data.o socket.o message.o config.o to
 test_insert_data.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_insert_data.c -I$(VPATH)
 
-test_range_nn_query: utils.o socket.o message.o test_range_nn_query.o
-	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/test_range_nn_query.o 
+#test_range_nn_query: utils.o socket.o message.o test_range_nn_query.o
+#	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/test_range_nn_query.o 
 test_range_nn_query.o: 
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(TESTDIR)/test_range_nn_query.c -I$(VPATH)
 
