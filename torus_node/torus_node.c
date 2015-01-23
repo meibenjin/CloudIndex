@@ -294,7 +294,7 @@ void print_node_info(node_info node) {
         #ifdef INT_DATA
             printf("[%d, %d] ", node.region[i].low, node.region[i].high);
         #else 
-            printf("[%lf, %lf] ", node.region[i].low, node.region[i].high);
+            printf("[%.2lf, %.2lf] ", node.region[i].low, node.region[i].high);
         #endif
 	}
 	printf("\n");

@@ -70,7 +70,5 @@ int write_torus_leaders(node_info leaders[]);
 
 int read_torus_leaders(leaders_info leaders[], int *nodes_num);
 
-
-
 #endif /* TORUS_NODE_H_ */
 
