@@ -11,6 +11,9 @@
 #include<stddef.h>
 #include"utils.h"
 
+#pragma pack(push)
+#pragma pack(4)
+
 typedef struct configuration {
 	torus_partitions partitions[MAX_CLUSTERS_NUM];
 	size_t cluster_num;
@@ -22,6 +25,8 @@ typedef struct configuration {
 	struct global_properties_struct props;
 
 } configuration, *configuration_t;
+
+#pragma pack(pop)
 
 // create a new configuration instance
 configuration* new_configuration();
