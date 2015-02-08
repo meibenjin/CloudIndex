@@ -15,6 +15,9 @@
 // exec function of command
 typedef int (*exec_func)(void *);
 
+#pragma pack(push)
+#pragma pack(4)
+
 typedef struct command {
 	char name[MAX_CMD_LEN];
 	char doc[MAX_DOC_LEN];
@@ -31,6 +34,8 @@ typedef struct command_mgr {
     command last_cmd;
 	int running;
 }command_mgr, *command_mgr_t;
+
+#pragma pack(pop)
 
 //command_list new_command_list();
 
