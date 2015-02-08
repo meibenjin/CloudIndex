@@ -15,4 +15,6 @@ int read_data();
 
 int insert_data(const char *file_path, int freq);
 
+int insert_data_extend(const char *file_path, int freq);
+
 #endif /* GENERATOR_H_ */
