@@ -82,8 +82,6 @@ pthread_mutex_t replica_mutex;
 char result_ip[IP_ADDR_LENGTH] = "172.16.0.166";
 int result_sockfd;
 char result_log[100];
-char filter_log[100];
-char refinement_log[100];
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -2358,13 +2356,6 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     hash_map<IDTYPE, Traj*> trajs;
     recreate_trajs(pt_vector, trajs);
 
-    /*hash_map<IDTYPE, Traj *>::iterator it;
-    Traj* cur_traj;
-    for(it = trajs.begin(); it != trajs.end(); ++it) {
-        cur_traj = it->second;
-        cur_traj->printTraj();
-    }*/
-
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
     fl_st.index_elapsed = elapsed;
@@ -2912,7 +2903,6 @@ int do_range_query_refinement(connection_t conn, struct message msg) {
                      "", buffer, cpy_len, &qry_msg);
 
     send_data(result_sockfd, (void *) &qry_msg, qry_msg.msg_size);
-
 
     // decrease current fvalue
     update_max_fvalue(r_stat, query, -1);
@@ -3901,53 +3891,6 @@ int do_query_end(connection_t conn, struct message msg) {
     return TRUE;
 }
 
-int do_receive_filter_log(struct message msg) {
-    struct filter_log_struct fl_st;
-    memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
-    timespec cur_time;
-    clock_gettime(CLOCK_REALTIME, &cur_time);
-
-    char buf[1024];
-    memset(buf, 0, 1024);
-    int cpy_len = 0;
-    //timestamp, query_id, region, index_elapsed, obtain_idle_elapsed, send_refinement_elapsed, 
-    //requested_num, actual_got_num, size_after_index, size_after_filter
-    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,fl_st.query_id);
-    int i;
-    for (i=0;i<MAX_DIM_NUM;i++){
-        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", fl_st.qry_region[i].low, fl_st.qry_region[i].high);
-    }
-    cpy_len += sprintf(buf + cpy_len, "]");
-    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%d", fl_st.index_elapsed, fl_st.obtain_idle_elapsed, fl_st.send_refinement_elapsed);
-    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%u,%u\n", fl_st.requested_num, fl_st.actual_got_num,\
-            fl_st.size_after_index, fl_st.size_after_filter); 
-
-    write_log(filter_log, buf);
-    return TRUE;
-}
-
-int do_receive_refinement_log(struct message msg) {
-    struct refinement_log_struct rfmt_st;
-    memcpy(&rfmt_st, msg.data, sizeof(refinement_log_struct));
-    timespec cur_time;
-    clock_gettime(CLOCK_REALTIME, &cur_time);
-
-    char buf[1024];
-    memset(buf, 0, 1024);
-    int cpy_len = 0;
-    //timestamp, query_id, region, rece_data_elapsed, calc_qp_elapsed, result_size, avg_qp 
-    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,rfmt_st.query_id);
-    int i;
-    for (i=0;i<MAX_DIM_NUM;i++){
-        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", rfmt_st.qry_region[i].low, rfmt_st.qry_region[i].high);
-    }
-    cpy_len += sprintf(buf + cpy_len, "],");
-    cpy_len += sprintf(buf + cpy_len, "%d,%d,%u,%lf\n", rfmt_st.recv_refinement_elapsed, rfmt_st.calc_qp_elapsed, \
-            rfmt_st.result_size, rfmt_st.avg_qp);
-
-    write_log(refinement_log, buf);
-    return TRUE;
-}
 
 int do_throughput_insert(struct message msg) {
     static int count = 0;
@@ -4207,8 +4150,6 @@ static int register_message_handler_list() {
     register_message_handler2(TRAVERSE_SKIP_LIST, &do_traverse_skip_list);
     register_message_handler2(HEARTBEAT, &do_heartbeat);
     register_message_handler2(THROUGHPUT_INSERT, &do_throughput_insert);
-    register_message_handler2(RECEIVE_FILTER_LOG, &do_receive_filter_log);
-    register_message_handler2(RECEIVE_REFINEMENT_LOG, &do_receive_refinement_log);
     register_message_handler2(NOTIFY_MESSAGE, &do_notify_message);
     register_message_handler2(RELOAD_PROPERTIES, &do_reload_properties);
     register_message_handler2(CHECK_SYSTEM_STATUS, &do_check_system_status);
@@ -4252,12 +4193,6 @@ int main(int argc, char **argv) {
     local = localtime(&t);
     sprintf(result_log, "../logs/result_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, local->tm_hour, \
             local->tm_min, local->tm_sec);
-
-    sprintf(filter_log, "../logs/filter_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, local->tm_hour, \
-            local->tm_min, local->tm_sec);
-
-    sprintf(refinement_log, "../logs/refinement_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, \
-            local->tm_hour, local->tm_min, local->tm_sec);
 
 
     // step 2: initialize global variables
