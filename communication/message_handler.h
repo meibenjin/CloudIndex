@@ -13,9 +13,8 @@
 #include"connection.h"
 #include"message.h"
 
-// define coming connections' I/O event handler pointer
-//typedef int (*handle_func1)(connection_t, message msg);
-//typedef int (*handle_func2)(message msg);
+#pragma pack(push)
+#pragma pack(4)
 
 typedef struct message_handler {
     OP op;
@@ -29,6 +28,8 @@ typedef struct message_mgr {
 	message_handler handler[MAX_MSG_NUM];
 	size_t msg_num;
 }message_mgr, *message_mgr_t;
+
+#pragma pack(pop)
 
 // create a new message collection manager instance
 message_mgr* new_message_mgr();

@@ -11,6 +11,8 @@
 #include"utils.h"
 #include"connection.h"
 
+#pragma pack(push)
+#pragma pack(4)
 
 // define coming connections' I/O event handler pointer
 typedef int (*event_func)(connection_t);
@@ -24,6 +26,8 @@ typedef struct connection_mgr{
     // running flag;
     int running;
 }connection_mgr, *connection_mgr_t;
+
+#pragma pack(pop)
 
 //TODO this function should put into another module
 /* register an socket into worker epoll with events type being set

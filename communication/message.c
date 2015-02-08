@@ -21,12 +21,14 @@ void fill_message(size_t msg_size, OP op, const char *src_ip, \
                   const char *dst_ip, const char *stamp, const char *data, \
                   size_t data_len, struct message *msg)
 {
-    msg->msg_size = msg_size;
 	msg->op = op;
 	strncpy(msg->src_ip, src_ip, IP_ADDR_LENGTH);
 	strncpy(msg->dst_ip, dst_ip, IP_ADDR_LENGTH);
 	strncpy(msg->stamp, stamp, STAMP_SIZE);
+
+    msg->msg_size = msg_size + 1;
 	memcpy(msg->data, data, data_len);
+    msg->data[data_len] = '\0';
 }
 
 inline size_t calc_msg_header_size() {

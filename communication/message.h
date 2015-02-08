@@ -10,6 +10,9 @@
 
 #include"utils.h"
 
+#pragma pack(push)
+#pragma pack(4)
+
 typedef struct message {
     size_t msg_size; 
 	OP op;
@@ -18,6 +21,8 @@ typedef struct message {
 	char stamp[STAMP_SIZE];
     char data[DATA_SIZE];
 }message, *message_p;
+
+#pragma pack(pop)
 
 /* reply message for transport among torus nodes
  * op: operation code

@@ -10,6 +10,9 @@
 
 #include "utils.h"
 
+#pragma pack(push)
+#pragma pack(4)
+
 // struct connections
 typedef struct connection_st {
     int socketfd;
@@ -24,6 +27,8 @@ typedef struct connection_st {
     size_t woff;
     char wbuf[CONN_BUF_SIZE];
 }*connection_t;
+
+#pragma pack(pop)
 
 void init_connection(connection_t conn);
 
