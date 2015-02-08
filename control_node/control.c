@@ -8,8 +8,8 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
-#include<sys/time.h>
 #include<time.h>
+#include<sys/time.h>
 #include<unistd.h>
 #include<errno.h>
 #include<assert.h>
@@ -47,6 +47,9 @@ connection_mgr_t the_conn_mgr = NULL;
 extern command_mgr_t the_cmd_mgr;
 
 pthread_mutex_t file_mutex;
+
+char filter_log[100];
+char refinement_log[100];
 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
@@ -982,7 +985,7 @@ int cmd_cluster_status(void *args) {
 
 int cmd_insert_data(void *args) {
     // invoke data insert function at data_generator
-    insert_data(NULL, 50000);
+    insert_data_extend(NULL, 500000);
 
     printf("insert data to cluster ... succeed.\n");
     printf("input 'clusterstatus' command to get more information.\n");
@@ -990,7 +993,7 @@ int cmd_insert_data(void *args) {
 }
 
 int cmd_range_query(void *args) {
-    query("172.16.0.179", "range_query", 500);
+    query("172.16.0.236", "range_query", 10);
     sleep(1);
     printf("exec range query ... succeed.\n");
     printf("input 'more' command for more information.\n");
@@ -998,20 +1001,66 @@ int cmd_range_query(void *args) {
 }
 
 int cmd_nn_query(void *args) {
-    query("172.16.0.179", "nn_query", 500);
+    query("172.16.0.236", "nn_query", 10);
     sleep(1);
     printf("exec nn query ... succeed.\n");
     printf("input 'more' command for more information.\n");
     return TRUE;
 }
 
+int do_receive_filter_log(struct message msg) {
+    struct filter_log_struct fl_st;
+    memcpy(&fl_st, msg.data, sizeof(filter_log_struct));
+    struct timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int cpy_len = 0;
+    //timestamp, query_id, region, index_elapsed, obtain_idle_elapsed, send_refinement_elapsed, 
+    //requested_num, actual_got_num, size_after_index, size_after_filter
+    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,fl_st.query_id);
+    int i;
+    for (i=0;i<MAX_DIM_NUM;i++){
+        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", fl_st.qry_region[i].low, fl_st.qry_region[i].high);
+    }
+    cpy_len += sprintf(buf + cpy_len, "]");
+    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%d", fl_st.index_elapsed, fl_st.obtain_idle_elapsed, fl_st.send_refinement_elapsed);
+    cpy_len += sprintf(buf + cpy_len, ",%d,%d,%u,%u\n", fl_st.requested_num, fl_st.actual_got_num,\
+            fl_st.size_after_index, fl_st.size_after_filter); 
+
+    write_log(filter_log, buf);
+    return TRUE;
+}
+
+int do_receive_refinement_log(struct message msg) {
+    struct refinement_log_struct rfmt_st;
+    memcpy(&rfmt_st, msg.data, sizeof(refinement_log_struct));
+    struct timespec cur_time;
+    clock_gettime(CLOCK_REALTIME, &cur_time);
+
+    char buf[1024];
+    memset(buf, 0, 1024);
+    int cpy_len = 0;
+    //timestamp, query_id, region, rece_data_elapsed, calc_qp_elapsed, result_size, avg_qp 
+    cpy_len = sprintf(buf, "%ld,%ld,%s,%d,[", cur_time.tv_sec, cur_time.tv_nsec,msg.src_ip,rfmt_st.query_id);
+    int i;
+    for (i=0;i<MAX_DIM_NUM;i++){
+        cpy_len += sprintf(buf + cpy_len, "%lf %lf ", rfmt_st.qry_region[i].low, rfmt_st.qry_region[i].high);
+    }
+    cpy_len += sprintf(buf + cpy_len, "],");
+    cpy_len += sprintf(buf + cpy_len, "%d,%d,%u,%lf\n", rfmt_st.recv_refinement_elapsed, rfmt_st.calc_qp_elapsed, \
+            rfmt_st.result_size, rfmt_st.avg_qp);
+
+    write_log(refinement_log, buf);
+    return TRUE;
+}
+
 int do_write_reply(message msg) {
     command *cmd = &the_cmd_mgr->last_cmd;
-
     pthread_mutex_lock(&file_mutex);
     write_log(cmd->cache_file, "%s", msg.data);
     pthread_mutex_unlock(&file_mutex);
-
     return TRUE;
 }
 
@@ -1023,6 +1072,10 @@ static int register_message_handler_list() {
     register_message_handler2(REP_CHECK_SYSTEM_STATUS, &do_write_reply);
     register_message_handler2(REP_RANGE_QUERY, &do_write_reply);
     register_message_handler2(REP_NN_QUERY, &do_write_reply);
+
+    // for query test
+    register_message_handler2(RECEIVE_FILTER_LOG, &do_receive_filter_log);
+    register_message_handler2(RECEIVE_REFINEMENT_LOG, &do_receive_refinement_log);
 
     return TRUE;
 }
@@ -1043,6 +1096,17 @@ static int load_command_list() {
 
 
 int main(int argc, char **argv) {
+    struct tm *local;
+    time_t t = time(NULL);
+    local = localtime(&t);
+
+    //TODO this only for test
+    sprintf(filter_log, "../logs/filter_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, local->tm_hour, \
+            local->tm_min, local->tm_sec);
+
+    sprintf(refinement_log, "../logs/refinement_%d%d%d%d%d.log", local->tm_mon + 1, local->tm_mday, \
+            local->tm_hour, local->tm_min, local->tm_sec);
+
 
 	// create a new configuration
 	the_config = new_configuration();
@@ -1055,16 +1119,10 @@ int main(int argc, char **argv) {
 	}
 	update_properties(the_config->props);
 
-	// create a torus cluster manager instance
-	/*if (FALSE == new_torus_cluster_mgr()) {
-		exit(1);
-	}*/
-
 	the_msg_mgr = new_message_mgr();
 	if (NULL == the_msg_mgr) {
 		exit(1);
 	}
-
     // load message handler collection
     register_message_handler_list();
 
