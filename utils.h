@@ -54,7 +54,7 @@
 #define FLUSH_SIZE 120
 
 // limits for skip list
-#define LEADER_NUM 8
+#define LEADER_NUM 27
 #define MAXLEVEL 31
 #define SKIPLIST_P 0.5
 
@@ -99,7 +99,7 @@
 #define WORKER_NUM (EPOLL_NUM * WORKER_PER_GROUP)
 
 #define CONN_MAXFD 500 
-#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 400) 
+#define CONN_BUF_SIZE (SOCKET_BUF_SIZE * 500) 
 #define INSTRUCTION_INTERVAL 10
 
 // operation for oct_tree
@@ -131,6 +131,9 @@ extern int              FIXED_IDLE_NODE_NUM;
 //#define INT_DATA
 //typedef int data_type;
 typedef double data_type;
+
+#pragma pack(push)
+#pragma pack(4)
 
 // interval of each dimension
 typedef struct interval {
@@ -406,6 +409,8 @@ typedef struct global_properties_struct {
     int active_leader_num;
     int fixed_idle_node_num;
 }global_properties_struct;
+
+#pragma pack(pop)
 
 
 #endif /* UTILS_H_ */
