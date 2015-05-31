@@ -87,7 +87,6 @@ char result_log[100];
 
 // internal functions 
 /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
-int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs);
 double points_distance(struct point p1, struct point p2);
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map);
 int find_neighbor_sock(const char ip[]);
@@ -1552,7 +1551,7 @@ int oct_tree_insert(OctPoint *pt) {
 
             } else if(cur_pid == NONE) {
                 // if current point id is NULL means traj head
-                // note: current point now is traj traj tail
+                // note: current point now is traj tail
                 tmp->t_head = pt->p_id;
                 cur_point->pre = pt->p_id;
                 pt->next = cur_point->p_id;
@@ -1964,64 +1963,6 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     return TRUE;
 }
 
-
-int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs) {
-    size_t i;
-    hash_map<int, OctPoint *> traj_head; 
-    hash_map<int, OctPoint *> traj_tail; 
-    hash_map<int, OctPoint *>::iterator it; 
-    OctPoint *cur_point,*head, *tail;
-    for (i = 0; i < pt_vector.size(); i++) {
-        cur_point = pt_vector[i];
-
-        it = traj_head.find(cur_point->p_tid);
-        if(it == traj_head.end()) {
-            traj_head.insert(pair<int, OctPoint *>(cur_point->p_tid, cur_point));
-        } else {
-            head = it->second;
-            if(cur_point->p_xyz[2] < head->p_xyz[2]) {
-                it->second = cur_point;
-            }
-        }
-
-        it = traj_tail.find(cur_point->p_tid);
-        if(it == traj_tail.end()) {
-            traj_tail.insert(pair<int, OctPoint *>(cur_point->p_tid, cur_point));
-        } else {
-            tail = it->second;
-            if(cur_point->p_xyz[2] > tail->p_xyz[2]) {
-                it->second = cur_point;
-            }
-        }
-    }
-
-    hash_map<IDTYPE, Traj*>::iterator tit;
-    for(it = traj_head.begin(); it != traj_head.end(); ++it) {
-        head = it->second;
-        if(head->pre != -1) {
-            head = g_PtList.find(head->pre)->second;
-        }
-        Traj *t = new Traj(head->p_tid, head->p_id, -1);
-        trajs.insert(pair<int, Traj*>(t->t_id, t));
-    }
-
-    for(it = traj_tail.begin(); it != traj_tail.end(); ++it) {
-        tail = it->second;
-        if(tail->next != -1) {
-            tail = g_PtList.find(tail->next)->second;
-        }
-        tit = trajs.find(tail->p_tid);
-        if(tit == trajs.end()) {
-            write_log(ERROR_LOG, "recreate_trajs: trajs find failed.\n");
-            return FALSE;
-        }
-        Traj *t = tit->second;
-        t->t_tail = tail->p_id;
-    }
-
-    return TRUE;
-}
-
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
         struct query_struct query, char **buf_ptr, uint32_t *data_size, \
         struct refinement_stat * r_stat) {
@@ -2275,7 +2216,7 @@ int send_refinement_request(hash_map<IDTYPE, Traj*> &trajs, struct query_struct 
     struct message msg;
     if (query.op == RANGE_QUERY){
         msg.op = RANGE_QUERY_REFINEMENT;
-    }else if (query.op == RANGE_NN_QUERY){
+    }else if (query.op == RANGE_NN_QUERY || query.op == NN_QUERY){
         msg.op = NN_QUERY_REFINEMENT;
     }
     strncpy(msg.src_ip, local_ip, IP_ADDR_LENGTH);
@@ -2351,10 +2292,14 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     //step 1: query trajs which overlap with region(low, high)
     vector<OctPoint*> pt_vector;
     // local range query
-    the_torus_oct_tree->rangeQuery(low, high, pt_vector);
+    if(query.op == RANGE_QUERY || query.op == RANGE_NN_QUERY) {
+        the_torus_oct_tree->rangeQuery(low, high, pt_vector);
+    } else if(query.op == NN_QUERY) {
+        the_torus_oct_tree->NNQuery(low, high, pt_vector);
+    }
 
     hash_map<IDTYPE, Traj*> trajs;
-    recreate_trajs(pt_vector, trajs);
+    OctTree::recreateTrajs(pt_vector, trajs);
 
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
@@ -2478,7 +2423,7 @@ uint32_t estimate_response_time(struct refinement_stat r_stat, struct query_stru
     if (query.op == RANGE_QUERY){
         res_time = (uint32_t) (EXCHANGE_RATE_RANGE_QUERY * num);
 
-    } else if (query.op == RANGE_NN_QUERY){
+    } else if (query.op == RANGE_NN_QUERY || query.op == NN_QUERY){
         //double x_len = the_torus->info.region[0].high - the_torus->info.region[0].low;
         //double z_len = the_torus->info.region[2].high - the_torus->info.region[2].low;
         
@@ -2667,15 +2612,12 @@ int operate_oct_tree(struct query_struct query, int hops) {
             }*/
 		}
         pthread_mutex_unlock(&mutex);
-    } else if(query.op == RANGE_NN_QUERY) {
+    } else if(query.op == RANGE_NN_QUERY || query.op == NN_QUERY) {
         pthread_mutex_lock(&mutex);
-        //write_log(TORUS_NODE_LOG, "torus node local nn query\n");
-        //local_oct_tree_nn_query(query.intval, plow, phigh);
         local_oct_tree_query(query, plow, phigh);
         pthread_mutex_unlock(&mutex);
     } else if(query.op == RANGE_QUERY) {
         pthread_mutex_lock(&mutex);
-        //write_log(TORUS_NODE_LOG, "torus node local range query\n");
         local_oct_tree_query(query, plow, phigh);
         pthread_mutex_unlock(&mutex);
     }
@@ -3181,7 +3123,7 @@ int do_query_torus_node(struct message msg) {
 	if (NULL == req_ptr) {
         //TODO how can I delete the shit method to judge whether 
         //the request has been handled or not
-        if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+        if(query.op != DATA_INSERT) {
             req_ptr = insert_request(req_list, stamp);
         }
 
@@ -3224,7 +3166,7 @@ int do_query_torus_node(struct message msg) {
                 write_log(CTRL_NODE_LOG, buf);
             #endif
 
-            if(query.op == RANGE_QUERY || query.op == RANGE_NN_QUERY) {
+            if(query.op != DATA_INSERT) {
                 for (i = 0; i < MAX_DIM_NUM; i++) {
                     forward_search(query.op, query.intval, msg, i);
                 }
@@ -3545,7 +3487,7 @@ int do_query_torus_cluster(struct message msg) {
 
 		do_query_torus_node(new_msg);
 
-        if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+        if(query.op != DATA_INSERT) {
             //decide whether forward message to it's forward and backward
             hand_on_query(msg, query, index);
         }
@@ -3565,7 +3507,7 @@ int do_query_torus_cluster(struct message msg) {
 			}
 		}
 		if (visit_forward == 0) {
-            if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+            if(query.op != DATA_INSERT) { 
                 write_log(ERROR_LOG, "query id %d:search failed!\n", query.data_id);
             } else {
                 write_log(ERROR_LOG, "search failed!\n");
@@ -3587,7 +3529,7 @@ int do_query_torus_cluster(struct message msg) {
 			}
 		}
 		if (visit_backward == 0) {
-            if(query.op == RANGE_NN_QUERY || query.op == RANGE_QUERY) {
+            if(query.op != DATA_INSERT) {
                 write_log(ERROR_LOG, "query id %d:search failed!\n", query.data_id);
             } else {
                 write_log(ERROR_LOG, "search failed!\n");

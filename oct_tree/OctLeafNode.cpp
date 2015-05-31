@@ -545,10 +545,12 @@ void OctLeafNode::rangeQueryNode(double *low, double *high, vector<OctPoint*> &p
 	}
 }
 
+// get oct points overlap with query on dimension time
 void OctLeafNode::getOctPoints(double *low,double *high, vector<OctPoint*> &pt_vector) {
 	hash_set<IDTYPE>::iterator ite;
     for (ite = data.begin(); ite != data.end(); ite++) {
         OctPoint *tmp = g_PtList.find(*ite)->second;
+        // check current oct point is in time interval between low[2] and high[2]
         if(tmp->p_xyz[2] > low[2] && tmp->p_xyz[2] < high[2]) {
             pt_vector.push_back(tmp);
         }
@@ -557,14 +559,33 @@ void OctLeafNode::getOctPoints(double *low,double *high, vector<OctPoint*> &pt_v
 
 void OctLeafNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
 	hash_set<IDTYPE>::iterator ite;
-	if (calOverlap(low, high)) {
-		for (ite = data.begin(); ite != data.end(); ite++) {
-			OctPoint *tmp = g_PtList.find(*ite)->second;
-            // check current oct point is in time interval between low[2] and high[2]
-            if(tmp->p_xyz[2] > low[2] && tmp->p_xyz[2] < high[2]) {
-				pt_vector.push_back(tmp);
-			}
-		}
+	if (time_overlap(low[2], high[2])) {
+        getOctPoints(low, high, pt_vector);
 	}
+}
+
+void OctLeafNode::retrieveTrajs(double *low, double *high, double fm, hash_map<IDTYPE, Traj*> &new_trajs) {
+    int i;
+    // construct query based on fm
+    double new_low[3], new_high[3];
+    std::vector<OctPoint *> pt_vector;
+    if(fm - DBL_MAX < eps) {
+        for(i = 0; i < 2; i++) {
+            new_low[i] = low[i] - fm;
+            new_high[i] = high[i] + fm;
+        }
+        new_low[2] = low[2];
+        new_high[2] = high[2];
+        rangeQueryNode(new_low, new_high, pt_vector);
+    } else {
+        //fm is DBL_MAX retrieve all trajs
+        if (time_overlap(low[2], high[2])) {
+            getOctPoints(low, high, pt_vector);
+        }
+    }
+
+    if(pt_vector.size() != 0) {
+        OctTree::recreateTrajs(pt_vector, new_trajs);
+    }
 }
 

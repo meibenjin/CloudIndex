@@ -34,9 +34,10 @@ typedef struct message_mgr {
 // create a new message collection manager instance
 message_mgr* new_message_mgr();
 
-//TODO this two function will be combine together
-int register_message_handler1(OP op, int (*process1)(connection_t, message));
-int register_message_handler2(OP op, int (*processs2)(message));
+// TODO this two function will be combine together in the future 
+// handle_func1 and handle_func2 can use two parameters  
+int register_message_handler1(OP op, int (*handle_func1)(connection_t, message));
+int register_message_handler2(OP op, int (*handle_func2)(message));
 
 message_handler* find_message_handler(OP op);
 

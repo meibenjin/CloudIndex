@@ -250,21 +250,22 @@ void OctIdxNode::getOctPoints(double *low,double *high, vector<OctPoint*> &pt_ve
 }
 
 void OctIdxNode::NNQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector) {
-    double child_low[3], child_high[3];
+    /*double child_low[3], child_high[3];
     for(int i = 0; i < 8; i++) {
         octsplit(child_low, child_high, i, n_domLow, n_domHigh);
-        if(n_children[i] == -1 && has_overlap(low, high, child_low, child_high) == 1) {
+        if(n_children[i] == -1 && time_overlap(low[2], high[2], child_low[2], child_high[2]) == 1) {
             getOctPoints(low, high, pt_vector);
             return;
         }
 
-    }
+    }*/
 
 	for (int i = 0; i < 8; i++) {
 		if (n_children[i] == -1)
 			continue;
         OctTNode *tmp = g_NodeList.find(n_children[i])->second;
-		if (tmp->calOverlap(low, high)) {
+		//if (tmp->calOverlap(low, high)) {
+        if(tmp->time_overlap(low[2], high[2]) == 1) {
 			tmp->NNQueryNode(low, high, pt_vector);
 		}
 	}

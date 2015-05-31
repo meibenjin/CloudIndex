@@ -103,6 +103,7 @@ public:
 class OctLeafNode; 
 class OctIdxNode; 
 class OctTNode; 
+class NNQueryQueue;
 
 class OctTNode {
 public:
@@ -122,6 +123,7 @@ public:
 	}
 	;
 	bool calOverlap(const double *low, const double *high);
+    int time_overlap(const double t_low, const double t_high);
 	//change the domLow/high to overlap domLow/high with this node
 
 	bool containPoint(OctPoint *pt);
@@ -129,6 +131,9 @@ public:
 	bool containPoint(OctPoint *pt, int child_id);
 	bool containPoint(double* xyz, int idx);
 	void octsplit(double* slow, double* shigh, char idx, double* low, double* high);
+
+    // calc the min distance between query and node
+    double getMinimumDistance(double *low, double *high);
 
 	//virtual bool split_or_not(){cout<<"base insert!"<<endl;return false;}
 	virtual void nodeInsert(OctPoint *pt) {};
@@ -170,6 +175,8 @@ public:
 	~OctLeafNode() {
 	}
 	;
+    
+    void retrieveTrajs(double *low, double *high, double fm, hash_map<IDTYPE, Traj*> &new_trajs);
 
 	void rangeQueryNode(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void NNQueryNode(double *low,double *high,vector<OctPoint *> &pt_vector);
@@ -240,10 +247,44 @@ public:
 
 	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void NNQuery(double *low,double *high,vector<OctPoint *> &pt_vector);
+    void nearestNeighborQuery(double *low, double *high, hash_map<IDTYPE, Traj*> &trajs);
 	void insertBetweenServer();
     void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point, double *low, double* high);
     int pointInWhichNode(OctPoint *pt);
+
+    // visit by class
+    static int recreateTrajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs);
+
 };
+
+// used for NNQueryQueue
+class NNEntry{
+public:
+    NNEntry(OctTNode *new_node, double dist):m_pNode(new_node), m_iDist(dist){};
+    ~NNEntry(){};
+    OctTNode * m_pNode;
+    // distance between query and node;
+    double m_iDist;
+};
+
+class NNQueryQueue {
+public:
+
+    std::vector<NNEntry *> m_queue;
+    NNQueryQueue(){};
+    ~NNQueryQueue(){};
+
+    void push(OctTNode *, double dist);
+    OctTNode *pop();
+    void deleteOctTNode(double fm);
+    bool empty(){return m_queue.empty();}
+}; //NNQueryQueue
+
+typedef struct min_max_st{
+    double start, end;
+    double dist;
+}min_max_st;
+
 
 void printNodes();
 

@@ -9,6 +9,7 @@
 
 #include<time.h>
 #include<inttypes.h>
+#include<float.h>
 
 // lock for rtree
 #define HAVE_PTHREAD_H 1
@@ -104,9 +105,10 @@
 
 // operation for oct_tree
 #define DATA_INSERT 1
-#define DATA_DELETE 0
+//#define DATA_DELETE 0
 #define RANGE_NN_QUERY 2
 #define RANGE_QUERY 3
+#define NN_QUERY 4
 
 //global properties 
 extern int              RUNNING_MODE;

@@ -33,8 +33,7 @@ control:log.o utils.o geometry.o control.o torus-node.o socket.o message.o messa
 	#$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/torus_rtree.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -L$(RTREE_LIB) -lspatialindex -lspatialindex_c -lgsl -lgslcblas -lm -pthread
 
 start-node:log.o utils.o geometry.o config.o torus-node.o server.o socket.o message.o message_mgr.o connection.o conn_manager.o skip-list.o oct_tree.o oct_tree_node.o oct_tree_idx_node.o oct_tree_leaf_node.o oct_point.o 
-	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/message_mgr.o $(BIN)/connection.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -lgsl -lgslcblas -lm -pthread
-
+	$(CXX) $(CFLAGS) $(BIN)/utils.o $(BIN)/geometry.o $(BIN)/config.o $(BIN)/torus-node.o $(BIN)/server.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/message_mgr.o $(BIN)/connection.o $(BIN)/conn_manager.o $(BIN)/skip-list.o $(BIN)/log.o $(BIN)/oct_tree.o $(BIN)/oct_tree_node.o $(BIN)/oct_tree_idx_node.o $(BIN)/oct_tree_leaf_node.o $(BIN)/oct_point.o -o $(BIN)/$@ -L$(GSL_LIB) -lgsl -lgslcblas -lm -pthread 
 #data_generator:log.o utils.o data_generator.o socket.o message.o config.o torus-node.o 
 #	$(CC) $(CFLAGS) -o $(BIN)/$@ $(BIN)/utils.o $(BIN)/data_generator.o $(BIN)/socket.o $(BIN)/message.o $(BIN)/config.o $(BIN)/log.o $(BIN)/torus-node.o
 data_generator.o: 
@@ -117,7 +116,7 @@ log.o:
 config.o:
 	$(CC) $(CFLAGS) -o $(BIN)/$@ -c $(CONFIGDIR)/config.c -I$(VPATH) 
 
-oct_tree.o:
+oct_tree.o: 
 	$(CXX) $(CFLAGS) -o $(BIN)/$@  -c $(OCTTREEDIR)/OctTree.cpp -I$(VPATH)
 
 oct_tree_node.o:
@@ -126,7 +125,7 @@ oct_tree_node.o:
 oct_tree_idx_node.o:
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctIdxNode.cpp -I$(VPATH)
 
-oct_tree_leaf_node.o:
+oct_tree_leaf_node.o: 
 	$(CXX) $(CFLAGS) -o $(BIN)/$@ -c $(OCTTREEDIR)/OctLeafNode.cpp -I$(VPATH)
 
 oct_point.o: 

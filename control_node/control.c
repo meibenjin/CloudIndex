@@ -993,7 +993,7 @@ int cmd_insert_data(void *args) {
 }
 
 int cmd_range_query(void *args) {
-    query("172.16.0.236", "range_query", 10);
+    query("172.16.0.236", "range_query", 100);
     sleep(1);
     printf("exec range query ... succeed.\n");
     printf("input 'more' command for more information.\n");
@@ -1001,7 +1001,7 @@ int cmd_range_query(void *args) {
 }
 
 int cmd_nn_query(void *args) {
-    query("172.16.0.236", "nn_query", 10);
+    query("172.16.0.236", "nn_query", 100);
     sleep(1);
     printf("exec nn query ... succeed.\n");
     printf("input 'more' command for more information.\n");

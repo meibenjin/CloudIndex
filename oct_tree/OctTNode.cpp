@@ -29,6 +29,21 @@ OctTNode::OctTNode(int nid, NodeType type, double* low, double* high,
 		n_children[i] = -1;
 	}
 }
+double OctTNode::getMinimumDistance(double *low, double *high) {
+    int i = 0;
+    double ret = 0.0;
+    // ignore time dimension only spatial distance
+    for(i = 0; i < MAX_DIM_NUM - 1; i++) {
+        double x = 0.0;
+        if(high[i] < n_domLow[i]) {
+            x = std::abs(high[i] - n_domLow[i]);
+        } else if(n_domHigh[i] < low[i]) {
+            x = std::abs(low[i] - n_domHigh[i]);
+        }
+        ret += x * x;
+    }
+    return std::sqrt(ret);
+}
 
 
 /*void OctTNode::printIt() {
@@ -159,6 +174,8 @@ bool OctTNode::containPoint(double* xyz, int idx) {
     }
 	return true;
 }
+
+
 void OctTNode::octsplit(double* slow, double* shigh, char idx, double* low,
 		double* high) {
 	memcpy(slow, low, 3 * sizeof(double));
@@ -197,6 +214,13 @@ void OctTNode::octsplit(double* slow, double* shigh, char idx, double* low,
 		break;
 	}
 }
+
+int OctTNode::time_overlap(const double t_low, const double t_high) {
+    int ovlp = 1;
+    ovlp = !(t_high < n_domLow[2] || t_low > n_domHigh[2]);
+    return ovlp;
+}
+
 
 bool OctTNode::calOverlap(const double *low, const double *high) {
 	int i, ovlp = 1;

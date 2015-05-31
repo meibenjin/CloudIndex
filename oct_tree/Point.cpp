@@ -72,7 +72,6 @@ void OctPoint::storeToByteArray(char **data, uint32_t &len) {
 	ptr += sizeof(int);
 	memcpy(ptr, &next, sizeof(int));
 	//ptr += sizeof(int);
-
 }
 
 void OctPoint::loadFromByteArray(const char *ptr) {
