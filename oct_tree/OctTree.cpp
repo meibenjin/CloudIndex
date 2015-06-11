@@ -3,6 +3,7 @@
 extern "C" {
 #include"logs/log.h"
 #include "utils.h"
+#include "utils/geometry.h"
 }
 
 hash_map<IDTYPE, OctPoint*> g_PtList;
@@ -641,10 +642,10 @@ void NNQueryQueue::deleteOctTNode(double fm) {
 
 int time_overlap(struct min_max_st o_min_max, struct min_max_st c_min_max) {
     // TODO eps set to 0.1
-    if(c_min_max.end < o_min_max.start && abs(c_min_max.end - o_min_max.start) > eps) {
+    if(c_min_max.end < o_min_max.start && abs(c_min_max.end - o_min_max.start) > 1) {
         return -1;
     }
-    if(c_min_max.start > o_min_max.end && abs(c_min_max.start - o_min_max.end) > eps) {
+    if(c_min_max.start > o_min_max.end && abs(c_min_max.start - o_min_max.end) > 1) {
         return 1;
     }
     return 0;
@@ -656,11 +657,11 @@ int do_update_fm(double &fm, std::vector<struct min_max_st> &array_min_max, doub
         return FALSE;
     } else {
         struct min_max_st min_max = array_min_max[0];
-        if(abs(min_max.start - low[2]) < eps && abs(min_max.end - high[2]) < eps) {
+        if(abs(min_max.start - low[2]) < 1 && abs(min_max.end - high[2]) < 1) {
             if(min_max.dist < fm) {
                 fm = array_min_max[0].dist;
-                array_min_max.erase(it);
             }
+            array_min_max.erase(it);
             return TRUE;
         } else {
             return FALSE;
@@ -719,7 +720,11 @@ struct min_max_st get_max_distance(double *low, double *high, Traj* traj) {
     struct min_max_st max_dist;
     double dist;
     OctPoint *p_cur, *p_next;
-    struct point start, end, pt;
+    struct point start, end, query_start, query_end, pt;
+    query_start = convert2point(low);
+    query_end = convert2point(high);
+
+    int start_update = 0;
 
     IDTYPE pid = traj->t_head;
     max_dist.dist = -1;
@@ -734,49 +739,57 @@ struct min_max_st get_max_distance(double *low, double *high, Traj* traj) {
             p_next = g_PtList.find(pid)->second; 
         }
 
-        // get close to the query time region
-        if(p_next->p_xyz[2] < low[2]) {
-            // move next
-            p_cur = p_next;
-            continue;
-        }
-
-        if(p_cur->p_xyz[2] > high[2]) {
-            break;
-        }
-
         //construct a line segment  
         for(i = 0; i < MAX_DIM_NUM; i++) {
             start.axis[i] = p_cur->p_xyz[i];
             end.axis[i] = p_next->p_xyz[i];
         }
 
+        // get close to the query time region
+        if(end.axis[2] < query_start.axis[2]) {
+            // move next
+            p_cur = p_next;
+            continue;
+        }
+
+        if(start.axis[2] > query_end.axis[2]) {
+            break;
+        }
+
         // calc the intersection point between start/end time of query and current trajs
-        double z;
-        if(low[2] > start.axis[2] && low[2] < end.axis[2] ) {
-            z = low[2];
-            pt.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / \
-                             (end.axis[2] - start.axis[2]);
-            pt.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / \
-                             (end.axis[2] - start.axis[2]);
+        if(query_start.axis[2] > start.axis[2] && query_start.axis[2] < end.axis[2] ) {
             // here the x-axis and y-axis of low and high are the same
-            // calc distance between query point and intersection point at time start
-            dist = sqrt((pt.axis[0] - low[0])*(pt.axis[0] - low[0]) + (pt.axis[1] - low[1]) * (pt.axis[1] - low[1]));
+            pt = calc_intersect_point(query_start, start, end); 
 
-            // update start time stamp of max_dist
-            max_dist.start = low[2];
-
-        } else if (high[2] > start.axis[2] && high[2] < end.axis[2]) {
-            z = high[2];
-            pt.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / \
-                             (end.axis[2] - start.axis[2]);
-            pt.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / \
-                             (end.axis[2] - start.axis[2]);
             // calc distance between query point and intersection point at time end 
-            dist = sqrt((pt.axis[0] - low[0])*(pt.axis[0] - low[0]) + (pt.axis[1] - low[1]) * (pt.axis[1] - low[1]));
+            // we ignore time dimension here, only calc the distance at x and y dimension
+            pt.axis[2] = query_start.axis[2];
+            dist = points_distance(pt, query_start);
 
-            // update end time stamp of max_dist
-            max_dist.end = high[2];
+            // update start and end time stamp of max_dist
+            if(start_update == 0) {
+                max_dist.start = query_start.axis[2];
+                start_update = 1;
+            }
+            max_dist.end = end.axis[2];
+
+        } else if (query_end.axis[2] > start.axis[2] && query_end.axis[2] < end.axis[2]) {
+            pt = calc_intersect_point(query_end, start, end); 
+
+            // calc distance between query point and intersection point at time end 
+            // we ignore time dimension here, only calc the distance at x and y dimension
+            pt.axis[2] = query_end.axis[2];
+            dist = points_distance(pt, query_end);
+
+            // update start and end time stamp of max_dist
+            // if the start point of traj is inside the query region update start time stamp of max_dist
+            // note: we update start time only once
+            if(start_update == 0) {
+                max_dist.start = start.axis[2];
+                start_update = 1;
+            } 
+            max_dist.end = query_end.axis[2];
+
         } else {
             // traj inside query
             // calc distance between query point and traj point
@@ -784,41 +797,23 @@ struct min_max_st get_max_distance(double *low, double *high, Traj* traj) {
             dist1 = sqrt((start.axis[0] - low[0])*(start.axis[0] - low[0]) + (start.axis[1] - low[1]) * (start.axis[1] - low[1]));
             dist2 = sqrt((end.axis[0] - low[0])*(end.axis[0] - low[0]) + (end.axis[1] - low[1]) * (end.axis[1] - low[1]));
             dist = dist1 > dist2 ? dist1 : dist2;
+
+            // update start and end time stamp of max_dist
+            if(start_update == 0) {
+                max_dist.start = start.axis[2];
+                start_update = 1;
+            } 
+            max_dist.end = end.axis[2];
         }
         if(dist > max_dist.dist) {
             max_dist.dist = dist;
         }
-
-        // if the start point of traj is inside the query region update start time stamp of max_dist
-        if(pid == traj->t_head) {
-            max_dist.start = start.axis[2];
-        } 
-
-        // if the end point of traj is inside the query region update end time stamp of max_dist
-        if(p_next->p_id == traj->t_tail) {  
-            // update end time stamp of max_dist
-            max_dist.end = end.axis[2];
-        } 
 
         // move next
         p_cur = p_next;
     }
     return max_dist;
 }
-
-/*struct min_max_st get_min_max_distance(double *low, double *high, hash_map<IDTYPE, Traj*> &new_trajs) {
-    struct min_max_st cur_min_max;
-    hash_map<IDTYPE, Traj*>::iterator tit;
-    // get the traj that neareast to the query point
-    for(tit = new_trajs.begin(); tit != new_trajs.end(); ++tit) {
-        Traj *traj = tit->second;
-        cur_dist = get_max_distance(low, high, traj);
-        if(cur_dist.dist < min_max_dist.dist) {
-            min_max_dist = cur_dist;
-        }
-    }
-    return min_max_dist;
-} */
 
 // combine new_trajs with the trajs
 // trajs: current results of whole query
@@ -834,8 +829,33 @@ void append_trajs(double *low, double *high, double fm, hash_map<IDTYPE, Traj*> 
     }
 }
 
+void dump(std::vector<NNEntry *> &myVector) {
+    std::vector<NNEntry *>::iterator it;
+    printf("[\n");
+    for(it = myVector.begin(); it != myVector.end(); it++) {
+        OctTNode *node = (*it)->m_pNode;
+        printf("\t{region:([%lf, %lf][%lf, %lf][%lf, %lf]), dist:%lf}\n", \
+                node->n_domLow[0], node->n_domHigh[0], node->n_domLow[1], node->n_domHigh[1], \
+                node->n_domLow[2], node->n_domHigh[2], (*it)->m_iDist);
+
+    }
+    printf("]\n");
+}
+
+void dump1(std::vector<OctPoint *> &myVector) {
+    std::vector<OctPoint *>::iterator it;
+    printf("{\n");
+    for(it = myVector.begin(); it != myVector.end(); it++) {
+        OctPoint *node = (*it);
+        printf("\t{point:(%lf, %lf, %lf)\n", \
+                node->p_xyz[0], node->p_xyz[1], node->p_xyz[2]);
+
+    }
+    printf("}\n");
+}
+
 // non-recursive version nn query
-void OctTree::nearestNeighborQuery(double *low, double *high, hash_map<IDTYPE, Traj*> &trajs) {
+void OctTree::nearestNeighborQuery(int id, double *low, double *high, hash_map<IDTYPE, Traj*> &trajs) {
     int i;
     struct min_max_st cur_min_max;
     hash_map<IDTYPE, Traj*>::iterator tit;
@@ -861,7 +881,7 @@ void OctTree::nearestNeighborQuery(double *low, double *high, hash_map<IDTYPE, T
                     cur_min_max = get_max_distance(low, high, traj);
                     update_fm(fm, array_min_max, cur_min_max, low, high); 
                 }
-                if(old_fm > fm){
+                if(abs(old_fm - fm) > eps){
                     queue.deleteOctTNode(fm);
                 }
                 append_trajs(low, high, fm, new_trajs, trajs);
@@ -871,9 +891,25 @@ void OctTree::nearestNeighborQuery(double *low, double *high, hash_map<IDTYPE, T
                 if (node->n_children[i] == -1)
                     continue;
                 OctTNode *tmp = g_NodeList.find(node->n_children[i])->second;
-                queue.push(tmp, tmp->getMinimumDistance(low, high));
+                if(tmp->time_overlap(low[2], high[2])) {
+                    queue.push(tmp, tmp->getMinimumDistance(low, high));
+                }
             }
         }
+    }
+    write_log(NOTIFY_LOG, "%d, %lf\n", id, fm);
+    if(abs(fm - DBL_MAX) < eps) {
+        double new_low[3], new_high[3];
+        for(i = 0; i < MAX_DIM_NUM - 1; i++) {
+            new_low[i] = tree_domLow[i];
+            new_high[i] = tree_domHigh[i];
+        }
+        new_low[2] = low[2];
+        new_high[2] = high[2];
+        vector<OctPoint*> pt_vector;
+        OctTNode *root = g_NodeList.find(tree_root)->second;
+        root->rangeQueryNode(new_low, new_high, pt_vector);
+        write_log(NOTIFY_LOG, "range query num:%lu\n",pt_vector.size());
     }
 }
 

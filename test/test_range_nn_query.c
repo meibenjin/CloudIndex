@@ -56,6 +56,9 @@ static int send_query(const char *entry_ip, const char *file, int time_gap) {
         fscanf(fp, "%d %d", &query.op, &query.data_id);
         for (i = 0; i < MAX_DIM_NUM; i++) {
             fscanf(fp, "%lf %lf ", &query.intval[i].low, &query.intval[i].high);
+            if(query.op == NN_QUERY && i != MAX_DIM_NUM - 1) {
+                query.intval[i].high = query.intval[i].low;
+            }
         }
         fscanf(fp, "\n");
 

@@ -569,7 +569,12 @@ void OctLeafNode::retrieveTrajs(double *low, double *high, double fm, hash_map<I
     // construct query based on fm
     double new_low[3], new_high[3];
     std::vector<OctPoint *> pt_vector;
-    if(fm - DBL_MAX < eps) {
+    if(abs(fm - DBL_MAX) < eps) {
+        //fm is DBL_MAX retrieve all trajs
+        if (time_overlap(low[2], high[2])) {
+            getOctPoints(low, high, pt_vector);
+        }
+    } else {
         for(i = 0; i < 2; i++) {
             new_low[i] = low[i] - fm;
             new_high[i] = high[i] + fm;
@@ -577,11 +582,6 @@ void OctLeafNode::retrieveTrajs(double *low, double *high, double fm, hash_map<I
         new_low[2] = low[2];
         new_high[2] = high[2];
         rangeQueryNode(new_low, new_high, pt_vector);
-    } else {
-        //fm is DBL_MAX retrieve all trajs
-        if (time_overlap(low[2], high[2])) {
-            getOctPoints(low, high, pt_vector);
-        }
     }
 
     if(pt_vector.size() != 0) {

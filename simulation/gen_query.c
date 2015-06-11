@@ -45,8 +45,8 @@ int main(int argc, char **argv) {
     printf("%d\n", cluster_num);
     
     //56980131.000000 58788063.000000 51682794.000000 53082437.000000 0.000000    5.000000
-    double low[3] = {56977411.000000, 51682794.000000, 0.000000};
-    double high[3] = {58790663.000000, 53082728.000000, 5000.000000};
+    double low[3] = {56977411.000000, 51683311.000000, 0.000000};
+    double high[3] = {58790663.000000, 53082728.000000, 1064.000000};
     //double low[3] = {56980131.000000, 51682794.000000, 0.000000};
     //double high[3] = {58788063.000000, 53082437.000000, 5.000000};
 
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     for(k = 2; k <= 10; k+=2){
         for(i = 0; i < group_num; i++) {
             int x;
-            for(x = 2; x <= 3; x++) {
+            for(x = 4; x <= 4; x++) {
                 r_low[0] = gsl_ran_flat(r, low[0], high[0] - range[0] * 0.05);
                 r_low[1] = gsl_ran_flat(r, low[1], high[1] - range[1] * 0.05);
                 r_low[2] = gsl_ran_flat(r, low[2], high[2] - range[2] * 0.05);
@@ -85,13 +85,13 @@ int main(int argc, char **argv) {
                     char filename[20];
                     sprintf(filename, "./range_query_%d", tp.p_x * tp.p_y * tp.p_z);
                     FILE *fout = fopen(filename, "a+");
-                    x_len = range[0] * p * k / tp.p_x;
+                    x_len = range[0] * p * k;
                     r_high[0] = r_low[0] + x_len;
 
-                    y_len = range[1] * p * k / tp.p_y;
+                    y_len = range[1] * p * k;
                     r_high[1] = r_low[1] + y_len;
 
-                    t_len = range[2] * p * k / tp.p_z;
+                    t_len = range[2] * p * k;
                     r_high[2] = r_low[2] + t_len;
                     fprintf(fout, "%d %d ", x, count);
                     for(j = 0; j < 3; j++) {

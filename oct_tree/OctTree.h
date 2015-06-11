@@ -247,7 +247,7 @@ public:
 
 	void rangeQuery(double *low,double *high,vector<OctPoint*> &pt_vector);
 	void NNQuery(double *low,double *high,vector<OctPoint *> &pt_vector);
-    void nearestNeighborQuery(double *low, double *high, hash_map<IDTYPE, Traj*> &trajs);
+    void nearestNeighborQuery(int id, double *low, double *high, hash_map<IDTYPE, Traj*> &trajs);
 	void insertBetweenServer();
     void geneBorderPoint(OctPoint *pt1,OctPoint *pt2,OctPoint  *result_point, double *low, double* high);
     int pointInWhichNode(OctPoint *pt);

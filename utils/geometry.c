@@ -87,4 +87,25 @@ double points_distance(struct point p1, struct point p2) {
     return sqrt(distance);
 }
 
+struct point convert2point(double *p){
+    int i;
+    struct point pt;
+    for(i = 0; i < MAX_DIM_NUM; i++) {
+        pt.axis[i] = p[i];
+    }
+    return pt;
+}
+
+struct point calc_intersect_point(struct point pt, struct point start, struct point end) {
+    struct point ret_pt;
+    double z = pt.axis[2];
+    ret_pt.axis[0] = ((z - start.axis[2]) * end.axis[0] + (end.axis[2] - z) * start.axis[0]) / \
+                     (end.axis[2] - start.axis[2]);
+    ret_pt.axis[1] = ((z - start.axis[2]) * end.axis[1] + (end.axis[2] - z) * start.axis[1]) / \
+                         (end.axis[2] - start.axis[2]);
+    ret_pt.axis[2] = z;
+    return ret_pt;
+
+}
+
 

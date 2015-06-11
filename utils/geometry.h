@@ -61,8 +61,12 @@ data_type get_distance(interval c, interval o);
  * */
 int compare(interval cinterval, interval ointerval);
 
+struct point convert2point(double *p);
+
 // calc the distance of two point
 double points_distance(struct point p1, struct point p2);
+
+struct point calc_intersect_point(struct point pt, struct point start, struct point end);
 
 #endif
 

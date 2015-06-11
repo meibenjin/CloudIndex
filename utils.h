@@ -67,6 +67,7 @@
 #define OCT_TREE_LOG "../logs/oct_tree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
 #define ERROR_LOG "../logs/error.log"
+#define DEBUG_LOG "../logs/debug.log"
 #define NOTIFY_LOG "../logs/notify.log"
 #define QUERY_START_LOG "../logs/query_start.log"
 #define QUERY_END_LOG "../logs/query_end.log"

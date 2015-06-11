@@ -39,6 +39,7 @@ int gen_query(int cluster_id, coordinate c, torus_partitions tp, query_struct *q
     }
 
     // translate time region
+    // if there are more than one cluster, the time region will extend.
     interval time_region;
     time_region = data_region[2];
     time_region.low += range[2] * cluster_id;

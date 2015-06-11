@@ -463,6 +463,8 @@ int do_create_torus(struct message msg) {
             neighbors_num += num;
         }
 
+        //set result_ip 
+        memcpy(result_ip, msg.src_ip, IP_ADDR_LENGTH); 
 
        //TODO this should move to main
        //create long socket fd from current node to result collecter
@@ -1603,7 +1605,7 @@ int find_idle_torus_node(char idle_ip[][IP_ADDR_LENGTH], int requested_num, int*
     if (is_active_leader() == TRUE){
         //this node is leader
         get_idle_torus_node(idle_ip, requested_num, actual_got_num);
-    }else{
+    } else{
         pthread_mutex_lock(&global_variable_mutex);
         int cur_fvalue = the_node_stat.fvalue;
         pthread_mutex_unlock(&global_variable_mutex);
@@ -1835,6 +1837,9 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     cpy_len += sprintf(buffer + cpy_len, "\n{\n");
 
     double total_qp = 0.0;
+    int qp_num, no_zero_qp_num;
+    qp_num = 0;
+    no_zero_qp_num = 0;
     for(it = qp_map.begin(); it != qp_map.end(); it++) {
         t_id = it->first;
         qp = it->second;
@@ -1843,15 +1848,19 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
             qp = 0.0;
         }
 
-        /*if(cpy_len + 100  < DATA_SIZE) {
-            cpy_len += sprintf(buffer + cpy_len, "%d,%d,%.4lf\n", query.data_id, t_id, qp);
-        }*/
+        if(abs(qp - 0) > eps) {
+            no_zero_qp_num++;
+        }
+        qp_num++;
+
+
         if(cpy_len + 100 < DATA_SIZE) {
-            cpy_len += sprintf(buffer + cpy_len, "\ttrajectory id:%d\n", t_id);
+            cpy_len += sprintf(buffer + cpy_len, "\ttrajectory id:%d, %lf\n", t_id, qp);
         }
 
         total_qp += qp;
     }
+    cpy_len += sprintf(buffer + cpy_len, "\tnum:%d, %d\n", qp_num, no_zero_qp_num);
 
     cpy_len += sprintf(buffer + cpy_len, "}\n");
     //cpy_len += sprintf(buffer + cpy_len, "\n");
@@ -1869,6 +1878,7 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     } else {
         *avg_qp = total_qp / traj_num;
     }
+
     return TRUE;
 }
 
@@ -2273,6 +2283,26 @@ int send_throw_out_query_msg(struct query_struct query, struct refinement_stat o
     return TRUE;
 }
 
+void write_query_result(struct query_struct query, hash_map<IDTYPE, Traj*> trajs) {
+    // write query string into log file
+    write_log(RESULT_LOG, "%d [%lf, %lf][%lf, %lf][%lf, %lf]\n", query.data_id, query.intval[0].low, query.intval[0].high, \
+            query.intval[1].low, query.intval[1].high, query.intval[2].low, query.intval[2].high);
+
+    OctPoint *p_cur, *p_next;
+    hash_map<IDTYPE, Traj*>::iterator tit;
+    for(tit = trajs.begin(); tit != trajs.end(); tit++) {
+        Traj *traj = tit->second;
+        IDTYPE pid = traj->t_head;
+        p_cur =  g_PtList.find(pid)->second;
+        while(p_cur->next != -1) {
+            pid = p_cur->next; 
+            p_next = g_PtList.find(pid)->second; 
+            write_log(RESULT_LOG, "[%lf, %lf, %lf] ", p_cur->p_xyz[0], p_cur->p_xyz[1], p_cur->p_xyz[2]);
+            p_cur = p_next;
+        }
+        write_log(RESULT_LOG, "\n");
+    }
+}
 
 int local_oct_tree_query(struct query_struct query, double low[], double high[]) {
     int i;
@@ -2291,20 +2321,22 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
 
     //step 1: query trajs which overlap with region(low, high)
     vector<OctPoint*> pt_vector;
-    // local range query
+    hash_map<IDTYPE, Traj*> trajs;
     if(query.op == RANGE_QUERY || query.op == RANGE_NN_QUERY) {
         the_torus_oct_tree->rangeQuery(low, high, pt_vector);
+        OctTree::recreateTrajs(pt_vector, trajs);
     } else if(query.op == NN_QUERY) {
-        the_torus_oct_tree->NNQuery(low, high, pt_vector);
+        //the_torus_oct_tree->NNQuery(low, high, pt_vector);
+        the_torus_oct_tree->nearestNeighborQuery(query.data_id, low, high, trajs);
     }
-
-    hash_map<IDTYPE, Traj*> trajs;
-    OctTree::recreateTrajs(pt_vector, trajs);
+    write_query_result(query, trajs);
 
     clock_gettime(CLOCK_REALTIME, &end);
     elapsed = get_elasped_time(begin, end) / 1000000.0;
     fl_st.index_elapsed = elapsed;
     fl_st.size_after_index = trajs.size();
+
+    write_log(ERROR_LOG, "query time:%lf\n", elapsed);
     
     //step 2: compute statistics and estimate the num of idle nodes
     char reason[100];
@@ -2334,6 +2366,7 @@ int local_oct_tree_query(struct query_struct query, double low[], double high[])
     char idle_ip[requested_num][IP_ADDR_LENGTH];
     memset(idle_ip, 0, requested_num * IP_ADDR_LENGTH);
     find_idle_torus_node(idle_ip,requested_num,&actual_got_num);
+    write_log(ERROR_LOG, "idle node:%d %d\n", requested_num, actual_got_num);
     if (actual_got_num == 0) {
         // this means the whole torus is busy now
         if (RUNNING_MODE == 0){
@@ -3944,6 +3977,8 @@ int do_seek_idle_node(connection_t conn, struct message msg) {
     int requested_num = 0;
     memcpy(&requested_num, msg.data + sizeof(int), sizeof(int));    
 
+    write_log(DEBUG_LOG, "seek idle node:%s, %d\n", msg.src_ip, requested_num);
+
 	struct message reply_msg;
 
     char idle_ip[requested_num][IP_ADDR_LENGTH];
@@ -4079,7 +4114,7 @@ void *heartbeat_worker(void *args){
     return NULL;
 }
 
-static int register_message_handler_list() {
+static int bind_message_handlers() {
     // TODO register all message
     register_message_handler2(CREATE_TORUS, &do_create_torus);
     register_message_handler2(QUERY_TORUS_NODE, do_query_torus_node);
@@ -4181,7 +4216,7 @@ int main(int argc, char **argv) {
 	}
 
     // load message handler collection
-    register_message_handler_list();
+    bind_message_handlers();
 
     // init mutex;
     pthread_mutex_init(&mutex, NULL);
@@ -4198,7 +4233,6 @@ int main(int argc, char **argv) {
     if(NULL == the_conn_mgr) {
         write_log(ERROR_LOG, "new connection manager failed.\n");
     }
-
     init_connection_mgr(the_conn_mgr, &handle_read_event, &handle_write_event);
 
     // start connection manager
