@@ -1774,20 +1774,45 @@ int oct_tree_insert(OctPoint *pt) {
 
 			// 找到所在Trajectory的尾部，并更新相关信息
 			Traj *tmp = g_TrajList.find(pt->p_tid)->second;
-			/*
-			 *near函数用来判断是否是同一个点，这一步用来压缩输入数据用
-			 if(pt->isNear(tmp->t_tail)){
-			 return;
-			 }
-			 */
-            if(g_PtList.find(tmp->t_tail) != g_PtList.end()){
-			    g_PtList.find(tmp->t_tail)->second->next = pt->p_id;
-            }
-            else{
+
+            OctPoint *cur_point, *next_point;
+            IDTYPE cur_pid;
+            hash_map<IDTYPE, OctPoint*>::iterator pit;
+            pit = g_PtList.find(tmp->t_tail);
+            if(pit == g_PtList.end()) {
                 printNodes();
+                return FALSE;
             }
-            pt->pre = tmp->t_tail;
-			tmp->t_tail = pt->p_id;
+
+            cur_point = pit->second;
+            cur_pid = cur_point->p_id;
+            while(pt->p_xyz[2] < cur_point->p_xyz[2]) {
+                cur_pid = cur_point->pre;
+                if(cur_pid == NONE) {
+                    break;
+                }
+                pit = g_PtList.find(cur_pid);
+                cur_point = pit->second;
+            }
+
+            if(cur_pid != NONE && cur_pid != tmp->t_tail) {
+                next_point = g_PtList.find(cur_point->next)->second;
+                next_point->pre = pt->p_id;
+                cur_point->next = pt->p_id;
+                pt->next = next_point->p_id;
+                pt->pre = cur_point->p_id;
+            } else if( cur_pid != NONE && cur_pid == tmp->t_tail){
+                cur_point->next = pt->p_id;
+                pt->pre = tmp->t_tail;
+                tmp->t_tail = pt->p_id;
+
+            } else if(cur_pid == NONE) {
+                // if current point id is NULL means traj head
+                // note: current point now is traj traj tail
+                tmp->t_head = pt->p_id;
+                cur_point->pre = pt->p_id;
+                pt->next = cur_point->p_id;
+            }
             root->nodeInsert(pt);
             g_ptCount++;
 		}
@@ -2010,8 +2035,32 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
     hash_map<IDTYPE, double> qp_map;
     hash_map<IDTYPE, double>::iterator it;
 
+    /*char buf[20480];
+    memset(buf, 0, 20480);
+    int len = 0;
+    len = sprintf(buf, "%d (%lf, %lf):\n", query.data_id, query.intval[2].low, query.intval[2].high);
+    uint32_t traj_idx, pair_idx;
+    double start, end;
+    for(traj_idx = 0; traj_idx < traj_num; traj_idx++) {
+        len += sprintf(buf + len, "%d:", traj_segs[traj_idx].t_id);
+        for(pair_idx = 0; pair_idx < traj_segs[traj_idx].pair_num; pair_idx++) {
+            start = traj_segs[traj_idx].start[pair_idx].axis[2];
+            end = traj_segs[traj_idx].end[pair_idx].axis[2];
+            len += sprintf(buf + len, "[%lf, %lf] ", start, end);
+        }
+        len += sprintf(buf + len, "\n");
+    }
+    len += sprintf(buf + len, "\n\n");
+    write_log(ERROR_LOG, buf);*/
+
     size_t i;
     double time = query.intval[2].low; 
+    struct timespec get_center_begin, get_center_end;
+    struct timespec get_nn_begin, get_nn_end;
+    struct timespec calc_qpt_begin, calc_qpt_end;
+    double get_center_elapsed = 0, get_nn_elapsed = 0, calc_qpt_elapsed = 0;
+    double avg_nn_points_num = 0;
+    double avg_center_points_num = 0;
     for(i = 1; i <= time_samples; i++) {
         if( i ==  time_samples) {
             time = query.intval[2].high;
@@ -2023,13 +2072,24 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
         vector<traj_point *>::iterator nit;
 
         // get center points for each trajs at time t
+        clock_gettime(CLOCK_REALTIME, &get_center_begin);
         get_center_points(query_point, traj_segs, traj_num, nn_points);
+        avg_center_points_num += nn_points.size();
+        clock_gettime(CLOCK_REALTIME, &get_center_end);
+        get_center_elapsed += get_elasped_time(get_center_begin, get_center_end) / 1000000.0;
 
         // get candidate nearest neighbor objects
+        clock_gettime(CLOCK_REALTIME, &get_nn_begin);
         get_nn_oct_points(query_point, nn_points);
+        avg_nn_points_num += nn_points.size();
+        clock_gettime(CLOCK_REALTIME, &get_nn_end);
+        get_nn_elapsed += get_elasped_time(get_nn_begin, get_nn_end) / 1000000.0;
 
         hash_map<IDTYPE, double> qpt_map;
+        clock_gettime(CLOCK_REALTIME, &calc_qpt_begin);
         calc_QPT(query_point, nn_points, SAMPLE_SPATIAL_POINTS, qpt_map);
+        clock_gettime(CLOCK_REALTIME, &calc_qpt_end);
+        calc_qpt_elapsed += get_elasped_time(calc_qpt_begin, calc_qpt_end) / 1000000.0;
 
         for(it = qpt_map.begin(); it != qpt_map.end(); it++) {
             t_id = it->first;
@@ -2056,6 +2116,32 @@ int calc_nn_query_refinement(struct query_struct query, struct traj_segments tra
             nit = nn_points.erase(nit);
         }
     }
+
+    struct message res_msg;
+    res_msg.op = RECEIVE_TEST_LOG;
+    strncpy(res_msg.src_ip, the_torus->info.ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.dst_ip, result_ip, IP_ADDR_LENGTH);
+    strncpy(res_msg.stamp, "", STAMP_SIZE);
+    int cpy_len = 0;
+    memcpy(res_msg.data, &query.data_id, sizeof(int));
+    cpy_len += sizeof(int);
+    memcpy(res_msg.data + cpy_len, &get_center_elapsed, sizeof(double));
+    cpy_len += sizeof(double);
+    memcpy(res_msg.data + cpy_len, &get_nn_elapsed, sizeof(double));
+    cpy_len += sizeof(double);
+    memcpy(res_msg.data + cpy_len, &calc_qpt_elapsed, sizeof(double));
+    cpy_len += sizeof(double);
+
+    avg_nn_points_num = (avg_nn_points_num  * 1.0 ) / time_samples;
+    memcpy(res_msg.data + cpy_len, &avg_nn_points_num, sizeof(double));
+    cpy_len += sizeof(double);
+
+    avg_center_points_num = (avg_center_points_num  * 1.0 ) / time_samples;
+    memcpy(res_msg.data + cpy_len, &avg_center_points_num, sizeof(double));
+    cpy_len += sizeof(double);
+
+    res_msg.msg_size = calc_msg_header_size() + cpy_len;
+    send_safe(result_sockfd, (void *) &res_msg, res_msg.msg_size, 0);
 
     double total_qp = 0.0;
     for(it = qp_map.begin(); it != qp_map.end(); it++) {
@@ -2096,7 +2182,6 @@ int Comp(const void *p1,const void *p2, void *p0){
     }
 }
 
-
 int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_map<IDTYPE, double> &rst_map) {
     size_t i, j, traj_cnt;
     double value;
@@ -2108,9 +2193,14 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     gsl_rng_default_seed = ((unsigned long)(time(NULL)));
     r = gsl_rng_alloc(gsl_rng_default);
 
-    traj_point point;
 
+    traj_point point;
     traj_cnt = nn_points.size();
+    if(traj_cnt == 1) {
+        rst_map.insert(pair<IDTYPE, double>(nn_points[0]->t_id, 1.0));
+        return TRUE;
+    }
+
     traj_point * samples;
     samples = (traj_point *) malloc(sizeof(traj_point) * traj_cnt * m);
     if (samples == NULL){
@@ -2119,11 +2209,15 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
         return FALSE;
     }
     uint32_t sample_num = 0;
+    double min_dis = -1, dis;
     for (i = 0; i < traj_cnt; i++) {
+        point.t_id = nn_points[i]->t_id;
+        point.p.axis[2] = nn_points[i]->p.axis[2];
+        dis = points_distance(qpt, nn_points[i]->p);
+        if(dis < min_dis) {
+            min_dis = dis;
+        }
         for(j = 0; j < m; j++) {
-            point.t_id = nn_points[i]->t_id;
-            point.p.axis[2] = nn_points[i]->p.axis[2];
-
             value = gsl_ran_gaussian(r, SIGMA); 
             while(value < -3 * SIGMA || value > 3 * SIGMA) {
                 value = gsl_ran_gaussian(r, SIGMA); 
@@ -2147,6 +2241,9 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     }
     gsl_rng_free(r);
 
+    // get f_min_max
+    double extend_r = min_dis + 6 * SIGMA;
+
     //sort the samples asscendingly by distance to qpt
     qsort_r(samples, sample_num, sizeof(samples[0]), Comp, (void *)&qpt);
 
@@ -2155,6 +2252,9 @@ int calc_QPT(struct point qpt, vector<traj_point *> nn_points, size_t m, hash_ma
     double f = 1.0 / m, F;
     for(i = 0; i < sample_num; i++) {
         t_id = samples[i].t_id;
+        if(points_distance(samples[i].p, qpt) > extend_r) {
+            break;
+        }
 
         F = f;
         for (j = 0; j < traj_cnt; j++) {
@@ -2231,16 +2331,6 @@ int recreate_trajs(vector<OctPoint *> pt_vector, hash_map<IDTYPE, Traj*> &trajs)
     }
 
     return TRUE;
-    /*size_t i;
-    hash_map<int, Traj *>::iterator tit;
-    for (i = 0; i < pt_vector.size(); i++) {
-        tit = g_TrajList.find(pt_vector[i]->p_tid);
-        if (tit != g_TrajList.end()) {
-            Traj *t = tit->second;
-            trajs.insert(pair<int, Traj*>(t->t_id, t));
-        }
-    }
-    return TRUE;*/
 }
 
 int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
@@ -2263,6 +2353,8 @@ int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
 
     OctPoint *p_cur, *p_next;
     struct point start, end;
+    //char buff[10240];
+    //int len = 0;
 
     hash_map<IDTYPE, Traj *>::iterator tit;
     for(tit = trajs.begin(); tit != trajs.end(); tit++) {
@@ -2280,6 +2372,15 @@ int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
         cpy_len += sizeof(uint32_t);
 
         int traj_contained = FALSE;
+        //int x;
+
+        /*if(traj->t_id == 14054479 || traj->t_id == 25047348) {
+            len = sprintf(buff, "%d ", traj->t_id); 
+            for(x = 0; x < MAX_DIM_NUM; x++) {
+                len += sprintf(buff + len , "[%lf, %lf] ", query.intval[x].low, query.intval[x].high); 
+            }
+            len += sprintf(buff + len, ":\n"); 
+        }*/
 
         while(p_cur->next != -1) {
             pid = p_cur->next; 
@@ -2290,6 +2391,7 @@ int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
                 pid = p_next->p_id; 
                 p_next = g_PtList.find(pid)->second; 
             }
+
             
             //construct a line segment  
             for(i = 0; i < MAX_DIM_NUM; i++) {
@@ -2297,8 +2399,16 @@ int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
                 end.axis[i] = p_next->p_xyz[i];
             }
 
+            /*if(traj->t_id == 14054479 || traj->t_id == 25047348) {
+                for(x = 0; x < MAX_DIM_NUM; x++) {
+                    len += sprintf(buff + len , "[%lf, %lf] ", start.axis[x], end.axis[x]); 
+                }
+                len += sprintf(buff + len , "\n"); 
+            }*/
+
             if(1 == line_intersect(query.intval, start, end)){
                 traj_contained = TRUE;
+
 
                 // if current start-end segment contained in the query
                 // move buf ptr back to pair_num_pos, so, no need to refine this trajectory. 
@@ -2332,6 +2442,10 @@ int package_refinement_data(hash_map<IDTYPE, Traj*> &trajs, \
             // move next
             p_cur = p_next;
         }//end of processing a traj
+        /*if(traj->t_id == 14054479 || traj->t_id == 25047348) {
+            len += sprintf(buff + len , "\n"); 
+            write_log(TEST_LOG, buff);
+        }*/
 
         //store the pair_num
         memcpy(buf+pair_num_pos, &pair_num, sizeof(uint32_t));
@@ -3011,6 +3125,32 @@ int do_rtree_load_data(connection_t conn, struct message msg){
     memset(buffer, 0, 1024);
     sprintf(buffer, "%ld %d\n", now, count);
     write_log(RESULT_LOG, buffer);
+    return TRUE;
+}
+
+int do_receive_test_log(struct message msg) {
+    int id;
+    double elasped1, elasped2, elasped3, avg_nn_points_num, avg_center_points_num;
+    int cpy_len = 0;
+    memcpy(&id, msg.data, sizeof(int));
+    cpy_len += sizeof(int);
+    memcpy(&elasped1, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+    memcpy(&elasped2, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+    memcpy(&elasped3, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+
+    memcpy(&avg_nn_points_num, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+
+    memcpy(&avg_center_points_num, msg.data + cpy_len, sizeof(double));
+    cpy_len += sizeof(double);
+
+    char buf[1024];
+    memset(buf, 0, 1024);
+    sprintf(buf, "%d %lf %lf %lf %lf %lf\n", id, elasped1, elasped2, elasped3, avg_nn_points_num, avg_center_points_num);
+    write_log(TEST_LOG, buf);
     return TRUE;
 }
 
@@ -4510,6 +4650,14 @@ int process_message(connection_t conn, struct message msg) {
             write_log(TORUS_NODE_LOG, "receive request reload properties message .\n");
         #endif
         do_reload_properties(msg);
+        break;
+
+    case RECEIVE_TEST_LOG:
+        #ifdef WRITE_LOG
+            write_log(TORUS_NODE_LOG, "receive request test log.\n");
+        #endif
+
+        do_receive_test_log(msg);
         break;
 
     case QUERY_START:

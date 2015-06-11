@@ -58,6 +58,7 @@
 #define RTREE_LOG "../logs/rtree.log"
 #define HEARTBEAT_LOG "../logs/heartbeat.log"
 #define ERROR_LOG "../logs/error.log"
+#define TEST_LOG "../logs/test.log"
 #define NOTIFY_LOG "../logs/notify.log"
 #define QUERY_START_LOG "../logs/query_start.log"
 #define QUERY_END_LOG "../logs/query_end.log"
@@ -178,6 +179,7 @@ typedef enum OP {
     NN_QUERY_REFINEMENT,
     NOTIFY_MESSAGE,
     RELOAD_PROPERTIES,
+    RECEIVE_TEST_LOG,
     QUERY_START,
     QUERY_END
 } OP;

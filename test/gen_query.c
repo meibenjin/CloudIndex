@@ -72,7 +72,8 @@ int main(int argc, char **argv) {
     double x_len, y_len, t_len;
     int k, count = 0, l;
     double p = 0.005;
-    for(k = 2; k <= 10; k+=2){
+    double pp = 0.01;
+    for(k = 2; k <= 10; k += 2){
         for(i = 0; i < group_num; i++) {
             int x;
             for(x = 2; x <= 3; x++) {
@@ -85,13 +86,13 @@ int main(int argc, char **argv) {
                     char filename[20];
                     sprintf(filename, "./range_query_%d", tp.p_x * tp.p_y * tp.p_z);
                     FILE *fout = fopen(filename, "a+");
-                    x_len = range[0] * p * k / tp.p_x;
+                    x_len = range[0] * p * k;/// tp.p_x;
                     r_high[0] = r_low[0] + x_len;
 
-                    y_len = range[1] * p * k / tp.p_y;
+                    y_len = range[1] * p * k;/// tp.p_y;
                     r_high[1] = r_low[1] + y_len;
 
-                    t_len = range[2] * p * k / tp.p_z;
+                    t_len = range[2] * pp;// / tp.p_z;
                     r_high[2] = r_low[2] + t_len;
                     fprintf(fout, "%d %d ", x, count);
                     for(j = 0; j < 3; j++) {
