@@ -1,5 +1,5 @@
 CloudIndex
 ==========
 
-a distributed system for spatiotemporal data
+Distributed System for Spatial index
 
